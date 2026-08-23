@@ -182,15 +182,14 @@ function LoginModal({ portal, close }) {
 function App() {
   const [activePortal, setActivePortal] = useState(null);
 
-  const handlePortal = (portal) => {
-    if (portal.id === "staff") {
-      // Staff login/page will be connected next.
-      setActivePortal(portal);
-      return;
-    }
+const handlePortal = (portal) => {
+  if (portal.id === "staff") {
+    window.location.href = "/staff";
+    return;
+  }
 
-    setActivePortal(portal);
-  };
+  setActivePortal(portal);
+};
 
   return (
     <div className="app">
