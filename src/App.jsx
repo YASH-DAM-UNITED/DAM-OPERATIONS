@@ -181,13 +181,16 @@ function LoginModal({ portal, close }) {
 
 function App() {
   const [activePortal, setActivePortal] = useState(null);
+  const [currentPage, setCurrentPage] = useState("home");
 
 const handlePortal = (portal) => {
   if (portal.id === "staff") {
-    window.location.href = "/staff";
+    setActivePortal(null);
+    setCurrentPage("staff");
     return;
   }
 
+  // HR + Admin only
   setActivePortal(portal);
 };
 
