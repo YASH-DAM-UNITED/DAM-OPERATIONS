@@ -14,18 +14,15 @@ import {
   Activity,
   Boxes,
   Sparkles,
-  Coffee,
-  Crown,
-  Heart,
-  ChevronRight,
-  MapPin,
   Search,
+  MapPin,
+  ChevronRight,
 } from "lucide-react";
 
 import "./index.css";
 
 /* =========================================================
-   MAIN PORTALS
+   DATA
 ========================================================= */
 
 const portals = [
@@ -64,69 +61,50 @@ const portals = [
   },
 ];
 
-/* =========================================================
-   BRANDS
-========================================================= */
-
 const brands = [
   {
     id: "bart",
     name: "BART",
     code: "B",
-    icon: Coffee,
-    eyebrow: "COFFEE • CULTURE • OPERATIONS",
-    tagline: "Crafted operations.",
+    small: "01 / BART",
+    label: "COFFEE CULTURE",
+    tagline: "Built for the rush.",
     description:
-      "Enter the BART operational network for branch stock, transfers and daily activity.",
-    color: "#f45f58",
-    colorDark: "#c9413b",
-    soft: "rgba(244,95,88,.12)",
-    gradient:
-      "linear-gradient(135deg, rgba(244,95,88,.18), rgba(255,255,255,.72))",
+      "Fast-moving branch operations engineered around people, coffee and momentum.",
+    primary: "#ff5f57",
+    secondary: "#ff9c75",
   },
-
   {
     id: "glor",
     name: "GLOR",
     code: "G",
-    icon: Crown,
-    eyebrow: "PREMIUM • SERVICE • CONTROL",
-    tagline: "Operate with distinction.",
+    small: "02 / GLOR",
+    label: "PREMIUM EXPERIENCE",
+    tagline: "Precision in motion.",
     description:
-      "Access the GLOR network and manage branch operations through a premium workspace.",
-    color: "#7357e8",
-    colorDark: "#5237c7",
-    soft: "rgba(115,87,232,.12)",
-    gradient:
-      "linear-gradient(135deg, rgba(115,87,232,.17), rgba(255,255,255,.72))",
+      "A refined operational environment built around control, clarity and elevated service.",
+    primary: "#b89858",
+    secondary: "#ead7a5",
   },
-
   {
     id: "mooma",
     name: "MOOMA",
     code: "M",
-    icon: Heart,
-    eyebrow: "CREATIVE • WARM • CONNECTED",
-    tagline: "Made to flow.",
+    small: "03 / MOOMA",
+    label: "CREATIVE CULTURE",
+    tagline: "Made to feel different.",
     description:
-      "Step into the MOOMA operations environment for connected branch management.",
-    color: "#d77a9c",
-    colorDark: "#b5577a",
-    soft: "rgba(215,122,156,.13)",
-    gradient:
-      "linear-gradient(135deg, rgba(215,122,156,.18), rgba(255,255,255,.72))",
+      "A fluid operational world where creativity, warmth and everyday execution connect.",
+    primary: "#e47ca7",
+    secondary: "#ffc1d8",
   },
 ];
 
 /*
- TEMPORARY BRANCHES
+  TEMPORARY ONLY.
 
- Later these will NOT stay in React.
-
- Cloudflare API will read:
- MASTERBRANCHSHEET / D1
-
- and return branches according to selected brand.
+  Next step:
+  GET /api/staff/branches?brand=bart
 */
 
 const temporaryBranches = {
@@ -135,13 +113,11 @@ const temporaryBranches = {
     { code: "B002", name: "BART Branch 02" },
     { code: "B003", name: "BART Branch 03" },
   ],
-
   glor: [
     { code: "G001", name: "GLOR Branch 01" },
     { code: "G002", name: "GLOR Branch 02" },
     { code: "G003", name: "GLOR Branch 03" },
   ],
-
   mooma: [
     { code: "M001", name: "MOOMA Branch 01" },
     { code: "M002", name: "MOOMA Branch 02" },
@@ -150,67 +126,35 @@ const temporaryBranches = {
 };
 
 /* =========================================================
-   BACKGROUND
+   SHARED
 ========================================================= */
 
-function FloatingOrb({ className }) {
-  return <div className={`orb ${className}`} />;
+function DAMLogo({ light = false }) {
+  return (
+    <div className={`dam-logo ${light ? "dam-logo-light" : ""}`}>
+      <div className="dam-logo-mark">
+        <Building2 size={18} />
+      </div>
+
+      <div className="dam-logo-text">
+        <strong>DAM</strong>
+        <span>OPERATIONS</span>
+      </div>
+    </div>
+  );
 }
 
-function GlobalBackground() {
+function SystemStatus({ light = false, text = "SYSTEM ONLINE" }) {
   return (
-    <>
-      <div className="background-grid" />
-      <div className="noise" />
-
-      <FloatingOrb className="orb-one" />
-      <FloatingOrb className="orb-two" />
-      <FloatingOrb className="orb-three" />
-
-      <div className="beam beam-one" />
-      <div className="beam beam-two" />
-    </>
+    <div className={`system-status ${light ? "status-light" : ""}`}>
+      <span className="system-status-dot" />
+      {text}
+    </div>
   );
 }
 
 /* =========================================================
-   LOGO / NAVBAR
-========================================================= */
-
-function MainNavbar({ label = "SYSTEM ONLINE" }) {
-  return (
-    <nav className="navbar">
-      <motion.div
-        className="brand"
-        initial={{ opacity: 0, x: -25 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="brand-symbol">
-          <Building2 size={20} />
-        </div>
-
-        <div>
-          <strong>DAM</strong>
-          <span>OPERATIONS</span>
-        </div>
-      </motion.div>
-
-      <motion.div
-        className="network-status"
-        initial={{ opacity: 0, x: 25 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <span className="status-dot" />
-        {label}
-      </motion.div>
-    </nav>
-  );
-}
-
-/* =========================================================
-   HR / ADMIN LOGIN
+   HR / ADMIN MODAL
 ========================================================= */
 
 function LoginModal({ portal, close }) {
@@ -222,7 +166,7 @@ function LoginModal({ portal, close }) {
 
   const Icon = portal.icon;
 
-  const handleLogin = (e) => {
+  function submit(e) {
     e.preventDefault();
 
     if (!password.trim()) return;
@@ -231,12 +175,9 @@ function LoginModal({ portal, close }) {
 
     setTimeout(() => {
       setLoading(false);
-
-      alert(
-        `${portal.title} authentication will be connected to the backend.`
-      );
-    }, 650);
-  };
+      alert(`${portal.title} backend authentication comes later.`);
+    }, 600);
+  }
 
   return (
     <AnimatePresence>
@@ -249,87 +190,62 @@ function LoginModal({ portal, close }) {
       >
         <motion.div
           className="login-modal"
-          initial={{
-            opacity: 0,
-            scale: 0.92,
-            y: 30,
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            y: 0,
-          }}
-          exit={{
-            opacity: 0,
-            scale: 0.95,
-            y: 20,
-          }}
-          transition={{
-            type: "spring",
-            stiffness: 300,
-            damping: 25,
-          }}
+          initial={{ opacity: 0, y: 35, scale: 0.94 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 20, scale: 0.96 }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <button className="modal-close" onClick={close}>
-            <X size={19} />
+            <X size={18} />
           </button>
 
           <div className="modal-icon">
-            <Icon size={28} />
+            <Icon size={26} />
           </div>
 
           <div className="modal-security">
-            <LockKeyhole size={13} />
+            <LockKeyhole size={12} />
             SECURITY VERIFICATION
           </div>
 
           <h2>{portal.title} Access</h2>
 
-          <p>
-            Authenticate your credentials to continue into the{" "}
-            {portal.subtitle.toLowerCase()} environment.
-          </p>
+          <p>Authenticate your credentials to continue.</p>
 
-          <form onSubmit={handleLogin}>
+          <form onSubmit={submit}>
             <label>Password</label>
 
             <div className="password-box">
-              <LockKeyhole size={18} />
+              <LockKeyhole size={17} />
 
               <input
                 autoFocus
                 type={showPassword ? "text" : "password"}
-                placeholder="Enter system password"
                 value={password}
+                placeholder="Enter system password"
                 onChange={(e) => setPassword(e.target.value)}
               />
 
               <button
                 type="button"
                 className="show-password"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((v) => !v)}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
 
-            <button className="verify-button" disabled={loading}>
+            <button className="verify-button">
               {loading ? (
                 <span className="loader" />
               ) : (
                 <>
                   Verify & Continue
-                  <ArrowRight size={17} />
+                  <ArrowRight size={16} />
                 </>
               )}
             </button>
           </form>
-
-          <div className="secure-footer">
-            <ShieldCheck size={14} />
-            Encrypted authentication channel
-          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -337,458 +253,28 @@ function LoginModal({ portal, close }) {
 }
 
 /* =========================================================
-   BRAND SELECTION
+   HOME
 ========================================================= */
 
-function BrandSelection({ onBack, onSelectBrand }) {
+function Home({ openPortal, activePortal, closePortal }) {
   return (
     <div className="app">
-      <GlobalBackground />
+      <div className="background-grid" />
+      <div className="noise" />
+      <div className="orb orb-one" />
+      <div className="orb orb-two" />
+      <div className="orb orb-three" />
 
-      <MainNavbar label="STAFF NETWORK" />
-
-      <main className="brand-selection-page">
-        <motion.button
-          className="brand-back-button"
-          onClick={onBack}
-          initial={{ opacity: 0, x: -15 }}
-          animate={{ opacity: 1, x: 0 }}
-          whileHover={{ x: -4 }}
-        >
-          <ArrowLeft size={16} />
-          Back
-        </motion.button>
-
-        <motion.div
-          className="brand-selection-heading"
-          initial={{ opacity: 0, y: 25 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <div className="hero-badge">
-            <Sparkles size={13} />
-            DAM STAFF NETWORK
-          </div>
-
-          <h1>
-            Choose your
-            <br />
-            <span>brand.</span>
-          </h1>
-
-          <p>
-            Select your operational environment to continue to your branch
-            workspace.
-          </p>
-        </motion.div>
-
-        <div className="brand-world-grid">
-          {brands.map((brand, index) => {
-            const Icon = brand.icon;
-
-            return (
-              <motion.button
-                key={brand.id}
-                className={`brand-world-card brand-${brand.id}`}
-                onClick={() => onSelectBrand(brand)}
-                initial={{
-                  opacity: 0,
-                  y: 60,
-                  scale: 0.96,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                  scale: 1,
-                }}
-                transition={{
-                  delay: 0.2 + index * 0.12,
-                  duration: 0.7,
-                  ease: [0.22, 1, 0.36, 1],
-                }}
-                whileHover={{
-                  y: -12,
-                  scale: 1.015,
-                }}
-                whileTap={{
-                  scale: 0.985,
-                }}
-                style={{
-                  "--brand-color": brand.color,
-                  "--brand-soft": brand.soft,
-                  "--brand-gradient": brand.gradient,
-                }}
-              >
-                <div className="brand-world-light" />
-
-                <div className="brand-ring brand-ring-one" />
-                <div className="brand-ring brand-ring-two" />
-
-                <div className="brand-card-header">
-                  <div className="brand-big-icon">
-                    <Icon size={26} />
-                  </div>
-
-                  <span className="brand-code">{brand.code}</span>
-                </div>
-
-                <div className="brand-eyebrow">{brand.eyebrow}</div>
-
-                <h2>{brand.name}</h2>
-
-                <h3>{brand.tagline}</h3>
-
-                <p>{brand.description}</p>
-
-                <div className="brand-enter">
-                  <span>ENTER {brand.name}</span>
-
-                  <div className="brand-enter-icon">
-                    <ArrowRight size={18} />
-                  </div>
-                </div>
-              </motion.button>
-            );
-          })}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/* =========================================================
-   BRANCH SELECTION
-========================================================= */
-
-function BranchSelection({ brand, onBack, onBranchSelected }) {
-  const [search, setSearch] = useState("");
-  const [selectedBranch, setSelectedBranch] = useState(null);
-
-  const Icon = brand.icon;
-
-  const branches = temporaryBranches[brand.id] || [];
-
-  const filteredBranches = branches.filter((branch) => {
-    const text = `${branch.code} ${branch.name}`.toLowerCase();
-
-    return text.includes(search.toLowerCase());
-  });
-
-  return (
-    <div
-      className={`app brand-environment brand-environment-${brand.id}`}
-      style={{
-        "--active-brand": brand.color,
-        "--active-brand-dark": brand.colorDark,
-        "--active-brand-soft": brand.soft,
-      }}
-    >
-      <GlobalBackground />
-
-      <MainNavbar label={`${brand.name} NETWORK`} />
-
-      <main className="branch-selection-page">
-        <motion.button
-          className="brand-back-button"
-          onClick={onBack}
-          initial={{ opacity: 0, x: -15 }}
-          animate={{ opacity: 1, x: 0 }}
-          whileHover={{ x: -4 }}
-        >
-          <ArrowLeft size={16} />
-          Change Brand
-        </motion.button>
-
-        <motion.div
-          className="selected-brand-header"
-          initial={{ opacity: 0, y: 25 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <motion.div
-            className="selected-brand-icon"
-            initial={{
-              scale: 0.6,
-              rotate: -15,
-            }}
-            animate={{
-              scale: 1,
-              rotate: 0,
-            }}
-            transition={{
-              type: "spring",
-              stiffness: 220,
-              damping: 15,
-            }}
-          >
-            <Icon size={29} />
-          </motion.div>
-
-          <div>
-            <div className="selected-brand-eyebrow">
-              {brand.name} OPERATIONS
-            </div>
-
-            <h1>
-              Select your
-              <span> branch.</span>
-            </h1>
-
-            <p>
-              Choose the branch you are currently operating before
-              authentication.
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="branch-panel"
-          initial={{
-            opacity: 0,
-            y: 35,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          transition={{
-            delay: 0.15,
-          }}
-        >
-          <div className="branch-search">
-            <Search size={18} />
-
-            <input
-              placeholder={`Search ${brand.name} branches...`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="branch-list">
-            <AnimatePresence>
-              {filteredBranches.map((branch, index) => {
-                const selected =
-                  selectedBranch?.code === branch.code;
-
-                return (
-                  <motion.button
-                    key={branch.code}
-                    className={`branch-row ${
-                      selected ? "branch-row-selected" : ""
-                    }`}
-                    initial={{
-                      opacity: 0,
-                      x: -15,
-                    }}
-                    animate={{
-                      opacity: 1,
-                      x: 0,
-                    }}
-                    exit={{
-                      opacity: 0,
-                    }}
-                    transition={{
-                      delay: index * 0.04,
-                    }}
-                    onClick={() => setSelectedBranch(branch)}
-                  >
-                    <div className="branch-row-icon">
-                      <MapPin size={18} />
-                    </div>
-
-                    <div className="branch-row-info">
-                      <strong>{branch.name}</strong>
-
-                      <span>{branch.code}</span>
-                    </div>
-
-                    <ChevronRight size={18} />
-                  </motion.button>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-
-          <AnimatePresence>
-            {selectedBranch && (
-              <motion.div
-                className="branch-continue-container"
-                initial={{
-                  opacity: 0,
-                  y: 15,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                }}
-                exit={{
-                  opacity: 0,
-                }}
-              >
-                <div>
-                  <small>SELECTED BRANCH</small>
-
-                  <strong>
-                    {selectedBranch.code} • {selectedBranch.name}
-                  </strong>
-                </div>
-
-                <button
-                  onClick={() =>
-                    onBranchSelected(selectedBranch)
-                  }
-                >
-                  Continue
-                  <ArrowRight size={17} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </main>
-    </div>
-  );
-}
-
-/* =========================================================
-   TEMPORARY BRANCH LOGIN PAGE
-
-   NEXT STEP:
-   This will connect to Cloudflare + D1 + Google.
-========================================================= */
-
-function BranchLogin({ brand, branch, onBack }) {
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-
-  const Icon = brand.icon;
-
-  return (
-    <div
-      className={`app brand-environment brand-environment-${brand.id}`}
-      style={{
-        "--active-brand": brand.color,
-        "--active-brand-dark": brand.colorDark,
-        "--active-brand-soft": brand.soft,
-      }}
-    >
-      <GlobalBackground />
-
-      <MainNavbar label={`${branch.code} ACTIVE`} />
-
-      <main className="branch-login-page">
-        <motion.button
-          className="brand-back-button"
-          onClick={onBack}
-          initial={{ opacity: 0, x: -15 }}
-          animate={{ opacity: 1, x: 0 }}
-        >
-          <ArrowLeft size={16} />
-          Change Branch
-        </motion.button>
-
-        <motion.div
-          className="branch-login-card"
-          initial={{
-            opacity: 0,
-            scale: 0.94,
-            y: 30,
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            y: 0,
-          }}
-          transition={{
-            type: "spring",
-            stiffness: 230,
-            damping: 22,
-          }}
-        >
-          <div className="branch-login-brand-icon">
-            <Icon size={27} />
-          </div>
-
-          <div className="branch-login-brand">
-            {brand.name} STAFF ACCESS
-          </div>
-
-          <h1>{branch.name}</h1>
-
-          <div className="branch-login-code">
-            <MapPin size={14} />
-            {branch.code}
-          </div>
-
-          <p>
-            Enter your branch password to continue to the staff
-            operations dashboard.
-          </p>
-
-          <label>BRANCH PASSWORD</label>
-
-          <div className="brand-password-box">
-            <LockKeyhole size={18} />
-
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Enter branch password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-
-            <button
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? (
-                <EyeOff size={18} />
-              ) : (
-                <Eye size={18} />
-              )}
-            </button>
-          </div>
-
-          <button
-            className="branch-authenticate-button"
-            onClick={() => {
-              if (!password.trim()) return;
-
-              alert(
-                `NEXT: ${branch.code} will authenticate through Cloudflare backend.`
-              );
-            }}
-          >
-            Authenticate Branch
-            <ArrowRight size={18} />
-          </button>
-
-          <div className="branch-secure-note">
-            <ShieldCheck size={14} />
-            Credentials will be verified securely by DAM Operations
-          </div>
-        </motion.div>
-      </main>
-    </div>
-  );
-}
-
-/* =========================================================
-   HOME PAGE
-========================================================= */
-
-function HomePage({ onPortal, activePortal, closePortal }) {
-  return (
-    <div className="app">
-      <GlobalBackground />
-
-      <MainNavbar />
+      <nav className="navbar">
+        <DAMLogo />
+        <SystemStatus />
+      </nav>
 
       <main className="hero">
         <motion.div
           className="hero-badge"
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
         >
           <Sparkles size={13} />
           INTERNAL OPERATIONS NETWORK
@@ -797,54 +283,46 @@ function HomePage({ onPortal, activePortal, closePortal }) {
         <motion.h1
           initial={{ opacity: 0, y: 35 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{
-            delay: 0.25,
-            duration: 0.75,
-            ease: [0.22, 1, 0.36, 1],
-          }}
+          transition={{ duration: 0.75 }}
         >
           One network.
           <br />
-
           <span>Every operation.</span>
         </motion.h1>
 
         <motion.p
           className="hero-description"
-          initial={{ opacity: 0, y: 25 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{
-            delay: 0.38,
-            duration: 0.65,
-          }}
+          transition={{ delay: 0.15 }}
         >
-          The central operating system for branch teams, workforce
-          management, inventory movement and executive control.
+          The central operating system for branch teams, workforce management,
+          inventory movement and executive control.
         </motion.p>
 
         <motion.div
           className="live-info"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.55 }}
+          transition={{ delay: 0.3 }}
         >
           <div>
             <Activity size={15} />
-            <span>Live Operations</span>
+            Live Operations
           </div>
 
           <span className="info-divider" />
 
           <div>
             <Boxes size={15} />
-            <span>Multi-Brand Network</span>
+            Multi-Brand Network
           </div>
 
           <span className="info-divider" />
 
           <div>
             <ShieldCheck size={15} />
-            <span>Secure Access</span>
+            Secure Access
           </div>
         </motion.div>
 
@@ -856,22 +334,10 @@ function HomePage({ onPortal, activePortal, closePortal }) {
               <motion.article
                 key={portal.id}
                 className={`portal-card ${portal.id}`}
-                initial={{
-                  opacity: 0,
-                  y: 55,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                }}
-                transition={{
-                  delay: 0.55 + index * 0.1,
-                  duration: 0.65,
-                  ease: [0.22, 1, 0.36, 1],
-                }}
-                whileHover={{
-                  y: -8,
-                }}
+                initial={{ opacity: 0, y: 45 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 + index * 0.09 }}
+                whileHover={{ y: -8 }}
               >
                 <div className="card-shine" />
 
@@ -880,26 +346,21 @@ function HomePage({ onPortal, activePortal, closePortal }) {
                     <Icon size={23} />
                   </div>
 
-                  <span className="portal-number">
-                    {portal.number}
-                  </span>
+                  <span className="portal-number">{portal.number}</span>
                 </div>
 
-                <div className="portal-badge">
-                  {portal.badge}
-                </div>
+                <div className="portal-badge">{portal.badge}</div>
 
                 <h2>{portal.title}</h2>
-
                 <h3>{portal.subtitle}</h3>
 
                 <p>{portal.description}</p>
 
                 <button
                   className="portal-button"
-                  onClick={() => onPortal(portal)}
+                  onClick={() => openPortal(portal)}
                 >
-                  <span>{portal.button}</span>
+                  {portal.button}
 
                   <div className="arrow-circle">
                     <ArrowRight size={17} />
@@ -911,133 +372,472 @@ function HomePage({ onPortal, activePortal, closePortal }) {
         </div>
       </main>
 
-      <footer>
-        <span>DAM OPERATIONS</span>
-
-        <div className="footer-line" />
-
-        <span>Central Command Network</span>
-      </footer>
-
-      <LoginModal
-        portal={activePortal}
-        close={closePortal}
-      />
+      <LoginModal portal={activePortal} close={closePortal} />
     </div>
   );
 }
 
 /* =========================================================
-   APP CONTROLLER
+   CINEMATIC BRAND WORLD
+========================================================= */
+
+function BrandWorld({ onBack, selectBrand }) {
+  const [hovered, setHovered] = useState(null);
+
+  return (
+    <motion.div
+      className={`brand-world-screen ${hovered ? `world-${hovered}` : ""}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="world-noise" />
+      <div className="world-grid-lines" />
+
+      <div className="world-topbar">
+        <DAMLogo light />
+
+        <div className="world-topbar-right">
+          <SystemStatus light text="STAFF NETWORK" />
+
+          <button className="world-exit" onClick={onBack}>
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="world-heading">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="world-kicker"
+        >
+          DAM / BRAND GATEWAY
+        </motion.div>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 25 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          Select your world.
+        </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+        >
+          Three identities. One operational network.
+        </motion.p>
+      </div>
+
+      <div className="worlds">
+        {brands.map((brand, index) => {
+          const active = hovered === brand.id;
+          const somethingActive = hovered !== null;
+          const dimmed = somethingActive && !active;
+
+          return (
+            <motion.button
+              key={brand.id}
+              className={`world-panel ${brand.id}-world ${
+                active ? "world-active" : ""
+              } ${dimmed ? "world-dimmed" : ""}`}
+              style={{
+                "--brand-primary": brand.primary,
+                "--brand-secondary": brand.secondary,
+              }}
+              onMouseEnter={() => setHovered(brand.id)}
+              onMouseLeave={() => setHovered(null)}
+              onFocus={() => setHovered(brand.id)}
+              onBlur={() => setHovered(null)}
+              onClick={() => selectBrand(brand)}
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                delay: 0.25 + index * 0.1,
+                duration: 0.7,
+              }}
+            >
+              {/* BART visual */}
+              {brand.id === "bart" && (
+                <div className="bart-art">
+                  <div className="bart-sun" />
+                  <div className="bart-orbit bart-orbit-1" />
+                  <div className="bart-orbit bart-orbit-2" />
+                  <div className="bart-dot bart-dot-1" />
+                  <div className="bart-dot bart-dot-2" />
+                </div>
+              )}
+
+              {/* GLOR visual */}
+              {brand.id === "glor" && (
+                <div className="glor-art">
+                  <div className="glor-light" />
+                  <div className="glor-diamond glor-diamond-1" />
+                  <div className="glor-diamond glor-diamond-2" />
+                  <div className="glor-line" />
+                </div>
+              )}
+
+              {/* MOOMA visual */}
+              {brand.id === "mooma" && (
+                <div className="mooma-art">
+                  <div className="mooma-blob mooma-blob-1" />
+                  <div className="mooma-blob mooma-blob-2" />
+                  <div className="mooma-ball mooma-ball-1" />
+                  <div className="mooma-ball mooma-ball-2" />
+                </div>
+              )}
+
+              <div className="world-number">0{index + 1}</div>
+
+              <div className="world-content">
+                <span className="world-brand-label">{brand.label}</span>
+
+                <div className="world-letter">{brand.code}</div>
+
+                <h2>{brand.name}</h2>
+
+                <h3>{brand.tagline}</h3>
+
+                <motion.p
+                  animate={{
+                    opacity: active ? 1 : 0.55,
+                  }}
+                >
+                  {brand.description}
+                </motion.p>
+
+                <div className="world-enter">
+                  <span>ENTER WORLD</span>
+
+                  <div>
+                    <ArrowRight size={18} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="world-bottom-code">{brand.small}</div>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      <div className="world-footer">
+        <span>MOVE TO EXPLORE</span>
+        <span>•</span>
+        <span>CLICK TO ENTER</span>
+      </div>
+    </motion.div>
+  );
+}
+
+/* =========================================================
+   BRAND BRANCH SCREEN
+========================================================= */
+
+function BranchScreen({ brand, onBack, onSelect }) {
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);
+
+  const branches = temporaryBranches[brand.id] || [];
+
+  const filtered = branches.filter((branch) =>
+    `${branch.code} ${branch.name}`
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
+
+  return (
+    <motion.div
+      className={`branch-world branch-world-${brand.id}`}
+      style={{
+        "--brand-primary": brand.primary,
+        "--brand-secondary": brand.secondary,
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      <div className="branch-world-bg" />
+      <div className="world-noise" />
+
+      <div className="branch-nav">
+        <DAMLogo light />
+
+        <SystemStatus light text={`${brand.name} NETWORK`} />
+      </div>
+
+      <main className="branch-main">
+        <button className="branch-back" onClick={onBack}>
+          <ArrowLeft size={16} />
+          ALL BRANDS
+        </button>
+
+        <div className="branch-title-area">
+          <motion.span
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="branch-brand-tag"
+          >
+            {brand.name} / BRANCH ACCESS
+          </motion.span>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 25 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            Where are you
+            <br />
+            <em>operating?</em>
+          </motion.h1>
+
+          <p>Select your branch to continue into the staff network.</p>
+        </div>
+
+        <motion.div
+          className="branch-selector"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <div className="branch-search-new">
+            <Search size={18} />
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Find a ${brand.name} branch`}
+            />
+
+            <span>{filtered.length} LOCATIONS</span>
+          </div>
+
+          <div className="branch-items">
+            {filtered.map((branch, index) => {
+              const active = selected?.code === branch.code;
+
+              return (
+                <motion.button
+                  key={branch.code}
+                  className={`branch-item-new ${active ? "selected" : ""}`}
+                  onClick={() => setSelected(branch)}
+                  initial={{ opacity: 0, x: -15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.04 }}
+                >
+                  <span className="branch-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+
+                  <div className="branch-location-icon">
+                    <MapPin size={17} />
+                  </div>
+
+                  <div className="branch-item-info">
+                    <strong>{branch.name}</strong>
+                    <small>{branch.code}</small>
+                  </div>
+
+                  <ChevronRight size={18} />
+                </motion.button>
+              );
+            })}
+          </div>
+
+          <AnimatePresence>
+            {selected && (
+              <motion.div
+                className="branch-selection-footer"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <div>
+                  <small>READY TO ENTER</small>
+                  <strong>{selected.name}</strong>
+                </div>
+
+                <button onClick={() => onSelect(selected)}>
+                  CONTINUE
+                  <ArrowRight size={17} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </main>
+
+      <div className="giant-brand-word">{brand.name}</div>
+    </motion.div>
+  );
+}
+
+/* =========================================================
+   BRANCH LOGIN
+========================================================= */
+
+function BranchLogin({ brand, branch, onBack }) {
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+
+  return (
+    <motion.div
+      className={`brand-login-screen login-${brand.id}`}
+      style={{
+        "--brand-primary": brand.primary,
+        "--brand-secondary": brand.secondary,
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      <div className="login-world-bg" />
+      <div className="world-noise" />
+
+      <nav className="branch-nav">
+        <DAMLogo light />
+        <SystemStatus light text={branch.code} />
+      </nav>
+
+      <main className="brand-login-main">
+        <button className="branch-back" onClick={onBack}>
+          <ArrowLeft size={16} />
+          CHANGE BRANCH
+        </button>
+
+        <motion.div
+          className="brand-login-box"
+          initial={{ opacity: 0, y: 35, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", damping: 24 }}
+        >
+          <span className="login-brand-mini">{brand.name} / STAFF</span>
+
+          <div className="login-letter">{brand.code}</div>
+
+          <h1>{branch.name}</h1>
+
+          <div className="login-branch-code">
+            <MapPin size={13} />
+            {branch.code}
+          </div>
+
+          <p>Authenticate this branch to enter the operations workspace.</p>
+
+          <label>BRANCH PASSWORD</label>
+
+          <div className="cinematic-password">
+            <LockKeyhole size={18} />
+
+            <input
+              type={show ? "text" : "password"}
+              placeholder="Enter branch password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+
+            <button onClick={() => setShow(!show)}>
+              {show ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+
+          <button
+            className="cinematic-login-button"
+            onClick={() => {
+              if (!password.trim()) return;
+
+              alert(
+                `Next step: authenticate ${branch.code} through Cloudflare.`
+              );
+            }}
+          >
+            ENTER OPERATIONS
+            <ArrowRight size={18} />
+          </button>
+
+          <div className="login-security">
+            <ShieldCheck size={13} />
+            SECURE DAM OPERATIONS GATEWAY
+          </div>
+        </motion.div>
+      </main>
+
+      <div className="login-giant-word">{brand.name}</div>
+    </motion.div>
+  );
+}
+
+/* =========================================================
+   APP
 ========================================================= */
 
 function App() {
   const [page, setPage] = useState("home");
-
   const [activePortal, setActivePortal] = useState(null);
-
   const [selectedBrand, setSelectedBrand] = useState(null);
-
   const [selectedBranch, setSelectedBranch] = useState(null);
 
-  const handlePortal = (portal) => {
-    /*
-      STAFF:
-      NO PASSWORD HERE.
-
-      Staff goes directly to Brand Selection.
-    */
-
+  function portalClick(portal) {
     if (portal.id === "staff") {
       setActivePortal(null);
       setPage("brands");
       return;
     }
 
-    /*
-      HR + ADMIN:
-      Keep security modal.
-    */
-
     setActivePortal(portal);
-  };
+  }
 
-  const selectBrand = (brand) => {
+  function chooseBrand(brand) {
     setSelectedBrand(brand);
     setSelectedBranch(null);
     setPage("branches");
-  };
+  }
 
-  const selectBranch = (branch) => {
+  function chooseBranch(branch) {
     setSelectedBranch(branch);
-    setPage("branch-login");
-  };
-
-  /* HOME */
-
-  if (page === "home") {
-    return (
-      <HomePage
-        onPortal={handlePortal}
-        activePortal={activePortal}
-        closePortal={() => setActivePortal(null)}
-      />
-    );
+    setPage("login");
   }
-
-  /* BRAND SELECTION */
-
-  if (page === "brands") {
-    return (
-      <BrandSelection
-        onBack={() => setPage("home")}
-        onSelectBrand={selectBrand}
-      />
-    );
-  }
-
-  /* BRANCH SELECTION */
-
-  if (page === "branches" && selectedBrand) {
-    return (
-      <BranchSelection
-        brand={selectedBrand}
-        onBack={() => {
-          setSelectedBrand(null);
-          setPage("brands");
-        }}
-        onBranchSelected={selectBranch}
-      />
-    );
-  }
-
-  /* BRANCH LOGIN */
-
-  if (
-    page === "branch-login" &&
-    selectedBrand &&
-    selectedBranch
-  ) {
-    return (
-      <BranchLogin
-        brand={selectedBrand}
-        branch={selectedBranch}
-        onBack={() => {
-          setSelectedBranch(null);
-          setPage("branches");
-        }}
-      />
-    );
-  }
-
-  /* FAIL SAFE */
 
   return (
-    <HomePage
-      onPortal={handlePortal}
-      activePortal={activePortal}
-      closePortal={() => setActivePortal(null)}
-    />
+    <AnimatePresence mode="wait">
+      {page === "home" && (
+        <motion.div key="home" exit={{ opacity: 0 }}>
+          <Home
+            openPortal={portalClick}
+            activePortal={activePortal}
+            closePortal={() => setActivePortal(null)}
+          />
+        </motion.div>
+      )}
+
+      {page === "brands" && (
+        <BrandWorld
+          key="brands"
+          onBack={() => setPage("home")}
+          selectBrand={chooseBrand}
+        />
+      )}
+
+      {page === "branches" && selectedBrand && (
+        <BranchScreen
+          key={`branches-${selectedBrand.id}`}
+          brand={selectedBrand}
+          onBack={() => setPage("brands")}
+          onSelect={chooseBranch}
+        />
+      )}
+
+      {page === "login" && selectedBrand && selectedBranch && (
+        <BranchLogin
+          key="login"
+          brand={selectedBrand}
+          branch={selectedBranch}
+          onBack={() => setPage("branches")}
+        />
+      )}
+    </AnimatePresence>
   );
 }
 
