@@ -1947,3 +1947,1107 @@ footer {
     border-radius: 24px;
   }
 }
+/* =========================================================
+   DAM CINEMATIC BRAND GATEWAY
+========================================================= */
+
+button {
+  font-family: inherit;
+}
+
+.brand-world-screen {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% -20%, #2a2a2e 0%, transparent 38%),
+    #0b0b0d;
+  color: white;
+}
+
+.world-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  z-index: 2;
+  background-image:
+    repeating-radial-gradient(
+      circle at 0 0,
+      transparent 0,
+      rgba(255,255,255,.4) 1px,
+      transparent 2px
+    );
+  background-size: 7px 7px;
+}
+
+.world-grid-lines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.055;
+  background-image:
+    linear-gradient(rgba(255,255,255,.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.3) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: linear-gradient(to bottom, black, transparent 85%);
+}
+
+.world-topbar,
+.branch-nav {
+  position: relative;
+  z-index: 20;
+  height: 90px;
+  padding: 0 5vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dam-logo {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.dam-logo-mark {
+  width: 39px;
+  height: 39px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #171719;
+  color: white;
+}
+
+.dam-logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.dam-logo-text strong {
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.dam-logo-text span {
+  margin-top: 4px;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  opacity: .5;
+}
+
+.dam-logo-light .dam-logo-mark {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(20px);
+}
+
+.dam-logo-light .dam-logo-text {
+  color: white;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 1.7px;
+}
+
+.system-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ed37b;
+  box-shadow: 0 0 13px #4ed37b;
+  animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+  50% { opacity: .35; }
+}
+
+.status-light {
+  color: rgba(255,255,255,.6);
+}
+
+.world-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+}
+
+.world-exit {
+  width: 37px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05);
+  color: white;
+  cursor: pointer;
+}
+
+/* HEADER */
+
+.world-heading {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  margin-top: 8px;
+  pointer-events: none;
+}
+
+.world-kicker {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,.38);
+}
+
+.world-heading h1 {
+  margin: 9px 0 0;
+  font-size: clamp(38px, 4vw, 62px);
+  line-height: 1;
+  letter-spacing: -3.5px;
+}
+
+.world-heading p {
+  margin-top: 10px;
+  color: rgba(255,255,255,.38);
+  font-size: 11px;
+}
+
+/* =========================================================
+   THREE WORLDS — NOT CARDS
+========================================================= */
+
+.worlds {
+  position: relative;
+  z-index: 5;
+  width: min(94vw, 1500px);
+  height: min(610px, calc(100vh - 245px));
+  min-height: 480px;
+  margin: 28px auto 0;
+  display: flex;
+  overflow: hidden;
+  border-top: 1px solid rgba(255,255,255,.08);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.world-panel {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,.08);
+  background: transparent;
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    flex .7s cubic-bezier(.22,1,.36,1),
+    filter .5s ease,
+    opacity .5s ease;
+}
+
+.world-panel:last-child {
+  border-right: 0;
+}
+
+.world-panel.world-active {
+  flex: 1.65;
+}
+
+.world-panel.world-dimmed {
+  flex: .68;
+  opacity: .42;
+  filter: saturate(.35);
+}
+
+.world-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0,0,0,.75),
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.world-number {
+  position: absolute;
+  top: 23px;
+  right: 25px;
+  z-index: 6;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,.3);
+}
+
+.world-content {
+  position: absolute;
+  z-index: 8;
+  left: clamp(24px, 3vw, 50px);
+  right: clamp(24px, 3vw, 50px);
+  bottom: 48px;
+}
+
+.world-brand-label {
+  color: var(--brand-primary);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 2.4px;
+}
+
+.world-letter {
+  position: absolute;
+  right: -15px;
+  bottom: -45px;
+  z-index: -1;
+  font-size: clamp(170px, 17vw, 290px);
+  font-weight: 900;
+  line-height: .7;
+  color: rgba(255,255,255,.025);
+  transition: .7s cubic-bezier(.22,1,.36,1);
+}
+
+.world-active .world-letter {
+  transform: translateY(-20px) rotate(-4deg);
+  color: color-mix(in srgb, var(--brand-primary) 9%, transparent);
+}
+
+.world-content h2 {
+  margin: 7px 0 0;
+  font-size: clamp(48px, 5vw, 85px);
+  line-height: .88;
+  letter-spacing: -5px;
+}
+
+.world-content h3 {
+  margin: 15px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255,255,255,.72);
+}
+
+.world-content p {
+  max-width: 380px;
+  margin-top: 13px;
+  font-size: 10px;
+  line-height: 1.7;
+  color: rgba(255,255,255,.45);
+  transition: .4s ease;
+}
+
+.world-enter {
+  width: fit-content;
+  margin-top: 23px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  transform: translateY(12px);
+  opacity: .45;
+  transition: .45s ease;
+}
+
+.world-active .world-enter {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.world-enter div {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  color: #111;
+}
+
+.world-bottom-code {
+  position: absolute;
+  z-index: 8;
+  left: 25px;
+  top: 24px;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,.28);
+}
+
+/* =========================================================
+   BART WORLD
+========================================================= */
+
+.bart-world {
+  background:
+    linear-gradient(145deg, #25100f, #100b0b 70%);
+}
+
+.bart-art {
+  position: absolute;
+  inset: 0;
+  transition: .8s ease;
+}
+
+.bart-sun {
+  position: absolute;
+  width: 330px;
+  height: 330px;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #ffb291,
+    #ff5f57 42%,
+    #9d241f 75%
+  );
+  box-shadow:
+    0 0 90px rgba(255,95,87,.25),
+    0 0 200px rgba(255,95,87,.12);
+  transition: .8s cubic-bezier(.22,1,.36,1);
+}
+
+.world-active .bart-sun {
+  transform: translateX(-50%) scale(1.15);
+  box-shadow:
+    0 0 120px rgba(255,95,87,.4),
+    0 0 250px rgba(255,95,87,.18);
+}
+
+.bart-orbit {
+  position: absolute;
+  border: 1px solid rgba(255,150,120,.23);
+  border-radius: 50%;
+  animation: spinOrbit 15s linear infinite;
+}
+
+.bart-orbit-1 {
+  width: 430px;
+  height: 150px;
+  top: 26%;
+  left: 50%;
+  transform: translateX(-50%) rotate(-20deg);
+}
+
+.bart-orbit-2 {
+  width: 390px;
+  height: 120px;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%) rotate(25deg);
+  animation-direction: reverse;
+}
+
+@keyframes spinOrbit {
+  50% {
+    transform: translateX(-50%) rotate(160deg);
+  }
+}
+
+.bart-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff8d68;
+  box-shadow: 0 0 15px #ff5f57;
+  animation: bartFloat 4s ease-in-out infinite;
+}
+
+.bart-dot-1 {
+  left: 17%;
+  top: 25%;
+}
+
+.bart-dot-2 {
+  right: 16%;
+  top: 42%;
+  animation-delay: -2s;
+}
+
+@keyframes bartFloat {
+  50% { transform: translateY(-25px); }
+}
+
+/* =========================================================
+   GLOR WORLD
+========================================================= */
+
+.glor-world {
+  background:
+    linear-gradient(160deg, #171611, #080808 68%);
+}
+
+.glor-art {
+  position: absolute;
+  inset: 0;
+  perspective: 800px;
+}
+
+.glor-light {
+  position: absolute;
+  width: 65%;
+  height: 85%;
+  top: -20%;
+  left: 18%;
+  background: radial-gradient(
+    ellipse,
+    rgba(225,197,129,.26),
+    transparent 65%
+  );
+  filter: blur(25px);
+  transition: .8s ease;
+}
+
+.world-active .glor-light {
+  transform: scale(1.35);
+  opacity: 1;
+}
+
+.glor-diamond {
+  position: absolute;
+  border: 1px solid rgba(214,185,116,.25);
+  transform: rotate(45deg);
+  transition: 1s cubic-bezier(.22,1,.36,1);
+}
+
+.glor-diamond-1 {
+  width: 190px;
+  height: 190px;
+  left: calc(50% - 95px);
+  top: 20%;
+  background: linear-gradient(
+    135deg,
+    rgba(211,184,117,.12),
+    transparent
+  );
+}
+
+.glor-diamond-2 {
+  width: 115px;
+  height: 115px;
+  left: calc(50% - 57px);
+  top: 27%;
+}
+
+.world-active .glor-diamond-1 {
+  transform: rotate(135deg) scale(1.15);
+}
+
+.world-active .glor-diamond-2 {
+  transform: rotate(-45deg) scale(.9);
+}
+
+.glor-line {
+  position: absolute;
+  width: 1px;
+  height: 45%;
+  top: 8%;
+  left: 50%;
+  background: linear-gradient(
+    transparent,
+    #d9bc78,
+    transparent
+  );
+  box-shadow: 0 0 15px #d9bc78;
+}
+
+/* =========================================================
+   MOOMA WORLD
+========================================================= */
+
+.mooma-world {
+  background:
+    linear-gradient(145deg, #2a1220, #0e0a0d 70%);
+}
+
+.mooma-art {
+  position: absolute;
+  inset: 0;
+}
+
+.mooma-blob {
+  position: absolute;
+  filter: blur(2px);
+  transition: 1s cubic-bezier(.22,1,.36,1);
+}
+
+.mooma-blob-1 {
+  width: 300px;
+  height: 330px;
+  top: 10%;
+  left: 12%;
+  border-radius: 43% 57% 66% 34% / 46% 38% 62% 54%;
+  background:
+    linear-gradient(135deg, #ffb0ce, #d86494);
+  box-shadow: 0 0 100px rgba(228,124,167,.22);
+  animation: blobMorph 8s ease-in-out infinite;
+}
+
+.mooma-blob-2 {
+  width: 170px;
+  height: 170px;
+  right: 5%;
+  top: 25%;
+  border-radius: 65% 35% 42% 58%;
+  background: rgba(255,185,214,.16);
+  animation: blobMorph 6s ease-in-out infinite reverse;
+}
+
+@keyframes blobMorph {
+  50% {
+    border-radius: 65% 35% 37% 63% / 36% 60% 40% 64%;
+    transform: rotate(12deg) scale(1.05);
+  }
+}
+
+.world-active .mooma-blob-1 {
+  transform: scale(1.18) rotate(-8deg);
+}
+
+.mooma-ball {
+  position: absolute;
+  border-radius: 50%;
+  background: #ffc1d8;
+  box-shadow: 0 0 25px rgba(255,193,216,.35);
+  animation: moomaFloat 5s ease-in-out infinite;
+}
+
+.mooma-ball-1 {
+  width: 18px;
+  height: 18px;
+  right: 17%;
+  top: 17%;
+}
+
+.mooma-ball-2 {
+  width: 9px;
+  height: 9px;
+  left: 15%;
+  top: 48%;
+  animation-delay: -2.5s;
+}
+
+@keyframes moomaFloat {
+  50% {
+    transform: translateY(-35px) translateX(12px);
+  }
+}
+
+.world-footer {
+  position: relative;
+  z-index: 10;
+  height: 45px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 13px;
+  color: rgba(255,255,255,.2);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+/* =========================================================
+   BRAND-SPECIFIC BRANCH WORLD
+========================================================= */
+
+.branch-world,
+.brand-login-screen {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: white;
+  background: #09090a;
+}
+
+.branch-world-bg,
+.login-world-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      circle at 85% 15%,
+      color-mix(in srgb, var(--brand-primary) 30%, transparent),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 10% 100%,
+      color-mix(in srgb, var(--brand-primary) 13%, transparent),
+      transparent 40%
+    ),
+    #09090a;
+}
+
+.branch-world-bart .branch-world-bg {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(255,95,87,.28), transparent 35%),
+    linear-gradient(140deg, #1c0c0b, #09090a 60%);
+}
+
+.branch-world-glor .branch-world-bg {
+  background:
+    radial-gradient(circle at 70% 0%, rgba(184,152,88,.25), transparent 35%),
+    linear-gradient(140deg, #17150f, #080809 60%);
+}
+
+.branch-world-mooma .branch-world-bg {
+  background:
+    radial-gradient(circle at 80% 5%, rgba(228,124,167,.3), transparent 35%),
+    linear-gradient(140deg, #21101a, #09090a 60%);
+}
+
+.branch-main {
+  position: relative;
+  z-index: 10;
+  width: min(1100px, 90vw);
+  margin: 25px auto 0;
+}
+
+.branch-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.45);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 1.7px;
+  cursor: pointer;
+}
+
+.branch-back:hover {
+  color: white;
+}
+
+.branch-title-area {
+  margin-top: 50px;
+}
+
+.branch-brand-tag {
+  color: var(--brand-primary);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 2.5px;
+}
+
+.branch-title-area h1 {
+  margin: 10px 0 0;
+  font-size: clamp(50px, 6vw, 85px);
+  line-height: .9;
+  letter-spacing: -5px;
+}
+
+.branch-title-area h1 em {
+  color: var(--brand-primary);
+  font-style: normal;
+}
+
+.branch-title-area p {
+  margin-top: 20px;
+  color: rgba(255,255,255,.4);
+  font-size: 11px;
+}
+
+.branch-selector {
+  width: min(700px, 100%);
+  margin: 45px 0 80px auto;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(255,255,255,.045);
+  backdrop-filter: blur(25px);
+}
+
+.branch-search-new {
+  height: 65px;
+  padding: 0 21px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.branch-search-new svg {
+  color: var(--brand-primary);
+}
+
+.branch-search-new input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: white;
+  font-size: 12px;
+}
+
+.branch-search-new input::placeholder {
+  color: rgba(255,255,255,.28);
+}
+
+.branch-search-new span {
+  color: rgba(255,255,255,.25);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.branch-items {
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.branch-item-new {
+  width: 100%;
+  height: 72px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  background: transparent;
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  transition: .25s ease;
+}
+
+.branch-item-new:hover,
+.branch-item-new.selected {
+  background:
+    color-mix(in srgb, var(--brand-primary) 12%, transparent);
+}
+
+.branch-item-new.selected {
+  box-shadow: inset 3px 0 var(--brand-primary);
+}
+
+.branch-index {
+  width: 22px;
+  color: rgba(255,255,255,.2);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.branch-location-icon {
+  width: 37px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    color-mix(in srgb, var(--brand-primary) 15%, transparent);
+  color: var(--brand-primary);
+}
+
+.branch-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.branch-item-info strong {
+  font-size: 11px;
+}
+
+.branch-item-info small {
+  color: rgba(255,255,255,.3);
+  font-size: 8px;
+  letter-spacing: 1.5px;
+}
+
+.branch-item-new > svg {
+  color: rgba(255,255,255,.2);
+}
+
+.branch-selection-footer {
+  padding: 17px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0,0,0,.25);
+}
+
+.branch-selection-footer > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.branch-selection-footer small {
+  color: var(--brand-primary);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.branch-selection-footer strong {
+  font-size: 11px;
+}
+
+.branch-selection-footer button {
+  padding: 12px 17px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: var(--brand-primary);
+  color: #111;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.giant-brand-word,
+.login-giant-word {
+  position: fixed;
+  z-index: 1;
+  right: -30px;
+  bottom: -35px;
+  font-size: clamp(120px, 20vw, 330px);
+  font-weight: 900;
+  letter-spacing: -15px;
+  color: rgba(255,255,255,.018);
+  pointer-events: none;
+}
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+.brand-login-main {
+  position: relative;
+  z-index: 10;
+  width: min(1100px, 90vw);
+  margin: 25px auto;
+}
+
+.brand-login-box {
+  width: min(430px, 100%);
+  margin: 60px auto 0;
+  padding: 40px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(255,255,255,.055);
+  backdrop-filter: blur(30px);
+  box-shadow: 0 35px 100px rgba(0,0,0,.3);
+}
+
+.login-brand-mini {
+  color: var(--brand-primary);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 2.5px;
+}
+
+.login-letter {
+  margin-top: 23px;
+  font-size: 72px;
+  line-height: .8;
+  font-weight: 900;
+  color: var(--brand-primary);
+  letter-spacing: -5px;
+}
+
+.brand-login-box h1 {
+  margin: 20px 0 0;
+  font-size: 28px;
+  letter-spacing: -1.5px;
+}
+
+.login-branch-code {
+  width: fit-content;
+  margin-top: 9px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: rgba(255,255,255,.4);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.brand-login-box > p {
+  margin-top: 20px;
+  color: rgba(255,255,255,.4);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.brand-login-box > label {
+  display: block;
+  margin: 26px 0 8px;
+  color: rgba(255,255,255,.35);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.cinematic-password {
+  height: 55px;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(255,255,255,.11);
+  background: rgba(0,0,0,.22);
+}
+
+.cinematic-password:focus-within {
+  border-color: var(--brand-primary);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--brand-primary) 12%, transparent);
+}
+
+.cinematic-password > svg {
+  color: var(--brand-primary);
+}
+
+.cinematic-password input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: white;
+  font-size: 11px;
+}
+
+.cinematic-password button {
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.4);
+  cursor: pointer;
+}
+
+.cinematic-login-button {
+  width: 100%;
+  height: 55px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: var(--brand-primary);
+  color: #111;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: .25s ease;
+}
+
+.cinematic-login-button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+
+.login-security {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: rgba(255,255,255,.25);
+  font-size: 6.5px;
+  font-weight: 900;
+  letter-spacing: 1.4px;
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 800px) {
+  .world-heading h1 {
+    font-size: 42px;
+  }
+
+  .worlds {
+    width: 92vw;
+    height: auto;
+    min-height: 0;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .world-panel,
+  .world-panel.world-active,
+  .world-panel.world-dimmed {
+    flex: none;
+    width: 100%;
+    height: 330px;
+    opacity: 1;
+    filter: none;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+
+  .world-content h2 {
+    font-size: 55px;
+  }
+
+  .world-content p {
+    max-width: 260px;
+  }
+
+  .brand-world-screen {
+    overflow-y: auto;
+  }
+
+  .bart-sun {
+    width: 220px;
+    height: 220px;
+  }
+
+  .glor-diamond-1 {
+    width: 140px;
+    height: 140px;
+    left: calc(50% - 70px);
+  }
+
+  .mooma-blob-1 {
+    width: 220px;
+    height: 230px;
+  }
+
+  .branch-title-area h1 {
+    font-size: 50px;
+    letter-spacing: -3px;
+  }
+
+  .branch-selector {
+    margin-top: 35px;
+  }
+
+  .branch-search-new span {
+    display: none;
+  }
+
+  .brand-login-box {
+    padding: 28px 22px;
+  }
+
+  .giant-brand-word,
+  .login-giant-word {
+    display: none;
+  }
+}
