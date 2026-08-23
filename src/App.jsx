@@ -20,7 +20,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-
 import "./index.css";
 
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
