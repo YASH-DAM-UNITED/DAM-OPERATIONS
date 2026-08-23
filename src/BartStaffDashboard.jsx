@@ -1,0 +1,291 @@
+import { motion } from "framer-motion";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Boxes,
+  CalendarDays,
+  RefreshCcw,
+  LogOut,
+  Bell,
+  Activity,
+  PackageOpen,
+  ArrowLeftRight,
+  ClipboardList,
+  MapPin,
+  Clock3,
+  Coffee,
+  ShieldCheck,
+} from "lucide-react";
+
+const modules = [
+  {
+    id: "stock-record",
+    icon: ClipboardList,
+    number: "01",
+    title: "Stock Record",
+    subtitle: "Daily & Weekly Entry",
+    description:
+      "Record branch stock quantities and submit operational stock updates.",
+  },
+  {
+    id: "schedule",
+    icon: CalendarDays,
+    number: "02",
+    title: "Staff Schedule",
+    subtitle: "Shift Operations",
+    description:
+      "View staff assignments, daily shifts and branch schedule information.",
+  },
+  {
+    id: "stock-view",
+    icon: Boxes,
+    number: "03",
+    title: "Stock View",
+    subtitle: "Live Branch Balance",
+    description:
+      "Review daily and weekly stock balances with fast branch-level visibility.",
+  },
+  {
+    id: "transfer",
+    icon: ArrowLeftRight,
+    number: "04",
+    title: "Stock Transfer",
+    subtitle: "Internal Movement",
+    description:
+      "Send and receive stock between branches with transfer tracking.",
+  },
+];
+
+function BartStaffDashboard({
+  branch = {
+    code: "B001",
+    name: "BART Branch",
+  },
+  onBack,
+  onLogout,
+  onRefresh,
+  onModule,
+}) {
+  return (
+    <div className="bart-dashboard">
+      <div className="bart-dashboard-grid" />
+      <div className="bart-dashboard-glow glow-one" />
+      <div className="bart-dashboard-glow glow-two" />
+
+      <header className="bart-dashboard-nav">
+        <motion.div
+          className="bart-dash-brand"
+          initial={{ opacity: 0, x: -18 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <div className="bart-dash-logo">
+            <Coffee size={19} />
+          </div>
+
+          <div>
+            <strong>BART</strong>
+            <span>STAFF OPERATIONS</span>
+          </div>
+        </motion.div>
+
+        <motion.div
+          className="bart-nav-actions"
+          initial={{ opacity: 0, x: 18 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <div className="bart-session-status">
+            <span />
+            LIVE SESSION
+          </div>
+
+          <button onClick={onRefresh} className="bart-icon-button">
+            <RefreshCcw size={17} />
+          </button>
+
+          <button onClick={onLogout} className="bart-icon-button danger">
+            <LogOut size={17} />
+          </button>
+        </motion.div>
+      </header>
+
+      <main className="bart-dashboard-main">
+        <motion.button
+          className="bart-back-button"
+          onClick={onBack}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <ArrowLeft size={15} />
+          Change Branch
+        </motion.button>
+
+        <section className="bart-dashboard-hero">
+          <motion.div
+            className="bart-hero-copy"
+            initial={{ opacity: 0, y: 28 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="bart-mini-label">
+              <Activity size={12} />
+              BART BRANCH NETWORK
+            </div>
+
+            <h1>
+              Branch operations,
+              <br />
+              <span>in one place.</span>
+            </h1>
+
+            <p>
+              Manage stock, transfers, schedules and daily branch operations
+              from your BART workspace.
+            </p>
+          </motion.div>
+
+          <motion.div
+            className="bart-branch-card"
+            initial={{ opacity: 0, y: 25, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ delay: 0.1 }}
+          >
+            <div className="bart-branch-top">
+              <div className="bart-branch-location">
+                <MapPin size={16} />
+              </div>
+
+              <span>ACTIVE BRANCH</span>
+            </div>
+
+            <h2>{branch.name}</h2>
+
+            <div className="bart-branch-code">{branch.code}</div>
+
+            <div className="bart-branch-meta">
+              <div>
+                <Clock3 size={14} />
+                <span>Session Active</span>
+              </div>
+
+              <div>
+                <ShieldCheck size={14} />
+                <span>Authenticated</span>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+
+        <motion.section
+          className="bart-notification-strip"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.17 }}
+        >
+          <div className="bart-notification-icon">
+            <Bell size={17} />
+          </div>
+
+          <div className="bart-notification-text">
+            <small>TRANSFER CENTER</small>
+            <strong>No pending transfers right now</strong>
+          </div>
+
+          <button>
+            View Transfers
+            <ArrowRight size={15} />
+          </button>
+        </motion.section>
+
+        <section className="bart-module-header">
+          <div>
+            <span>OPERATIONS</span>
+            <h2>What do you need to do?</h2>
+          </div>
+
+          <div className="bart-module-count">
+            04 MODULES
+          </div>
+        </section>
+
+        <section className="bart-module-grid">
+          {modules.map((module, index) => {
+            const Icon = module.icon;
+
+            return (
+              <motion.button
+                key={module.id}
+                className="bart-module-card"
+                onClick={() => onModule?.(module.id)}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: 0.22 + index * 0.07,
+                }}
+                whileHover={{
+                  y: -7,
+                }}
+                whileTap={{
+                  scale: 0.985,
+                }}
+              >
+                <div className="bart-card-light" />
+
+                <div className="bart-module-top">
+                  <div className="bart-module-icon">
+                    <Icon size={22} />
+                  </div>
+
+                  <span className="bart-module-number">
+                    {module.number}
+                  </span>
+                </div>
+
+                <div className="bart-module-subtitle">
+                  {module.subtitle}
+                </div>
+
+                <h3>{module.title}</h3>
+
+                <p>{module.description}</p>
+
+                <div className="bart-module-open">
+                  <span>OPEN MODULE</span>
+
+                  <div>
+                    <ArrowRight size={16} />
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </section>
+
+        <motion.section
+          className="bart-bottom-status"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          <div>
+            <PackageOpen size={17} />
+            <span>
+              <strong>Branch data</strong>
+              <small>Ready for operations</small>
+            </span>
+          </div>
+
+          <div className="bart-status-line" />
+
+          <div>
+            <ShieldCheck size={17} />
+            <span>
+              <strong>Secure session</strong>
+              <small>Branch access verified</small>
+            </span>
+          </div>
+        </motion.section>
+      </main>
+    </div>
+  );
+}
+
+export default BartStaffDashboard;
