@@ -421,7 +421,7 @@ function BrandWorld({ onBack, selectBrand }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.18 }}
         >
-          Select your DEPARTMENT.
+          Select your Department.
         </motion.h1>
 
         <motion.p
