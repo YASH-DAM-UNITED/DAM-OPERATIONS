@@ -1333,7 +1333,7 @@ export default {
           success: true,
 
           version:
-            "D1-BACKEND-V2",
+            "D1-BACKEND-V3-SQL-FIX",
 
           message:
             "NEW D1 WORKER IS ACTIVE",
