@@ -3977,3 +3977,709 @@ footer {
     height: 1px;
   }
 }
+/* ==========================================================
+   BART STAFF - TRANSFER / DATABASE ADDITIONS
+========================================================== */
+
+.has-pending-transfer {
+  position: relative;
+}
+
+.has-pending-transfer::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid rgba(255, 95, 87, 0.35);
+  animation: transferPulse 2s ease-in-out infinite;
+}
+
+@keyframes transferPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+
+/* ==========================================================
+   DATABASE STATUS
+========================================================== */
+
+.bart-database-status-card {
+  width: 100%;
+  margin-top: 14px;
+
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 1.5fr)
+    minmax(90px, 0.6fr)
+    minmax(90px, 0.6fr)
+    minmax(220px, 1.5fr)
+    auto;
+
+  align-items: center;
+  gap: 18px;
+
+  padding: 15px 17px;
+
+  border-radius: 17px;
+
+  border: 1px solid
+    rgba(127, 127, 127, 0.14);
+
+  background:
+    rgba(255, 255, 255, 0.58);
+
+  backdrop-filter:
+    blur(18px);
+}
+
+.bart-db-status-left {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.bart-db-icon {
+  width: 36px;
+  height: 36px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 11px;
+
+  background:
+    rgba(255, 95, 87, 0.09);
+
+  color: #ff5f57;
+}
+
+.bart-db-status-left div:last-child,
+.bart-db-stat,
+.bart-db-sync {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bart-db-status-left small,
+.bart-db-stat small,
+.bart-db-sync small {
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  opacity: 0.48;
+  font-weight: 800;
+}
+
+.bart-db-status-left strong,
+.bart-db-stat strong,
+.bart-db-sync strong {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+
+/* ==========================================================
+   DATABASE REFRESH BUTTON
+========================================================== */
+
+.database-refresh-btn {
+  min-height: 38px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+
+  padding: 0 14px;
+
+  border: 1px solid
+    rgba(127, 127, 127, 0.18);
+
+  border-radius: 11px;
+
+  background:
+    rgba(255, 255, 255, 0.75);
+
+  color: inherit;
+
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    background 0.2s ease;
+}
+
+.database-refresh-btn:hover:not(:disabled) {
+  transform:
+    translateY(-2px);
+}
+
+.database-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* ==========================================================
+   OPERATION MESSAGE
+========================================================== */
+
+.bart-operation-message {
+  margin-top: 10px;
+
+  min-height: 42px;
+
+  padding: 10px 13px;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  border-radius: 12px;
+
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.bart-operation-message.success {
+  background:
+    rgba(42, 183, 102, 0.09);
+
+  color: #23945a;
+}
+
+.bart-operation-message.error {
+  background:
+    rgba(232, 72, 72, 0.09);
+
+  color: #d84242;
+}
+
+.bart-operation-message.info {
+  background:
+    rgba(70, 112, 230, 0.09);
+
+  color: #4269cf;
+}
+
+.bart-operation-message span {
+  flex: 1;
+}
+
+.bart-operation-message button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+
+/* ==========================================================
+   TRANSFER MODAL
+========================================================== */
+
+.bart-transfer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: grid;
+  place-items: center;
+
+  padding: 22px;
+
+  background:
+    rgba(12, 12, 16, 0.42);
+
+  backdrop-filter:
+    blur(16px);
+}
+
+.bart-transfer-modal {
+  position: relative;
+
+  width: min(
+    620px,
+    100%
+  );
+
+  max-height: 88vh;
+
+  overflow-y: auto;
+
+  padding: 30px;
+
+  border-radius: 25px;
+
+  background:
+    rgba(255, 255, 255, 0.96);
+
+  border: 1px solid
+    rgba(255, 255, 255, 0.7);
+
+  box-shadow:
+    0 35px 100px
+    rgba(0, 0, 0, 0.22);
+}
+
+.bart-transfer-close {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+
+  width: 34px;
+  height: 34px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  border: 1px solid
+    rgba(127, 127, 127, 0.15);
+
+  background:
+    rgba(127, 127, 127, 0.06);
+
+  cursor: pointer;
+}
+
+.bart-transfer-modal-icon {
+  width: 48px;
+  height: 48px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 15px;
+
+  background:
+    rgba(255, 95, 87, 0.1);
+
+  color: #ff5f57;
+
+  margin-bottom: 17px;
+}
+
+.bart-transfer-kicker {
+  margin-bottom: 7px;
+
+  font-size: 7px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.18em;
+
+  color: #ff5f57;
+}
+
+.bart-transfer-modal h2 {
+  margin: 0;
+
+  font-size: 27px;
+  line-height: 1.05;
+}
+
+.bart-transfer-id {
+  display: inline-flex;
+
+  margin-top: 10px;
+
+  padding: 6px 9px;
+
+  border-radius: 8px;
+
+  background:
+    rgba(127, 127, 127, 0.08);
+
+  font-size: 9px;
+  font-weight: 850;
+
+  letter-spacing:
+    0.07em;
+}
+
+
+/* ==========================================================
+   TRANSFER ROUTE
+========================================================== */
+
+.bart-transfer-route {
+  margin-top: 22px;
+
+  display: grid;
+
+  grid-template-columns:
+    1fr auto 1fr;
+
+  align-items: center;
+
+  gap: 14px;
+
+  padding: 15px;
+
+  border-radius: 15px;
+
+  background:
+    rgba(127, 127, 127, 0.055);
+}
+
+.bart-transfer-route > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bart-transfer-route small {
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  opacity: 0.45;
+  font-weight: 800;
+}
+
+.bart-transfer-route strong {
+  font-size: 10px;
+}
+
+
+/* ==========================================================
+   TRANSFER ITEMS
+========================================================== */
+
+.bart-transfer-items {
+  margin-top: 17px;
+
+  border:
+    1px solid
+    rgba(127, 127, 127, 0.12);
+
+  border-radius: 15px;
+
+  overflow: hidden;
+}
+
+.bart-transfer-items-head {
+  min-height: 43px;
+
+  padding: 0 14px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  background:
+    rgba(127, 127, 127, 0.045);
+}
+
+.bart-transfer-items-head strong {
+  flex: 1;
+
+  font-size: 9px;
+}
+
+.bart-transfer-items-head span {
+  width: 24px;
+  height: 24px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 7px;
+
+  background:
+    rgba(255, 95, 87, 0.1);
+
+  color: #ff5f57;
+
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.bart-transfer-item {
+  min-height: 47px;
+
+  padding: 9px 14px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 15px;
+
+  border-top:
+    1px solid
+    rgba(127, 127, 127, 0.08);
+}
+
+.bart-transfer-item > div {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bart-transfer-item span {
+  font-size: 7px;
+  opacity: 0.4;
+  font-weight: 800;
+}
+
+.bart-transfer-item strong {
+  font-size: 9px;
+}
+
+.bart-transfer-item b {
+  font-size: 11px;
+
+  color: #ff5f57;
+}
+
+
+/* ==========================================================
+   REASON / WARNING
+========================================================== */
+
+.bart-transfer-reason {
+  margin-top: 16px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  padding: 13px 14px;
+
+  border-radius: 13px;
+
+  background:
+    rgba(127, 127, 127, 0.05);
+}
+
+.bart-transfer-reason small {
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  opacity: 0.45;
+}
+
+.bart-transfer-reason strong {
+  font-size: 9px;
+}
+
+.bart-transfer-warning {
+  margin-top: 12px;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+
+  padding: 11px 13px;
+
+  border-radius: 12px;
+
+  background:
+    rgba(235, 76, 76, 0.08);
+
+  color: #c74343;
+
+  font-size: 8px;
+  line-height: 1.5;
+
+  font-weight: 700;
+}
+
+
+/* ==========================================================
+   ACCEPT / REJECT
+========================================================== */
+
+.bart-transfer-actions {
+  margin-top: 19px;
+
+  display: grid;
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 10px;
+}
+
+.bart-transfer-actions button {
+  min-height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  border: 0;
+
+  border-radius: 13px;
+
+  font-size: 9px;
+  font-weight: 850;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.bart-transfer-actions button:hover:not(:disabled) {
+  transform:
+    translateY(-2px);
+}
+
+.bart-transfer-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.bart-transfer-reject {
+  background:
+    rgba(225, 64, 64, 0.1);
+
+  color: #d94444;
+}
+
+.bart-transfer-accept {
+  background:
+    #ff5f57;
+
+  color: #fff;
+}
+
+
+/* ==========================================================
+   SPINNER
+========================================================== */
+
+.branch-loading-spinner {
+  animation:
+    bartSpin 0.8s linear
+    infinite;
+}
+
+@keyframes bartSpin {
+  to {
+    transform:
+      rotate(360deg);
+  }
+}
+
+
+/* ==========================================================
+   DARK MODE
+========================================================== */
+
+@media (
+  prefers-color-scheme: dark
+) {
+  .bart-database-status-card {
+    background:
+      rgba(18, 18, 22, 0.72);
+
+    border-color:
+      rgba(255, 255, 255, 0.09);
+  }
+
+  .database-refresh-btn {
+    background:
+      rgba(255, 255, 255, 0.055);
+
+    border-color:
+      rgba(255, 255, 255, 0.1);
+
+    color: #fff;
+  }
+
+  .bart-transfer-modal {
+    background:
+      rgba(20, 20, 24, 0.97);
+
+    border-color:
+      rgba(255, 255, 255, 0.09);
+
+    color: #fff;
+  }
+
+  .bart-transfer-route,
+  .bart-transfer-reason {
+    background:
+      rgba(255, 255, 255, 0.045);
+  }
+
+  .bart-transfer-items {
+    border-color:
+      rgba(255, 255, 255, 0.09);
+  }
+
+  .bart-transfer-items-head {
+    background:
+      rgba(255, 255, 255, 0.045);
+  }
+
+  .bart-transfer-item {
+    border-color:
+      rgba(255, 255, 255, 0.07);
+  }
+}
+
+
+/* ==========================================================
+   MOBILE
+========================================================== */
+
+@media (
+  max-width: 850px
+) {
+  .bart-database-status-card {
+    grid-template-columns:
+      1fr 1fr;
+  }
+
+  .bart-db-status-left,
+  .bart-db-sync,
+  .database-refresh-btn {
+    grid-column:
+      1 / -1;
+  }
+}
+
+@media (
+  max-width: 600px
+) {
+  .bart-transfer-modal {
+    padding:
+      24px 18px;
+  }
+
+  .bart-transfer-route {
+    grid-template-columns:
+      1fr;
+  }
+
+  .bart-transfer-route > svg {
+    transform:
+      rotate(90deg);
+  }
+
+  .bart-transfer-actions {
+    grid-template-columns:
+      1fr;
+  }
+}
