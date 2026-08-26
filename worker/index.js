@@ -842,30 +842,16 @@ async function readBartMasterFromGoogle(
    ADMIN AUTHORIZATION
 ============================================================ */
 
-function adminAuthorized(
-  request,
-  env
-) {
-
-  if (
-    !env.ADMIN_SYNC_KEY
-  ) {
+function adminAuthorized(request, env) {
+  if (!env.ADMIN_SYNC_KEY) {
     return false;
   }
 
-
   const providedKey =
-    request.headers.get(
-      "X-Admin-Key"
-    );
+    request.headers.get("X-Admin-Key");
 
-
-  return (
-    providedKey ===
-    env.ADMIN_SYNC_KEY
-  );
+  return providedKey === env.ADMIN_SYNC_KEY;
 }
-
 
 /* ============================================================
    GOOGLE -> D1 SYNC
