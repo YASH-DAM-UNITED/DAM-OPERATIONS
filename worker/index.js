@@ -1,5 +1,6 @@
 /* =========================================================
-   DAM OPERATIONS - CLOUDFLARE WORKER BACKEND
+   DAM OPERATIONS BACKEND
+   Cloudflare Worker + D1 + Google Sheets
 ========================================================= */
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -8,38 +9,130 @@ const GOOGLE_SCOPE =
   "https://www.googleapis.com/auth/spreadsheets " +
   "https://www.googleapis.com/auth/drive";
 
-
 /* =========================================================
-   CORS
+   RESPONSES
 ========================================================= */
 
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Content-Type, X-Admin-Key",
+    "Access-Control-Allow-Methods":
+      "GET, POST, OPTIONS",
   };
 }
 
-
-/* =========================================================
-   JSON RESPONSE
-========================================================= */
-
 function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(),
-    },
-  });
+  return new Response(
+    JSON.stringify(data, null, 2),
+    {
+      status,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders(),
+      },
+    }
+  );
 }
 
+/* =========================================================
+   D1 DATABASE
+========================================================= */
+
+async function ensureDatabase(env) {
+  if (!env.DB) {
+    throw new Error(
+      "D1 binding DB is missing."
+    );
+  }
+
+  await env.DB.exec(`
+    CREATE TABLE IF NOT EXISTS branches (
+      code TEXT PRIMARY KEY,
+      brand TEXT NOT NULL,
+      name TEXT NOT NULL,
+      sheet_id TEXT,
+      password_hash TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_branches_brand
+    ON branches(brand);
+
+    CREATE TABLE IF NOT EXISTS system_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT NOT NULL
+    );
+  `);
+}
 
 /* =========================================================
-   BASE64 URL ENCODING
+   PASSWORD HASHING
+========================================================= */
+
+async function hashPassword(password) {
+  const bytes =
+    new TextEncoder().encode(
+      String(password || "")
+    );
+
+  const digest =
+    await crypto.subtle.digest(
+      "SHA-256",
+      bytes
+    );
+
+  return Array.from(
+    new Uint8Array(digest)
+  )
+    .map((b) =>
+      b.toString(16).padStart(2, "0")
+    )
+    .join("");
+}
+
+/* =========================================================
+   GOOGLE ACCOUNTS
+========================================================= */
+
+function getGoogleAccounts(env) {
+  const accounts = [];
+
+  if (
+    env.GOOGLE_CLIENT_EMAIL &&
+    env.GOOGLE_PRIVATE_KEY
+  ) {
+    accounts.push({
+      id: "google-1",
+      email: env.GOOGLE_CLIENT_EMAIL,
+      privateKey: env.GOOGLE_PRIVATE_KEY,
+    });
+  }
+
+  if (
+    env.GOOGLE_CLIENT_EMAIL_2 &&
+    env.GOOGLE_PRIVATE_KEY_2
+  ) {
+    accounts.push({
+      id: "google-2",
+      email: env.GOOGLE_CLIENT_EMAIL_2,
+      privateKey: env.GOOGLE_PRIVATE_KEY_2,
+    });
+  }
+
+  if (!accounts.length) {
+    throw new Error(
+      "No Google service accounts configured."
+    );
+  }
+
+  return accounts;
+}
+
+/* =========================================================
+   JWT HELPERS
 ========================================================= */
 
 function base64UrlEncodeString(input) {
@@ -49,14 +142,15 @@ function base64UrlEncodeString(input) {
     .replace(/=+$/g, "");
 }
 
-
 function arrayBufferToBase64Url(buffer) {
-  const bytes = new Uint8Array(buffer);
+  const bytes =
+    new Uint8Array(buffer);
 
   let binary = "";
 
   for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+    binary +=
+      String.fromCharCode(byte);
   }
 
   return btoa(binary)
@@ -65,84 +159,43 @@ function arrayBufferToBase64Url(buffer) {
     .replace(/=+$/g, "");
 }
 
-
-/* =========================================================
-   GOOGLE PRIVATE KEY CONVERTER
-========================================================= */
-
 function pemToArrayBuffer(pem) {
   if (!pem) {
     throw new Error(
-      "GOOGLE_PRIVATE_KEY is missing from Cloudflare."
+      "Google private key missing."
     );
   }
 
-  /*
-    Supports BOTH:
+  const normalized =
+    String(pem)
+      .replace(/\\n/g, "\n")
+      .trim();
 
-    -----BEGIN PRIVATE KEY-----
-    ABC...
-    -----END PRIVATE KEY-----
-
-    AND
-
-    -----BEGIN PRIVATE KEY-----\nABC...\n-----END PRIVATE KEY-----\n
-  */
-
-  const normalizedPem = String(pem)
-    .replace(/\\n/g, "\n")
-    .trim();
-
-  if (
-    !normalizedPem.includes(
-      "-----BEGIN PRIVATE KEY-----"
-    )
-  ) {
-    throw new Error(
-      "GOOGLE_PRIVATE_KEY does not contain BEGIN PRIVATE KEY."
-    );
-  }
-
-  if (
-    !normalizedPem.includes(
-      "-----END PRIVATE KEY-----"
-    )
-  ) {
-    throw new Error(
-      "GOOGLE_PRIVATE_KEY does not contain END PRIVATE KEY."
-    );
-  }
-
-  const clean = normalizedPem
-    .replace(
-      "-----BEGIN PRIVATE KEY-----",
-      ""
-    )
-    .replace(
-      "-----END PRIVATE KEY-----",
-      ""
-    )
-    .replace(/\s/g, "");
+  const clean =
+    normalized
+      .replace(
+        /-----BEGIN PRIVATE KEY-----/g,
+        ""
+      )
+      .replace(
+        /-----END PRIVATE KEY-----/g,
+        ""
+      )
+      .replace(/\s/g, "");
 
   if (!clean) {
     throw new Error(
-      "GOOGLE_PRIVATE_KEY contains no key data."
+      "Google private key is empty."
     );
   }
 
-  let binary;
+  const binary =
+    atob(clean);
 
-  try {
-    binary = atob(clean);
-  } catch (error) {
-    throw new Error(
-      "GOOGLE_PRIVATE_KEY contains invalid Base64 data."
+  const bytes =
+    new Uint8Array(
+      binary.length
     );
-  }
-
-  const bytes = new Uint8Array(
-    binary.length
-  );
 
   for (
     let i = 0;
@@ -156,58 +209,57 @@ function pemToArrayBuffer(pem) {
   return bytes.buffer;
 }
 
-
 /* =========================================================
-   CHECK REQUIRED ENVIRONMENT VARIABLES
+   GOOGLE TOKEN CACHE
 ========================================================= */
 
-function validateGoogleEnvironment(env) {
-  if (!env.GOOGLE_CLIENT_EMAIL) {
-    throw new Error(
-      "GOOGLE_CLIENT_EMAIL is missing from Cloudflare."
+const tokenCache = new Map();
+
+async function getGoogleAccessToken(
+  account
+) {
+  const cached =
+    tokenCache.get(
+      account.id
     );
+
+  const now =
+    Date.now();
+
+  if (
+    cached &&
+    cached.token &&
+    cached.expiresAt >
+      now + 60000
+  ) {
+    return cached.token;
   }
 
-  if (!env.GOOGLE_PRIVATE_KEY) {
-    throw new Error(
-      "GOOGLE_PRIVATE_KEY is missing from Cloudflare."
+  const unixNow =
+    Math.floor(
+      now / 1000
     );
-  }
-
-  if (!env.MASTER_SHEET_ID) {
-    throw new Error(
-      "MASTER_SHEET_ID is missing from Cloudflare."
-    );
-  }
-}
-
-
-/* =========================================================
-   GET GOOGLE ACCESS TOKEN
-========================================================= */
-
-async function getGoogleAccessToken(env) {
-  validateGoogleEnvironment(env);
-
-  const now = Math.floor(
-    Date.now() / 1000
-  );
 
   const header = {
     alg: "RS256",
     typ: "JWT",
   };
 
-  const claim = {
-    iss: env.GOOGLE_CLIENT_EMAIL,
+  const claims = {
+    iss:
+      account.email,
 
-    scope: GOOGLE_SCOPE,
+    scope:
+      GOOGLE_SCOPE,
 
-    aud: GOOGLE_TOKEN_URL,
+    aud:
+      GOOGLE_TOKEN_URL,
 
-    iat: now,
+    iat:
+      unixNow,
 
-    exp: now + 3600,
+    exp:
+      unixNow + 3600,
   };
 
   const encodedHeader =
@@ -215,46 +267,34 @@ async function getGoogleAccessToken(env) {
       JSON.stringify(header)
     );
 
-  const encodedClaim =
+  const encodedClaims =
     base64UrlEncodeString(
-      JSON.stringify(claim)
+      JSON.stringify(claims)
     );
 
   const unsignedToken =
-    `${encodedHeader}.${encodedClaim}`;
+    `${encodedHeader}.${encodedClaims}`;
 
-  let privateKey;
+  const privateKey =
+    await crypto.subtle.importKey(
+      "pkcs8",
 
-  try {
-    privateKey =
-      await crypto.subtle.importKey(
-        "pkcs8",
+      pemToArrayBuffer(
+        account.privateKey
+      ),
 
-        pemToArrayBuffer(
-          env.GOOGLE_PRIVATE_KEY
-        ),
+      {
+        name:
+          "RSASSA-PKCS1-v1_5",
 
-        {
-          name:
-            "RSASSA-PKCS1-v1_5",
+        hash:
+          "SHA-256",
+      },
 
-          hash: "SHA-256",
-        },
+      false,
 
-        false,
-
-        ["sign"]
-      );
-  } catch (error) {
-    console.error(
-      "PRIVATE KEY IMPORT ERROR:",
-      error
+      ["sign"]
     );
-
-    throw new Error(
-      "Google private key could not be imported. Check GOOGLE_PRIVATE_KEY formatting."
-    );
-  }
 
   const signature =
     await crypto.subtle.sign(
@@ -267,15 +307,13 @@ async function getGoogleAccessToken(env) {
       )
     );
 
-  const encodedSignature =
+  const jwt =
+    `${unsignedToken}.` +
     arrayBufferToBase64Url(
       signature
     );
 
-  const jwt =
-    `${unsignedToken}.${encodedSignature}`;
-
-  const tokenResponse =
+  const response =
     await fetch(
       GOOGLE_TOKEN_URL,
       {
@@ -291,97 +329,180 @@ async function getGoogleAccessToken(env) {
             grant_type:
               "urn:ietf:params:oauth:grant-type:jwt-bearer",
 
-            assertion: jwt,
+            assertion:
+              jwt,
           }),
       }
     );
-
-  const tokenData =
-    await tokenResponse.json();
-
-  if (!tokenResponse.ok) {
-    console.error(
-      "GOOGLE TOKEN ERROR:",
-      tokenData
-    );
-
-    throw new Error(
-      `Google authentication failed: ${
-        tokenData.error_description ||
-        tokenData.error ||
-        "Unknown Google authentication error"
-      }`
-    );
-  }
-
-  if (!tokenData.access_token) {
-    throw new Error(
-      "Google did not return an access token."
-    );
-  }
-
-  return tokenData.access_token;
-}
-
-
-/* =========================================================
-   READ GOOGLE SHEET
-========================================================= */
-
-async function getSheetValues(
-  env,
-  range
-) {
-  const accessToken =
-    await getGoogleAccessToken(
-      env
-    );
-
-  const encodedSheetId =
-    encodeURIComponent(
-      env.MASTER_SHEET_ID
-    );
-
-  const encodedRange =
-    encodeURIComponent(range);
-
-  const url =
-    `https://sheets.googleapis.com/v4/spreadsheets/` +
-    `${encodedSheetId}/values/${encodedRange}`;
-
-  const response =
-    await fetch(url, {
-      method: "GET",
-
-      headers: {
-        Authorization:
-          `Bearer ${accessToken}`,
-      },
-    });
 
   const data =
     await response.json();
 
   if (!response.ok) {
-    console.error(
-      "GOOGLE SHEETS ERROR:",
-      data
+    throw new Error(
+      data.error_description ||
+      data.error ||
+      "Google authentication failed."
+    );
+  }
+
+  tokenCache.set(
+    account.id,
+    {
+      token:
+        data.access_token,
+
+      expiresAt:
+        now +
+        (data.expires_in || 3600) *
+          1000,
+    }
+  );
+
+  return data.access_token;
+}
+
+/* =========================================================
+   DUAL GOOGLE CONNECTION + FAILOVER
+========================================================= */
+
+let accountCounter = 0;
+
+function rotateAccounts(env) {
+  const accounts =
+    getGoogleAccounts(env);
+
+  const start =
+    accountCounter %
+    accounts.length;
+
+  accountCounter++;
+
+  return [
+    ...accounts.slice(start),
+    ...accounts.slice(0, start),
+  ];
+}
+
+async function googleRequest(
+  env,
+  requestFactory
+) {
+  const accounts =
+    rotateAccounts(env);
+
+  let lastError = null;
+
+  for (
+    const account of accounts
+  ) {
+    try {
+      const token =
+        await getGoogleAccessToken(
+          account
+        );
+
+      const response =
+        await requestFactory(
+          token,
+          account
+        );
+
+      if (
+        response.status === 429 ||
+        response.status === 403
+      ) {
+        console.warn(
+          `${account.id} quota/rate issue`
+        );
+
+        lastError =
+          new Error(
+            `${account.id} rate limited`
+          );
+
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+
+      console.error(
+        `Google account ${account.id} failed`,
+        error
+      );
+    }
+  }
+
+  throw (
+    lastError ||
+    new Error(
+      "All Google accounts failed."
+    )
+  );
+}
+
+/* =========================================================
+   GOOGLE SHEET READ
+========================================================= */
+
+async function getSheetValues(
+  env,
+  spreadsheetId,
+  range
+) {
+  const url =
+    `https://sheets.googleapis.com/v4/spreadsheets/` +
+    `${encodeURIComponent(
+      spreadsheetId
+    )}/values/` +
+    `${encodeURIComponent(
+      range
+    )}`;
+
+  const response =
+    await googleRequest(
+      env,
+
+      async (
+        token,
+        account
+      ) => {
+        console.log(
+          "Google read:",
+          account.id
+        );
+
+        return fetch(
+          url,
+          {
+            method: "GET",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+      }
     );
 
+  const data =
+    await response.json();
+
+  if (!response.ok) {
     throw new Error(
-      `Google Sheets failed: ${
-        data?.error?.message ||
-        "Unable to read MASTER sheet."
-      }`
+      data?.error?.message ||
+      "Google Sheet read failed."
     );
   }
 
   return data.values || [];
 }
 
-
 /* =========================================================
-   NORMALIZE HEADER
+   HEADER NORMALIZER
 ========================================================= */
 
 function normalizeHeader(value) {
@@ -392,26 +513,23 @@ function normalizeHeader(value) {
     .replace(/_/g, "");
 }
 
-
 /* =========================================================
-   LOAD BART BRANCHES
+   GOOGLE → BART BRANCH DATA
 ========================================================= */
 
-async function getBartBranches(env) {
-  /*
-    IMPORTANT:
-
-    This assumes your MASTER spreadsheet
-    tab is called:
-
-    Sheet1
-
-    And reads columns A:D.
-  */
+async function readBartMasterFromGoogle(
+  env
+) {
+  if (!env.MASTER_SHEET_ID) {
+    throw new Error(
+      "MASTER_SHEET_ID missing."
+    );
+  }
 
   const rows =
     await getSheetValues(
       env,
+      env.MASTER_SHEET_ID,
       "Sheet1!A:D"
     );
 
@@ -419,20 +537,17 @@ async function getBartBranches(env) {
     return [];
   }
 
-  const rawHeaders =
-    rows[0] || [];
-
   const headers =
-    rawHeaders.map(
+    rows[0].map(
       normalizeHeader
     );
 
-  const branchCodeIndex =
+  const codeIndex =
     headers.indexOf(
       "branchcode"
     );
 
-  const branchNameIndex =
+  const nameIndex =
     headers.indexOf(
       "branchname"
     );
@@ -448,127 +563,256 @@ async function getBartBranches(env) {
     );
 
   if (
-    branchCodeIndex === -1
+    codeIndex === -1 ||
+    nameIndex === -1
   ) {
     throw new Error(
-      "BranchCode column was not found in Sheet1."
+      "BranchCode or BranchName column missing."
     );
   }
 
-  if (
-    branchNameIndex === -1
+  const branches = [];
+
+  for (
+    const row of
+    rows.slice(1)
   ) {
-    throw new Error(
-      "BranchName column was not found in Sheet1."
-    );
+    const code =
+      String(
+        row[codeIndex] || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    if (
+      !code.startsWith("B")
+    ) {
+      continue;
+    }
+
+    const name =
+      String(
+        row[nameIndex] || ""
+      ).trim();
+
+    const sheetId =
+      sheetIdIndex >= 0
+        ? String(
+            row[sheetIdIndex] || ""
+          ).trim()
+        : "";
+
+    const password =
+      passwordIndex >= 0
+        ? String(
+            row[passwordIndex] || ""
+          ).trim()
+        : "";
+
+    const passwordHash =
+      await hashPassword(
+        password
+      );
+
+    branches.push({
+      code,
+      brand: "bart",
+      name,
+      sheetId,
+      passwordHash,
+    });
   }
-
-  const branches = rows
-    .slice(1)
-
-    .map((row) => {
-      const code =
-        String(
-          row[
-            branchCodeIndex
-          ] || ""
-        )
-          .trim()
-          .toUpperCase();
-
-      const name =
-        String(
-          row[
-            branchNameIndex
-          ] || ""
-        ).trim();
-
-      const sheetId =
-        sheetIdIndex >= 0
-          ? String(
-              row[
-                sheetIdIndex
-              ] || ""
-            ).trim()
-          : "";
-
-      const password =
-        passwordIndex >= 0
-          ? String(
-              row[
-                passwordIndex
-              ] || ""
-            ).trim()
-          : "";
-
-      return {
-        code,
-        name,
-
-        /*
-          PRIVATE SERVER DATA
-
-          These are NOT sent
-          to React.
-        */
-
-        _sheetId: sheetId,
-        _password: password,
-      };
-    })
-
-    .filter(
-      (branch) =>
-        branch.code &&
-        branch.code.startsWith(
-          "B"
-        )
-    );
 
   return branches;
 }
 
-
 /* =========================================================
-   PUBLIC BART BRANCH LIST
+   ADMIN KEY
 ========================================================= */
 
-async function getPublicBartBranches(
-  env
-) {
-  const branches =
-    await getBartBranches(
-      env
-    );
-
-  return branches.map(
-    (branch) => ({
-      code: branch.code,
-      name: branch.name,
-    })
-  );
-}
-
-
-/* =========================================================
-   BART LOGIN
-========================================================= */
-
-async function authenticateBart(
+function adminAuthorized(
   request,
   env
 ) {
+  if (!env.ADMIN_SYNC_KEY) {
+    return false;
+  }
+
+  const supplied =
+    request.headers.get(
+      "X-Admin-Key"
+    );
+
+  return (
+    supplied ===
+    env.ADMIN_SYNC_KEY
+  );
+}
+
+/* =========================================================
+   SYNC GOOGLE → D1
+
+   THIS IS THE ONLY NORMAL BRANCH-MASTER
+   ENDPOINT THAT CALLS GOOGLE.
+========================================================= */
+
+async function syncBart(
+  request,
+  env
+) {
+  if (
+    !adminAuthorized(
+      request,
+      env
+    )
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        message:
+          "Invalid admin sync key.",
+      },
+      401
+    );
+  }
+
+  await ensureDatabase(env);
+
+  const branches =
+    await readBartMasterFromGoogle(
+      env
+    );
+
+  if (!branches.length) {
+    throw new Error(
+      "No BART branches returned from Google."
+    );
+  }
+
+  const now =
+    new Date().toISOString();
+
+  const statements = [];
+
+  statements.push(
+    env.DB.prepare(`
+      DELETE FROM branches
+      WHERE brand = ?
+    `).bind("bart")
+  );
+
+  for (
+    const branch of branches
+  ) {
+    statements.push(
+      env.DB.prepare(`
+        INSERT INTO branches (
+          code,
+          brand,
+          name,
+          sheet_id,
+          password_hash,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        branch.code,
+        branch.brand,
+        branch.name,
+        branch.sheetId,
+        branch.passwordHash,
+        now
+      )
+    );
+  }
+
+  statements.push(
+    env.DB.prepare(`
+      INSERT INTO system_meta (
+        key,
+        value,
+        updated_at
+      )
+      VALUES (?, ?, ?)
+
+      ON CONFLICT(key)
+      DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at
+    `).bind(
+      "bart_last_sync",
+      now,
+      now
+    )
+  );
+
+  await env.DB.batch(
+    statements
+  );
+
+  return jsonResponse({
+    success: true,
+
+    message:
+      "BART database refreshed.",
+
+    count:
+      branches.length,
+
+    lastSync:
+      now,
+  });
+}
+
+/* =========================================================
+   D1 BART BRANCH LIST
+
+   GOOGLE CALLS = 0
+========================================================= */
+
+async function getBartBranchesFromD1(
+  env
+) {
+  await ensureDatabase(env);
+
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        code,
+        name
+      FROM branches
+      WHERE brand = ?
+      ORDER BY code ASC
+    `)
+      .bind("bart")
+      .all();
+
+  return result.results || [];
+}
+
+/* =========================================================
+   D1 LOGIN
+
+   GOOGLE CALLS = 0
+========================================================= */
+
+async function loginBart(
+  request,
+  env
+) {
+  await ensureDatabase(env);
+
   let body;
 
   try {
     body =
       await request.json();
-  } catch (error) {
+  } catch {
     return jsonResponse(
       {
         success: false,
         message:
-          "Invalid request body.",
+          "Invalid request.",
       },
       400
     );
@@ -593,25 +837,30 @@ async function authenticateBart(
     return jsonResponse(
       {
         success: false,
-
         message:
-          "Branch code and password are required.",
+          "Branch and password required.",
       },
       400
     );
   }
 
-  const branches =
-    await getBartBranches(
-      env
-    );
-
   const branch =
-    branches.find(
-      (item) =>
-        item.code ===
-        branchCode
-    );
+    await env.DB.prepare(`
+      SELECT
+        code,
+        name,
+        password_hash
+      FROM branches
+      WHERE
+        code = ?
+        AND brand = ?
+      LIMIT 1
+    `)
+      .bind(
+        branchCode,
+        "bart"
+      )
+      .first();
 
   if (!branch) {
     return jsonResponse(
@@ -624,26 +873,18 @@ async function authenticateBart(
     );
   }
 
-  if (!branch._password) {
-    return jsonResponse(
-      {
-        success: false,
-
-        message:
-          "No password is configured for this branch.",
-      },
-      500
+  const enteredHash =
+    await hashPassword(
+      password
     );
-  }
 
   if (
-    branch._password !==
-    password
+    enteredHash !==
+    branch.password_hash
   ) {
     return jsonResponse(
       {
         success: false,
-
         message:
           "Incorrect password.",
       },
@@ -651,30 +892,62 @@ async function authenticateBart(
     );
   }
 
-  /*
-    IMPORTANT:
-
-    We intentionally DO NOT
-    send SheetID or Password
-    back to the browser.
-  */
-
   return jsonResponse({
     success: true,
 
-    message:
-      "Authentication successful.",
-
     branch: {
-      code: branch.code,
-      name: branch.name,
+      code:
+        branch.code,
+
+      name:
+        branch.name,
     },
   });
 }
 
+/* =========================================================
+   D1 DATABASE STATUS
+========================================================= */
+
+async function databaseStatus(env) {
+  await ensureDatabase(env);
+
+  const count =
+    await env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total
+      FROM branches
+      WHERE brand = ?
+    `)
+      .bind("bart")
+      .first();
+
+  const sync =
+    await env.DB.prepare(`
+      SELECT value
+      FROM system_meta
+      WHERE key = ?
+    `)
+      .bind(
+        "bart_last_sync"
+      )
+      .first();
+
+  return jsonResponse({
+    success: true,
+
+    bartBranches:
+      Number(
+        count?.total || 0
+      ),
+
+    lastSync:
+      sync?.value || null,
+  });
+}
 
 /* =========================================================
-   MAIN CLOUDFLARE WORKER
+   MAIN WORKER
 ========================================================= */
 
 export default {
@@ -687,10 +960,6 @@ export default {
         request.url
       );
 
-    /* =====================================================
-       CORS PREFLIGHT
-    ===================================================== */
-
     if (
       request.method ===
       "OPTIONS"
@@ -699,7 +968,6 @@ export default {
         null,
         {
           status: 204,
-
           headers:
             corsHeaders(),
         }
@@ -708,7 +976,7 @@ export default {
 
     try {
       /* ===================================================
-         API TEST + SECRET CHECK
+         TEST
       =================================================== */
 
       if (
@@ -732,47 +1000,69 @@ export default {
                 env.GOOGLE_PRIVATE_KEY
               ),
 
+            GOOGLE_CLIENT_EMAIL_2:
+              Boolean(
+                env.GOOGLE_CLIENT_EMAIL_2
+              ),
+
+            GOOGLE_PRIVATE_KEY_2:
+              Boolean(
+                env.GOOGLE_PRIVATE_KEY_2
+              ),
+
             MASTER_SHEET_ID:
               Boolean(
                 env.MASTER_SHEET_ID
+              ),
+
+            ADMIN_SYNC_KEY:
+              Boolean(
+                env.ADMIN_SYNC_KEY
+              ),
+
+            D1_DATABASE:
+              Boolean(
+                env.DB
               ),
           },
         });
       }
 
       /* ===================================================
-         GOOGLE CONNECTION TEST
+         DATABASE STATUS
       =================================================== */
 
       if (
         url.pathname ===
-          "/api/google/test" &&
+          "/api/admin/database-status" &&
         request.method ===
           "GET"
       ) {
-        const token =
-          await getGoogleAccessToken(
-            env
-          );
-
-        return jsonResponse({
-          success: true,
-
-          message:
-            "Google authentication is working.",
-
-          /*
-            Never return the
-            actual token.
-          */
-
-          tokenReceived:
-            Boolean(token),
-        });
+        return await databaseStatus(
+          env
+        );
       }
 
       /* ===================================================
-         GET BART BRANCHES
+         GOOGLE → D1 MANUAL SYNC
+      =================================================== */
+
+      if (
+        url.pathname ===
+          "/api/admin/sync-bart" &&
+        request.method ===
+          "POST"
+      ) {
+        return await syncBart(
+          request,
+          env
+        );
+      }
+
+      /* ===================================================
+         BART BRANCHES
+
+         D1 ONLY
       =================================================== */
 
       if (
@@ -782,7 +1072,7 @@ export default {
           "GET"
       ) {
         const branches =
-          await getPublicBartBranches(
+          await getBartBranchesFromD1(
             env
           );
 
@@ -798,6 +1088,8 @@ export default {
 
       /* ===================================================
          BART LOGIN
+
+         D1 ONLY
       =================================================== */
 
       if (
@@ -806,14 +1098,14 @@ export default {
         request.method ===
           "POST"
       ) {
-        return await authenticateBart(
+        return await loginBart(
           request,
           env
         );
       }
 
       /* ===================================================
-         REACT FRONTEND
+         FRONTEND
       =================================================== */
 
       if (env.ASSETS) {
@@ -832,14 +1124,13 @@ export default {
       );
     } catch (error) {
       console.error(
-        "DAM OPERATIONS API ERROR:",
+        "DAM BACKEND ERROR:",
         error
       );
 
       return jsonResponse(
         {
           success: false,
-
           message:
             error?.message ||
             "Internal server error.",
