@@ -47,37 +47,34 @@ function jsonResponse(data, status = 200) {
 /* ============================================================
    D1 DATABASE SETUP
 ============================================================ */
-
 async function ensureDatabase(env) {
   if (!env.DB) {
-    throw new Error(
-      "D1 binding 'DB' is missing."
-    );
+    throw new Error("D1 binding 'DB' is missing.");
   }
 
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS branches (
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS branches (
       code TEXT PRIMARY KEY,
       brand TEXT NOT NULL,
       name TEXT NOT NULL,
       sheet_id TEXT,
       password_hash TEXT NOT NULL,
       updated_at TEXT NOT NULL
-    )
-  `).run();
+    )`
+  ).run();
 
-  await env.DB.prepare(`
-    CREATE INDEX IF NOT EXISTS idx_branches_brand
-    ON branches(brand)
-  `).run();
+  await env.DB.prepare(
+    `CREATE INDEX IF NOT EXISTS idx_branches_brand
+     ON branches(brand)`
+  ).run();
 
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS system_meta (
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS system_meta (
       key TEXT PRIMARY KEY,
       value TEXT,
       updated_at TEXT NOT NULL
-    )
-  `).run();
+    )`
+  ).run();
 }
 /* ============================================================
    PASSWORD HASH
