@@ -1,0 +1,679 @@
+/* ==========================================================
+   DAM OPERATIONS
+   CINEMATIC BRANCH LOADING + LAUNCH
+   Add as: src/CinematicBranch.css
+========================================================== */
+
+
+/* ==========================================================
+   INLINE BRANCH DIRECTORY LOADER
+========================================================== */
+
+.cin-inline-branch-loader {
+  position: relative;
+  overflow: hidden;
+
+  min-height: 250px;
+  padding: 38px 24px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  border-radius: 18px;
+
+  background:
+    radial-gradient(circle at 50% 25%, rgba(255,255,255,.055), transparent 32%),
+    linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.012));
+}
+
+.cin-inline-branch-loader::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  opacity: .28;
+
+  background-image:
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+
+  background-size: 32px 32px;
+
+  mask-image:
+    radial-gradient(circle at center, #000 20%, transparent 76%);
+}
+
+.cin-inline-radar {
+  position: relative;
+
+  width: 90px;
+  height: 90px;
+
+  display: grid;
+  place-items: center;
+
+  margin-bottom: 24px;
+}
+
+.cin-inline-radar > span {
+  position: absolute;
+  inset: 0;
+
+  border: 1px solid rgba(255,255,255,.10);
+  border-top: 2px solid;
+  border-radius: 50%;
+
+  box-shadow:
+    inset 0 0 24px rgba(255,255,255,.025);
+}
+
+.cin-inline-radar > div {
+  position: relative;
+  z-index: 2;
+
+  width: 48px;
+  height: 48px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 15px;
+
+  color: #fff;
+
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .12em;
+
+  box-shadow:
+    0 15px 40px rgba(0,0,0,.18);
+}
+
+.cin-inline-branch-loader > strong {
+  position: relative;
+  z-index: 2;
+
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .16em;
+}
+
+.cin-inline-branch-loader > span {
+  position: relative;
+  z-index: 2;
+
+  margin-top: 7px;
+
+  opacity: .5;
+
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.cin-inline-progress {
+  position: relative;
+  z-index: 2;
+
+  width: min(370px, 82%);
+  height: 2px;
+
+  margin-top: 24px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+  background: rgba(255,255,255,.065);
+}
+
+.cin-inline-progress i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+
+  width: 32%;
+}
+
+.cin-inline-pulses {
+  position: relative;
+  z-index: 2;
+
+  margin-top: 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 17px;
+
+  opacity: .42;
+
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .11em;
+}
+
+.cin-inline-pulses span {
+  position: relative;
+}
+
+.cin-inline-pulses span:not(:last-child)::after {
+  content: "";
+
+  position: absolute;
+  right: -10px;
+  top: 50%;
+
+  width: 3px;
+  height: 3px;
+
+  border-radius: 50%;
+  background: currentColor;
+
+  transform: translateY(-50%);
+}
+
+
+/* ==========================================================
+   FULL CINEMATIC BRANCH LAUNCH
+========================================================== */
+
+.cin-launch {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+
+  overflow: hidden;
+
+  display: grid;
+  place-items: center;
+
+  color: #fff;
+
+  background:
+    radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--cin-brand) 18%, transparent), transparent 29%),
+    radial-gradient(circle at 16% 20%, color-mix(in srgb, var(--cin-brand-2) 12%, transparent), transparent 28%),
+    linear-gradient(145deg, #08090d 0%, #0c0e13 48%, #08090d 100%);
+}
+
+.cin-launch-grid {
+  position: absolute;
+  inset: -15%;
+
+  opacity: .22;
+
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+
+  background-size: 52px 52px;
+
+  transform:
+    perspective(600px)
+    rotateX(60deg)
+    translateY(20%);
+
+  transform-origin: center bottom;
+
+  mask-image:
+    radial-gradient(circle at center, #000 0%, transparent 70%);
+}
+
+.cin-launch-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  opacity: .045;
+
+  background-image:
+    repeating-radial-gradient(
+      circle at 30% 20%,
+      #fff 0,
+      #fff 1px,
+      transparent 1px,
+      transparent 4px
+    );
+
+  background-size: 9px 9px;
+}
+
+.cin-launch-beam {
+  position: absolute;
+
+  width: 680px;
+  height: 110px;
+
+  opacity: .11;
+
+  filter: blur(18px);
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      var(--cin-brand),
+      transparent
+    );
+}
+
+.cin-launch-beam-a {
+  top: 17%;
+  left: -170px;
+
+  transform: rotate(-18deg);
+}
+
+.cin-launch-beam-b {
+  right: -190px;
+  bottom: 14%;
+
+  transform: rotate(22deg);
+}
+
+.cin-launch-content {
+  position: relative;
+  z-index: 5;
+
+  width: min(720px, calc(100% - 34px));
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  text-align: center;
+}
+
+.cin-launch-ring {
+  position: absolute;
+  top: -89px;
+
+  width: 278px;
+  height: 278px;
+
+  border:
+    1px solid rgba(255,255,255,.07);
+
+  border-radius: 50%;
+}
+
+.cin-launch-ring::before,
+.cin-launch-ring::after {
+  content: "";
+
+  position: absolute;
+
+  border-radius: 50%;
+
+  border:
+    1px solid rgba(255,255,255,.055);
+}
+
+.cin-launch-ring::before {
+  inset: 25px;
+}
+
+.cin-launch-ring::after {
+  inset: 56px;
+}
+
+.cin-launch-ring > span {
+  position: absolute;
+
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: var(--cin-brand);
+
+  box-shadow:
+    0 0 20px var(--cin-brand);
+}
+
+.cin-launch-ring > span:nth-child(1) {
+  top: 22px;
+  left: 71px;
+}
+
+.cin-launch-ring > span:nth-child(2) {
+  top: 101px;
+  right: -3px;
+}
+
+.cin-launch-ring > span:nth-child(3) {
+  left: 30px;
+  bottom: 30px;
+}
+
+.cin-launch-code {
+  position: relative;
+  z-index: 3;
+
+  min-width: 116px;
+  height: 116px;
+
+  padding: 0 20px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 31px;
+
+  border:
+    1px solid color-mix(in srgb, var(--cin-brand) 55%, white 8%);
+
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--cin-brand) 30%, #12151b),
+      #111319 72%
+    );
+
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: .11em;
+
+  box-shadow:
+    inset 0 0 35px rgba(255,255,255,.035),
+    0 28px 80px rgba(0,0,0,.42);
+}
+
+.cin-launch-status {
+  margin-top: 42px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  color: var(--cin-brand);
+
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: .17em;
+}
+
+.cin-launch-status > span {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: currentColor;
+
+  box-shadow:
+    0 0 14px currentColor;
+
+  animation:
+    cin-status-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cin-status-pulse {
+  0%,
+  100% {
+    opacity: .4;
+    transform: scale(.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
+.cin-launch h1 {
+  margin: 9px 0 4px;
+
+  font-size: clamp(42px, 7vw, 78px);
+  line-height: .95;
+
+  letter-spacing: -.045em;
+}
+
+.cin-launch-content > p {
+  margin: 0;
+
+  font-size: 10px;
+  letter-spacing: .015em;
+}
+
+.cin-launch-phases {
+  width: min(620px, 100%);
+
+  margin-top: 38px;
+
+  display: grid;
+  grid-template-columns:
+    repeat(3, 1fr);
+
+  gap: 9px;
+}
+
+.cin-launch-phase {
+  min-height: 88px;
+
+  padding: 13px;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  text-align: left;
+
+  border:
+    1px solid rgba(255,255,255,.07);
+
+  border-radius: 14px;
+
+  background:
+    rgba(255,255,255,.025);
+
+  backdrop-filter:
+    blur(10px);
+
+  transition:
+    border-color .3s ease,
+    background .3s ease,
+    box-shadow .3s ease;
+}
+
+.cin-launch-phase.active {
+  border-color:
+    color-mix(in srgb, var(--cin-brand) 40%, transparent);
+
+  background:
+    color-mix(in srgb, var(--cin-brand) 7%, transparent);
+
+  box-shadow:
+    inset 0 0 30px color-mix(in srgb, var(--cin-brand) 5%, transparent);
+}
+
+.cin-launch-phase > div {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 10px;
+
+  color: var(--cin-brand);
+
+  background:
+    color-mix(in srgb, var(--cin-brand) 10%, transparent);
+}
+
+.cin-launch-phase > section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cin-launch-phase strong {
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+
+.cin-launch-phase small {
+  opacity: .42;
+
+  font-size: 6px;
+  line-height: 1.4;
+}
+
+.cin-phase-dot {
+  width: 5px;
+  height: 5px;
+
+  border-radius: 50%;
+
+  background:
+    rgba(255,255,255,.22);
+}
+
+.cin-launch-line {
+  width: min(620px, 100%);
+  height: 2px;
+
+  margin-top: 24px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background:
+    rgba(255,255,255,.06);
+}
+
+.cin-launch-line > div {
+  width: 100%;
+  height: 100%;
+
+  transform-origin: left;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--cin-brand) 24%,
+      var(--cin-brand-2) 70%,
+      transparent 100%
+    );
+
+  box-shadow:
+    0 0 18px var(--cin-brand);
+}
+
+.cin-launch-footer {
+  margin-top: 14px;
+
+  opacity: .25;
+
+  font-size: 6px;
+  font-weight: 850;
+  letter-spacing: .15em;
+}
+
+
+/* ==========================================================
+   LOGIN VERIFYING BUTTON ENHANCEMENT
+========================================================== */
+
+.cinematic-login-button:disabled {
+  position: relative;
+  overflow: hidden;
+}
+
+.cinematic-login-button:disabled::after {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  background:
+    linear-gradient(
+      110deg,
+      transparent 20%,
+      rgba(255,255,255,.18) 45%,
+      transparent 70%
+    );
+
+  transform: translateX(-120%);
+
+  animation:
+    cin-login-scan 1.25s ease-in-out infinite;
+}
+
+@keyframes cin-login-scan {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+
+/* ==========================================================
+   RESPONSIVE
+========================================================== */
+
+@media (max-width: 720px) {
+  .cin-launch-ring {
+    width: 235px;
+    height: 235px;
+    top: -65px;
+  }
+
+  .cin-launch-code {
+    min-width: 102px;
+    height: 102px;
+
+    border-radius: 28px;
+
+    font-size: 18px;
+  }
+
+  .cin-launch-status {
+    margin-top: 34px;
+  }
+
+  .cin-launch-phases {
+    grid-template-columns: 1fr;
+    gap: 7px;
+
+    margin-top: 28px;
+  }
+
+  .cin-launch-phase {
+    min-height: 67px;
+  }
+
+  .cin-launch h1 {
+    font-size:
+      clamp(38px, 13vw, 58px);
+  }
+
+  .cin-inline-pulses {
+    gap: 12px;
+
+    font-size: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cin-launch *,
+  .cin-inline-branch-loader * {
+    animation-duration:
+      .01ms !important;
+
+    animation-iteration-count:
+      1 !important;
+
+    transition-duration:
+      .01ms !important;
+  }
+}
