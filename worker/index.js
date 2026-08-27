@@ -4509,6 +4509,1447 @@ async function databaseStatus(
 ============================================================ */
 
 export default {
+
+
+
+
+/* ============================================================
+   BART STOCK TRANSFER CREATION V7
+============================================================ */
+
+
+/* ============================================================
+   JEDDAH / YESTERDAY DATE
+============================================================ */
+
+function getJeddahNow() {
+  const now = new Date();
+
+  return new Date(
+    now.toLocaleString(
+      "en-US",
+      {
+        timeZone:
+          "Asia/Riyadh",
+      }
+    )
+  );
+}
+
+
+function getJeddahYesterdayISO() {
+  const now =
+    getJeddahNow();
+
+  now.setDate(
+    now.getDate() - 1
+  );
+
+  return [
+    now.getFullYear(),
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0"),
+    String(
+      now.getDate()
+    ).padStart(2, "0"),
+  ].join("-");
+}
+
+
+/* ============================================================
+   TRANSFER ID
+
+   Same format as Streamlit:
+   TR-YYYYMMDD-XXXX
+============================================================ */
+
+function generateTransferId() {
+  const now =
+    getJeddahNow();
+
+  const date =
+    [
+      now.getFullYear(),
+
+      String(
+        now.getMonth() + 1
+      ).padStart(2, "0"),
+
+      String(
+        now.getDate()
+      ).padStart(2, "0"),
+    ].join("");
+
+
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+
+  let suffix = "";
+
+
+  for (
+    let i = 0;
+    i < 4;
+    i++
+  ) {
+    suffix +=
+      chars[
+        Math.floor(
+          Math.random() *
+            chars.length
+        )
+      ];
+  }
+
+
+  return `TR-${date}-${suffix}`;
+}
+
+
+/* ============================================================
+   FORMAT JEDDAH TIMESTAMP
+============================================================ */
+
+function formatJeddahTimestamp() {
+  const now =
+    getJeddahNow();
+
+
+  let hours =
+    now.getHours();
+
+
+  const ampm =
+    hours >= 12
+      ? "PM"
+      : "AM";
+
+
+  hours =
+    hours % 12 ||
+    12;
+
+
+  return (
+    `${now.getFullYear()}-` +
+    `${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}-` +
+    `${String(
+      now.getDate()
+    ).padStart(2, "0")} ` +
+    `${String(hours).padStart(
+      2,
+      "0"
+    )}:` +
+    `${String(
+      now.getMinutes()
+    ).padStart(2, "0")}:` +
+    `${String(
+      now.getSeconds()
+    ).padStart(2, "0")} ` +
+    `${ampm}`
+  );
+}
+
+
+/* ============================================================
+   GOOGLE APPEND ROW
+
+   Used for MASTERBRANCHSHEET -> Transfers
+============================================================ */
+
+async function appendSheetRow(
+  env,
+  spreadsheetId,
+  range,
+  row
+) {
+  const url =
+    `https://sheets.googleapis.com/v4/spreadsheets/` +
+    `${encodeURIComponent(
+      spreadsheetId
+    )}/values/` +
+    `${encodeURIComponent(
+      range
+    )}:append` +
+    `?valueInputOption=USER_ENTERED` +
+    `&insertDataOption=INSERT_ROWS`;
+
+
+  const response =
+    await googleRequest(
+      env,
+
+      (
+        token,
+        account
+      ) => {
+        console.log(
+          "GOOGLE APPEND:",
+          account.id,
+          range
+        );
+
+
+        return fetch(
+          url,
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                values:
+                  [row],
+              }),
+          }
+        );
+      }
+    );
+
+
+  const result =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      result?.error?.message ||
+        "Unable to append transfer row."
+    );
+  }
+
+
+  return result;
+}
+
+
+/* ============================================================
+   STOCK TRANSFER ITEM STRUCTURE
+
+   Uses same Daily / Weekly sections as Stock Record.
+============================================================ */
+
+function buildTransferItemsFromSheet(
+  rows
+) {
+  const structure =
+    buildStockRecordData(
+      rows
+    );
+
+
+  const targetDate =
+    getJeddahYesterdayISO();
+
+
+  const headers =
+    rows[0] || [];
+
+
+  const dateIndex =
+    headers.indexOf(
+      targetDate
+    );
+
+
+  function prepare(items) {
+    return items.map(
+      (item) => {
+        let available = 0;
+
+
+        if (
+          dateIndex !== -1
+        ) {
+          const raw =
+            rows[
+              item.row - 1
+            ]?.[
+              dateIndex
+            ];
+
+
+          const cleaned =
+            String(
+              raw ?? ""
+            )
+              .replace(
+                /,/g,
+                ""
+              )
+              .trim();
+
+
+          const parsed =
+            Number(
+              cleaned || 0
+            );
+
+
+          available =
+            Number.isFinite(
+              parsed
+            )
+              ? Math.trunc(
+                  parsed
+                )
+              : 0;
+        }
+
+
+        return {
+          name:
+            item.name,
+
+          sku:
+            item.sku,
+
+          uom:
+            item.uom,
+
+          available,
+        };
+      }
+    );
+  }
+
+
+  return {
+    targetDate,
+
+    dateAvailable:
+      dateIndex !== -1,
+
+    daily:
+      prepare(
+        structure.daily
+      ),
+
+    weekly:
+      prepare(
+        structure.weekly
+      ),
+  };
+}
+
+
+/* ============================================================
+   TRANSFER INIT
+
+   Loads:
+   - current branch
+   - Daily / Weekly stock items
+   - destination branch list
+
+   D1/cache used where safe.
+============================================================ */
+
+async function stockTransferInit(
+  env,
+  branchCode
+) {
+  await ensureDatabase(env);
+
+
+  const origin =
+    await getBartBranch(
+      env,
+      branchCode
+    );
+
+
+  if (
+    !origin ||
+    !origin.sheet_id
+  ) {
+    throw new Error(
+      "Origin branch SheetID not available."
+    );
+  }
+
+
+  /*
+    Use our Stock Record cache because
+    it already caches the raw Stocks sheet.
+  */
+
+  const loaded =
+    await loadStockRecordStructure(
+      env,
+      branchCode
+    );
+
+
+  const stock =
+    buildTransferItemsFromSheet(
+      loaded.sheetData
+    );
+
+
+  const branchesResult =
+    await env.DB.prepare(`
+      SELECT
+        code,
+        name
+
+      FROM branches
+
+      WHERE brand = 'bart'
+
+      ORDER BY code ASC
+    `).all();
+
+
+  const destinations =
+    (
+      branchesResult.results ||
+      []
+    ).map(
+      (branch) => ({
+        code:
+          branch.code,
+
+        name:
+          branch.name,
+
+        label:
+          `${branch.code} - ${branch.name}`,
+      })
+    );
+
+
+  return {
+    success:
+      true,
+
+    source:
+      loaded.source,
+
+    origin: {
+      code:
+        origin.code,
+
+      name:
+        origin.name,
+
+      label:
+        `${origin.code} - ${origin.name}`,
+    },
+
+    targetDate:
+      stock.targetDate,
+
+    dateAvailable:
+      stock.dateAvailable,
+
+    items: {
+      daily:
+        stock.daily,
+
+      weekly:
+        stock.weekly,
+    },
+
+    destinations,
+  };
+}
+
+
+/* ============================================================
+   TRANSFER HISTORY
+
+   Same concept as old Streamlit:
+   Origin == current branch OR
+   Destination == current branch.
+
+   Sorted newest first.
+============================================================ */
+
+async function getTransferHistory(
+  env,
+  branchCode,
+  limit = 3,
+  offset = 0
+) {
+  await ensureDatabase(env);
+
+
+  /*
+    Keep history reasonably fresh.
+  */
+
+  await ensureTransfersFresh(
+    env
+  );
+
+
+  const branch =
+    await getBartBranch(
+      env,
+      branchCode
+    );
+
+
+  if (!branch) {
+    throw new Error(
+      "Branch not found."
+    );
+  }
+
+
+  const label =
+    `${branch.code} - ${branch.name}`;
+
+
+  const count =
+    await env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total
+
+      FROM transfers
+
+      WHERE
+        origin = ?
+        OR destination = ?
+    `)
+      .bind(
+        label,
+        label
+      )
+      .first();
+
+
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        origin,
+        destination,
+        items,
+        quantities,
+        reason,
+        status,
+        updated_at
+
+      FROM transfers
+
+      WHERE
+        origin = ?
+        OR destination = ?
+
+      ORDER BY updated_at DESC
+
+      LIMIT ?
+      OFFSET ?
+    `)
+      .bind(
+        label,
+        label,
+        limit,
+        offset
+      )
+      .all();
+
+
+  return {
+    success:
+      true,
+
+    total:
+      Number(
+        count?.total || 0
+      ),
+
+    transfers:
+      result.results || [],
+  };
+}
+
+
+/* ============================================================
+   NORMALIZE / MERGE TRANSFER CART
+
+   Prevents the old duplicate-item problem where
+   the same stock cell could appear twice.
+============================================================ */
+
+function normalizeTransferCart(
+  rawCart
+) {
+  if (
+    !Array.isArray(
+      rawCart
+    )
+  ) {
+    return [];
+  }
+
+
+  const merged =
+    new Map();
+
+
+  for (
+    const raw of
+    rawCart
+  ) {
+    const item =
+      String(
+        raw?.item || ""
+      ).trim();
+
+
+    const sku =
+      String(
+        raw?.sku || ""
+      ).trim();
+
+
+    const uom =
+      String(
+        raw?.uom || ""
+      ).trim();
+
+
+    const qty =
+      Number(
+        raw?.qty
+      );
+
+
+    if (
+      !item ||
+      !Number.isFinite(
+        qty
+      ) ||
+      qty < 1
+    ) {
+      continue;
+    }
+
+
+    if (
+      merged.has(item)
+    ) {
+      merged.get(
+        item
+      ).qty +=
+        Math.trunc(qty);
+
+    } else {
+      merged.set(
+        item,
+        {
+          item,
+          sku,
+          uom,
+          qty:
+            Math.trunc(qty),
+        }
+      );
+    }
+  }
+
+
+  return Array.from(
+    merged.values()
+  );
+}
+
+
+/* ============================================================
+   BUILD STOCK CHANGE PLAN
+
+   Does NOT write yet.
+
+   This lets us:
+   - validate first
+   - calculate rollback values
+   - avoid partial movement
+============================================================ */
+
+function buildStockMovementPlan(
+  rows,
+  cart,
+  mode
+) {
+  if (
+    !rows ||
+    rows.length < 2
+  ) {
+    throw new Error(
+      "Stocks sheet is empty or malformed."
+    );
+  }
+
+
+  const targetDate =
+    getJeddahYesterdayISO();
+
+
+  const headers =
+    rows[0] || [];
+
+
+  const columnIndex =
+    headers.indexOf(
+      targetDate
+    );
+
+
+  if (
+    columnIndex === -1
+  ) {
+    throw new Error(
+      `Column for ${targetDate} not found.`
+    );
+  }
+
+
+  const itemRows =
+    new Map();
+
+
+  for (
+    let i = 1;
+    i < rows.length;
+    i++
+  ) {
+    const name =
+      String(
+        rows[i]?.[0] || ""
+      ).trim();
+
+
+    if (name) {
+      itemRows.set(
+        name,
+        i
+      );
+    }
+  }
+
+
+  const shortages = [];
+
+  const missing = [];
+
+  const updates = [];
+
+  const rollback = [];
+
+
+  const columnLetter =
+    columnNumberToLetters(
+      columnIndex + 1
+    );
+
+
+  for (
+    const entry of cart
+  ) {
+    if (
+      !itemRows.has(
+        entry.item
+      )
+    ) {
+      missing.push(
+        entry.item
+      );
+
+      continue;
+    }
+
+
+    const rowIndex =
+      itemRows.get(
+        entry.item
+      );
+
+
+    const raw =
+      rows[
+        rowIndex
+      ]?.[
+        columnIndex
+      ];
+
+
+    const cleaned =
+      String(
+        raw ?? ""
+      )
+        .replace(
+          /,/g,
+          ""
+        )
+        .trim();
+
+
+    const parsed =
+      Number(
+        cleaned || 0
+      );
+
+
+    const current =
+      Number.isFinite(
+        parsed
+      )
+        ? Math.trunc(
+            parsed
+          )
+        : 0;
+
+
+    if (
+      mode ===
+        "subtract" &&
+      current <
+        entry.qty
+    ) {
+      shortages.push({
+        item:
+          entry.item,
+
+        have:
+          current,
+
+        need:
+          entry.qty,
+      });
+
+
+      continue;
+    }
+
+
+    const next =
+      mode ===
+      "subtract"
+        ? current -
+          entry.qty
+        : current +
+          entry.qty;
+
+
+    const range =
+      `Stocks!${columnLetter}${rowIndex + 1}`;
+
+
+    updates.push({
+      range,
+
+      values:
+        [[next]],
+    });
+
+
+    /*
+      Rollback restores exact old value.
+    */
+
+    rollback.push({
+      range,
+
+      values:
+        [[current]],
+    });
+  }
+
+
+  return {
+    targetDate,
+    updates,
+    rollback,
+    shortages,
+    missing,
+  };
+}
+
+
+/* ============================================================
+   CREATE STOCK TRANSFER
+
+   Flow:
+   1. Verify input
+   2. Live-read Origin
+   3. Live-read Destination
+   4. Validate stock
+   5. Subtract Origin
+   6. Add Destination
+   7. Append Pending transfer
+   8. Update D1 immediately
+
+   Rollback is attempted if a later operation fails.
+============================================================ */
+
+async function createStockTransfer(
+  env,
+  body
+) {
+  await ensureDatabase(
+    env
+  );
+
+
+  const originCode =
+    String(
+      body.originBranch ||
+      ""
+    )
+      .trim()
+      .toUpperCase();
+
+
+  const destinationCode =
+    String(
+      body.destinationBranch ||
+      ""
+    )
+      .trim()
+      .toUpperCase();
+
+
+  const reason =
+    String(
+      body.reason ||
+      ""
+    );
+
+
+  const cart =
+    normalizeTransferCart(
+      body.cart
+    );
+
+
+  if (
+    !originCode
+  ) {
+    return {
+      success:
+        false,
+
+      message:
+        "Origin branch is missing.",
+    };
+  }
+
+
+  if (
+    !destinationCode
+  ) {
+    return {
+      success:
+        false,
+
+      message:
+        "Please select a destination branch.",
+    };
+  }
+
+
+  if (
+    cart.length ===
+    0
+  ) {
+    return {
+      success:
+        false,
+
+      message:
+        "Add at least one item to the transfer.",
+    };
+  }
+
+
+  const origin =
+    await getBartBranch(
+      env,
+      originCode
+    );
+
+
+  const destination =
+    await getBartBranch(
+      env,
+      destinationCode
+    );
+
+
+  if (
+    !origin?.sheet_id ||
+    !destination?.sheet_id
+  ) {
+    return {
+      success:
+        false,
+
+      message:
+        "Origin or destination SheetID not found.",
+    };
+  }
+
+
+  const originLabel =
+    `${origin.code} - ${origin.name}`;
+
+
+  const destinationLabel =
+    `${destination.code} - ${destination.name}`;
+
+
+  /*
+    LIVE Google reads.
+    Final stock transfer NEVER trusts cached stock.
+  */
+
+  const [
+    originRows,
+    destinationRows,
+  ] =
+    await Promise.all([
+      getSheetValues(
+        env,
+        origin.sheet_id,
+        "Stocks!A:ZZ"
+      ),
+
+      getSheetValues(
+        env,
+        destination.sheet_id,
+        "Stocks!A:ZZ"
+      ),
+    ]);
+
+
+  const originPlan =
+    buildStockMovementPlan(
+      originRows,
+      cart,
+      "subtract"
+    );
+
+
+  const destinationPlan =
+    buildStockMovementPlan(
+      destinationRows,
+      cart,
+      "add"
+    );
+
+
+  /*
+    Same important old behavior:
+    block if insufficient.
+  */
+
+  if (
+    originPlan.shortages
+      .length >
+    0
+  ) {
+    return {
+      success:
+        false,
+
+      insufficient:
+        true,
+
+      items:
+        originPlan.shortages,
+
+      message:
+        "Insufficient stock for some items.",
+    };
+  }
+
+
+  /*
+    Integrity check:
+    don't silently skip missing rows.
+  */
+
+  if (
+    originPlan.missing
+      .length >
+      0 ||
+    destinationPlan.missing
+      .length >
+      0
+  ) {
+    return {
+      success:
+        false,
+
+      missingItems:
+        true,
+
+      originMissing:
+        originPlan.missing,
+
+      destinationMissing:
+        destinationPlan.missing,
+
+      message:
+        "Some transfer items could not be found in the branch Stocks sheets.",
+    };
+  }
+
+
+  const transferId =
+    generateTransferId();
+
+
+  const timestamp =
+    formatJeddahTimestamp();
+
+
+  let originWritten =
+    false;
+
+  let destinationWritten =
+    false;
+
+
+  try {
+    /* ======================================================
+       SUBTRACT ORIGIN
+    ====================================================== */
+
+    await batchWriteSheet(
+      env,
+      origin.sheet_id,
+      originPlan.updates
+    );
+
+
+    originWritten =
+      true;
+
+
+    /* ======================================================
+       ADD DESTINATION
+    ====================================================== */
+
+    await batchWriteSheet(
+      env,
+      destination.sheet_id,
+      destinationPlan.updates
+    );
+
+
+    destinationWritten =
+      true;
+
+
+    /* ======================================================
+       FORMAT MASTER TRANSFER ROW
+
+       Same format as old Streamlit.
+    ====================================================== */
+
+    const itemsText =
+      cart
+        .map(
+          (entry) =>
+            `• [${entry.sku || ""}] ` +
+            `${entry.item} ` +
+            `(${entry.qty} ${entry.uom || ""})`
+        )
+        .join("\n");
+
+
+    const quantitiesText =
+      cart
+        .map(
+          (entry) =>
+            String(
+              entry.qty
+            )
+        )
+        .join("\n");
+
+
+    /* ======================================================
+       WRITE MASTER -> TRANSFERS
+    ====================================================== */
+
+    await appendSheetRow(
+      env,
+      env.MASTER_SHEET_ID,
+      "Transfers!A:H",
+      [
+        transferId,
+        originLabel,
+        destinationLabel,
+        itemsText,
+        quantitiesText,
+        reason,
+        "Pending",
+        timestamp,
+      ]
+    );
+
+
+    /* ======================================================
+       IMMEDIATE D1 INSERT
+
+       Receiving branch does NOT wait for
+       manual Refresh Database.
+    ====================================================== */
+
+    let d1Immediate =
+      true;
+
+
+    try {
+      await env.DB.prepare(`
+        INSERT INTO transfers (
+          id,
+          origin,
+          destination,
+          items,
+          quantities,
+          reason,
+          status,
+          updated_at
+        )
+
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+
+        ON CONFLICT(id)
+        DO UPDATE SET
+          origin =
+            excluded.origin,
+
+          destination =
+            excluded.destination,
+
+          items =
+            excluded.items,
+
+          quantities =
+            excluded.quantities,
+
+          reason =
+            excluded.reason,
+
+          status =
+            excluded.status,
+
+          updated_at =
+            excluded.updated_at
+      `)
+        .bind(
+          transferId,
+          originLabel,
+          destinationLabel,
+          itemsText,
+          quantitiesText,
+          reason,
+          "Pending",
+          new Date()
+            .toISOString()
+        )
+        .run();
+
+
+      /*
+        We know our D1 transfer data now includes
+        this latest transfer.
+      */
+
+      await setMeta(
+        env,
+        "transfers_last_sync_ms",
+        Date.now()
+      );
+
+    } catch (
+      d1Error
+    ) {
+      console.error(
+        "Immediate D1 transfer insert failed:",
+        d1Error
+      );
+
+
+      d1Immediate =
+        false;
+
+
+      /*
+        Force the next transfer poll
+        to refresh from Google.
+      */
+
+      await setMeta(
+        env,
+        "transfers_last_sync_ms",
+        0
+      );
+    }
+
+
+    /* ======================================================
+       INVALIDATE STOCK CACHES
+    ====================================================== */
+
+    await env.DB.prepare(`
+      DELETE FROM stock_cache
+
+      WHERE branch_code
+      IN (?, ?)
+    `)
+      .bind(
+        originCode,
+        destinationCode
+      )
+      .run();
+
+
+    await env.DB.prepare(`
+      DELETE FROM stock_record_cache
+
+      WHERE branch_code
+      IN (?, ?)
+    `)
+      .bind(
+        originCode,
+        destinationCode
+      )
+      .run();
+
+
+    return {
+      success:
+        true,
+
+      transferId,
+
+      origin:
+        originLabel,
+
+      destination:
+        destinationLabel,
+
+      timestamp,
+
+      targetDate:
+        originPlan.targetDate,
+
+      items:
+        cart,
+
+      d1Immediate,
+
+      message:
+        "Transfer completed successfully.",
+    };
+
+  } catch (
+    error
+  ) {
+    console.error(
+      "TRANSFER CREATE FAILED:",
+      error
+    );
+
+
+    /*
+      COMPENSATING ROLLBACK
+
+      If Destination was updated,
+      restore it first.
+    */
+
+    if (
+      destinationWritten
+    ) {
+      try {
+        await batchWriteSheet(
+          env,
+          destination.sheet_id,
+          destinationPlan.rollback
+        );
+
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Destination rollback failed:",
+          rollbackError
+        );
+      }
+    }
+
+
+    /*
+      Restore Origin if it had already
+      been deducted.
+    */
+
+    if (
+      originWritten
+    ) {
+      try {
+        await batchWriteSheet(
+          env,
+          origin.sheet_id,
+          originPlan.rollback
+        );
+
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Origin rollback failed:",
+          rollbackError
+        );
+      }
+    }
+
+
+    return {
+      success:
+        false,
+
+      message:
+        `Transfer failed: ${
+          error?.message ||
+          "Unknown error"
+        }`,
+    };
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+   
   async fetch(
     request,
     env
