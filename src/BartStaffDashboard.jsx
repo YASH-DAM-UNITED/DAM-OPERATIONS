@@ -7,76 +7,65 @@ import {
 } from "react";
 
 import {
-  motion,
   AnimatePresence,
+  motion,
 } from "framer-motion";
 
 import {
+  Activity,
+  AlertTriangle,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
+  Bell,
   Boxes,
   CalendarDays,
-  RefreshCcw,
-  LogOut,
-  Bell,
-  Activity,
-  PackageOpen,
-  ArrowLeftRight,
+  CheckCircle2,
   ClipboardList,
-  MapPin,
   Clock3,
   Coffee,
-  ShieldCheck,
   Database,
-  CheckCircle2,
-  XCircle,
+  Eye,
   LoaderCircle,
+  LogOut,
+  MapPin,
   PackageCheck,
+  PackageOpen,
   PackageX,
+  RefreshCcw,
+  RotateCcw,
+  ShieldCheck,
   Truck,
   X,
-  AlertTriangle,
-  RotateCcw,
-  Layers3,
-  Timer,
+  XCircle,
 } from "lucide-react";
 
 
 /* ============================================================
-   CONFIGURATION
+   CONFIG
 ============================================================ */
 
-const SESSION_TIMEOUT_MS =
+const SESSION_TIMEOUT =
   30 * 60 * 1000;
-
-const API = {
-  databaseStatus:
-    "/api/admin/database-status",
-
-  databaseSync:
-    "/api/admin/sync-bart",
-
-  pendingTransfers:
-    "/api/staff/bart/pending-transfers",
-
-  transferRespond:
-    "/api/staff/bart/transfer/respond",
-};
 
 
 /* ============================================================
-   BART STAFF MODULES
+   MODULES
 ============================================================ */
 
 const modules = [
   {
-    id: "stock-record",
+    id:
+      "stock-record",
 
-    icon: ClipboardList,
+    icon:
+      ClipboardList,
 
-    number: "01",
+    number:
+      "01",
 
-    title: "Stock Record",
+    title:
+      "Stock Record",
 
     subtitle:
       "DAILY & WEEKLY ENTRY",
@@ -86,45 +75,57 @@ const modules = [
   },
 
   {
-    id: "schedule",
+    id:
+      "schedule",
 
-    icon: CalendarDays,
+    icon:
+      CalendarDays,
 
-    number: "02",
+    number:
+      "02",
 
-    title: "Staff Schedule",
+    title:
+      "Staff Schedule",
 
     subtitle:
       "SHIFT OPERATIONS",
 
     description:
-      "View staff assignments, shifts and branch workforce scheduling.",
+      "View staff assignments, shifts and branch scheduling information.",
   },
 
   {
-    id: "stock-view",
+    id:
+      "stock-view",
 
-    icon: Boxes,
+    icon:
+      Boxes,
 
-    number: "03",
+    number:
+      "03",
 
-    title: "Stock View",
+    title:
+      "Stock View",
 
     subtitle:
       "BRANCH INVENTORY",
 
     description:
-      "Review current daily and weekly stock records for this branch.",
+      "Review daily and weekly stock balances directly from this branch.",
   },
 
   {
-    id: "transfer",
+    id:
+      "transfer",
 
-    icon: ArrowLeftRight,
+    icon:
+      ArrowLeftRight,
 
-    number: "04",
+    number:
+      "04",
 
-    title: "Stock Transfer",
+    title:
+      "Stock Transfer",
 
     subtitle:
       "INTERNAL MOVEMENT",
@@ -136,157 +137,192 @@ const modules = [
 
 
 /* ============================================================
-   TRANSFER ITEMS FORMATTER
+   TRANSFER ITEM FORMATTER
 ============================================================ */
 
-function normalizeTransferItems(
-  itemsText,
-  quantitiesText
+function transferItems(
+  transfer
 ) {
+
   const items =
-    String(itemsText || "")
-      .replace(/â€¢/g, "•")
+    String(
+      transfer?.items ||
+      ""
+    )
+      .replace(
+        /â€¢/g,
+        "•"
+      )
       .split("\n")
-      .map((item) =>
-        item
-          .replace(/^•\s*/, "")
-          .trim()
+      .map(
+        (value) =>
+          value
+            .replace(
+              /^•\s*/,
+              ""
+            )
+            .trim()
       )
       .filter(Boolean);
+
 
   const quantities =
-    String(quantitiesText || "")
+    String(
+      transfer?.quantities ||
+      ""
+    )
       .split("\n")
-      .map((qty) =>
-        qty.trim()
+      .map(
+        (value) =>
+          value.trim()
       )
       .filter(Boolean);
 
-  const size =
+
+  const amount =
     Math.max(
       items.length,
       quantities.length
     );
 
+
   return Array.from(
     {
-      length: size,
+      length:
+        amount,
     },
+
     (_, index) => ({
+
       item:
-        items[index] || "Item",
+        items[
+          index
+        ] ||
+        "Item",
 
       quantity:
-        quantities[index] || "-",
+        quantities[
+          index
+        ] ||
+        "-",
     })
   );
 }
 
 
 /* ============================================================
-   TRANSFER MODAL
+   TRANSFER POPUP
 ============================================================ */
 
-function TransferModal({
+function TransferPopup({
   transfer,
-  loading,
-  onClose,
-  onAccept,
-  onReject,
+  busy,
+  close,
+  accept,
+  reject,
 }) {
+
   const items =
     useMemo(
       () =>
-        normalizeTransferItems(
-          transfer?.items,
-          transfer?.quantities
+        transferItems(
+          transfer
         ),
-      [
-        transfer?.items,
-        transfer?.quantities,
-      ]
+      [transfer]
     );
 
+
   if (!transfer) {
+
     return null;
   }
+
 
   return (
     <AnimatePresence>
       <motion.div
-        className="bart-transfer-backdrop"
+        className="dam-transfer-overlay"
         initial={{
-          opacity: 0,
+          opacity:
+            0,
         }}
         animate={{
-          opacity: 1,
+          opacity:
+            1,
         }}
         exit={{
-          opacity: 0,
-        }}
-        onMouseDown={() => {
-          if (!loading) {
-            onClose();
-          }
+          opacity:
+            0,
         }}
       >
         <motion.div
-          className="bart-transfer-modal"
+          className="dam-transfer-popup"
           initial={{
-            opacity: 0,
-            scale: 0.94,
-            y: 30,
+            opacity:
+              0,
+
+            scale:
+              0.94,
+
+            y:
+              30,
           }}
           animate={{
-            opacity: 1,
-            scale: 1,
-            y: 0,
+            opacity:
+              1,
+
+            scale:
+              1,
+
+            y:
+              0,
           }}
-          exit={{
-            opacity: 0,
-            scale: 0.96,
-            y: 20,
-          }}
-          transition={{
-            type: "spring",
-            stiffness: 280,
-            damping: 24,
-          }}
-          onMouseDown={(event) =>
-            event.stopPropagation()
-          }
         >
           <button
-            type="button"
-            className="bart-transfer-close"
-            disabled={loading}
-            onClick={onClose}
+            className="dam-transfer-x"
+            disabled={busy}
+            onClick={close}
           >
-            <X size={18} />
+            <X
+              size={18}
+            />
           </button>
 
-          <div className="bart-transfer-modal-icon">
-            <Truck size={24} />
+
+          <div className="dam-transfer-logo">
+            <Truck
+              size={25}
+            />
           </div>
 
-          <div className="bart-transfer-kicker">
+
+          <span className="dam-transfer-label">
             NEW TRANSFER RECEIVED
-          </div>
+          </span>
+
 
           <h2>
-            Incoming stock transfer
+            Incoming Transfer
           </h2>
 
-          <div className="bart-transfer-id">
-            {transfer.id}
+
+          <div className="dam-transfer-id">
+            {
+              transfer.id
+            }
           </div>
 
-          <div className="bart-transfer-route">
+
+          <div className="dam-transfer-route">
             <div>
-              <small>FROM</small>
+              <small>
+                FROM
+              </small>
 
               <strong>
-                {transfer.origin}
+                {
+                  transfer.origin
+                }
               </strong>
             </div>
 
@@ -295,88 +331,85 @@ function TransferModal({
             />
 
             <div>
-              <small>TO</small>
+              <small>
+                TO
+              </small>
 
               <strong>
-                {transfer.destination}
+                {
+                  transfer.destination
+                }
               </strong>
             </div>
           </div>
 
-          <div className="bart-transfer-items">
-            <div className="bart-transfer-items-head">
-              <Layers3 size={16} />
 
-              <strong>
-                Transfer Items
-              </strong>
-
-              <span>
-                {items.length}
-              </span>
-            </div>
-
+          <div className="dam-transfer-items">
             {items.map(
-              (entry, index) => (
+              (
+                item,
+                index
+              ) => (
+
                 <div
-                  className="bart-transfer-item"
-                  key={`${entry.item}-${index}`}
+                  className="dam-transfer-item"
+                  key={
+                    index
+                  }
                 >
-                  <div>
-                    <span>
-                      {String(
-                        index + 1
-                      ).padStart(
-                        2,
-                        "0"
-                      )}
-                    </span>
+                  <span>
+                    {
+                      item.item
+                    }
+                  </span>
 
-                    <strong>
-                      {entry.item}
-                    </strong>
-                  </div>
-
-                  <b>
-                    {entry.quantity}
-                  </b>
+                  <strong>
+                    {
+                      item.quantity
+                    }
+                  </strong>
                 </div>
               )
             )}
           </div>
 
-          <div className="bart-transfer-reason">
+
+          <div className="dam-transfer-reason">
             <small>
               REASON / REFERENCE
             </small>
 
             <strong>
-              {transfer.reason ||
-                "No reason provided"}
+              {
+                transfer.reason ||
+                "No reason provided"
+              }
             </strong>
           </div>
 
-          <div className="bart-transfer-warning">
+
+          <div className="dam-transfer-warning">
             <AlertTriangle
               size={15}
             />
 
-            Rejecting reverses the stock movement:
-            quantity is returned to the origin and
-            removed from this destination branch.
+            Rejecting this transfer
+            returns stock to the
+            origin and removes it
+            from the destination.
           </div>
 
-          <div className="bart-transfer-actions">
+
+          <div className="dam-transfer-buttons">
             <button
-              type="button"
-              className="bart-transfer-reject"
-              disabled={loading}
-              onClick={onReject}
+              className="dam-reject-transfer"
+              disabled={busy}
+              onClick={reject}
             >
-              {loading ? (
+              {busy ? (
                 <LoaderCircle
-                  className="branch-loading-spinner"
                   size={17}
+                  className="dam-spin"
                 />
               ) : (
                 <PackageX
@@ -384,19 +417,19 @@ function TransferModal({
                 />
               )}
 
-              Reject Transfer
+              REJECT
             </button>
 
+
             <button
-              type="button"
-              className="bart-transfer-accept"
-              disabled={loading}
-              onClick={onAccept}
+              className="dam-accept-transfer"
+              disabled={busy}
+              onClick={accept}
             >
-              {loading ? (
+              {busy ? (
                 <LoaderCircle
-                  className="branch-loading-spinner"
                   size={17}
+                  className="dam-spin"
                 />
               ) : (
                 <PackageCheck
@@ -404,7 +437,7 @@ function TransferModal({
                 />
               )}
 
-              Accept Transfer
+              ACCEPT
             </button>
           </div>
         </motion.div>
@@ -415,43 +448,133 @@ function TransferModal({
 
 
 /* ============================================================
-   MAIN BART STAFF DASHBOARD
+   STOCK TABLE
+============================================================ */
+
+function StockTable({
+  title,
+  rows,
+}) {
+
+  if (
+    !rows ||
+    rows.length === 0
+  ) {
+
+    return (
+      <div className="dam-stock-empty">
+        No {title.toLowerCase()}
+        stock records found.
+      </div>
+    );
+  }
+
+
+  const columns =
+    Object.keys(
+      rows[0]
+    );
+
+
+  return (
+    <section className="dam-stock-section">
+
+      <div className="dam-stock-section-head">
+        <div>
+          <span>
+            STOCK VIEW
+          </span>
+
+          <h3>
+            {title}
+          </h3>
+        </div>
+
+        <strong>
+          {
+            rows.length
+          } ITEMS
+        </strong>
+      </div>
+
+
+      <div className="dam-stock-table-wrap">
+
+        <table className="dam-stock-table">
+
+          <thead>
+            <tr>
+              {columns.map(
+                (column) => (
+
+                  <th
+                    key={
+                      column
+                    }
+                  >
+                    {
+                      column
+                    }
+                  </th>
+                )
+              )}
+            </tr>
+          </thead>
+
+
+          <tbody>
+            {rows.map(
+              (
+                row,
+                index
+              ) => (
+
+                <tr
+                  key={
+                    index
+                  }
+                >
+
+                  {columns.map(
+                    (
+                      column
+                    ) => (
+
+                      <td
+                        key={
+                          column
+                        }
+                      >
+                        {
+                          row[
+                            column
+                          ]
+                        }
+                      </td>
+                    )
+                  )}
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+
+/* ============================================================
+   DASHBOARD
 ============================================================ */
 
 export default function BartStaffDashboard({
-  branch = {
-    code: "B001",
-    name: "BART Branch",
-  },
-
+  branch,
   onBack,
   onLogout,
   onRefresh,
   onModule,
 }) {
-  /* ==========================================================
-     DATABASE
-  ========================================================== */
-
-  const [
-    databaseStatus,
-    setDatabaseStatus,
-  ] = useState({
-    branches: 0,
-    transfers: 0,
-    lastSync: null,
-  });
-
-  const [
-    databaseRefreshing,
-    setDatabaseRefreshing,
-  ] = useState(false);
-
-  const [
-    databaseMessage,
-    setDatabaseMessage,
-  ] = useState(null);
-
 
   /* ==========================================================
      TRANSFERS
@@ -460,353 +583,377 @@ export default function BartStaffDashboard({
   const [
     pendingTransfers,
     setPendingTransfers,
-  ] = useState([]);
+  ] =
+    useState([]);
+
 
   const [
-    transfersLoading,
-    setTransfersLoading,
-  ] = useState(true);
+    transferLoading,
+    setTransferLoading,
+  ] =
+    useState(true);
+
 
   const [
-    activeTransfer,
-    setActiveTransfer,
-  ] = useState(null);
+    selectedTransfer,
+    setSelectedTransfer,
+  ] =
+    useState(null);
+
 
   const [
-    transferActionLoading,
-    setTransferActionLoading,
-  ] = useState(false);
-
-  const [
-    transferMessage,
-    setTransferMessage,
-  ] = useState(null);
+    transferBusy,
+    setTransferBusy,
+  ] =
+    useState(false);
 
 
   /* ==========================================================
-     SESSION / ACTIVITY
+     STOCK VIEW
   ========================================================== */
 
-  const lastActivityRef =
-    useRef(Date.now());
+  const [
+    showStock,
+    setShowStock,
+  ] =
+    useState(false);
 
-  const logoutTriggeredRef =
-    useRef(false);
+
+  const [
+    stockLoading,
+    setStockLoading,
+  ] =
+    useState(false);
+
+
+  const [
+    stock,
+    setStock,
+  ] =
+    useState(null);
+
+
+  const [
+    stockSource,
+    setStockSource,
+  ] =
+    useState("");
+
+
+  const [
+    stockSyncedAt,
+    setStockSyncedAt,
+  ] =
+    useState(null);
+
+
+  const [
+    stockError,
+    setStockError,
+  ] =
+    useState("");
 
 
   /* ==========================================================
-     ACTIVITY REFRESH
+     DATABASE
   ========================================================== */
 
-  const refreshActivity =
-    useCallback(() => {
-      lastActivityRef.current =
-        Date.now();
-    }, []);
+  const [
+    databaseRefreshing,
+    setDatabaseRefreshing,
+  ] =
+    useState(false);
 
 
   /* ==========================================================
-     SESSION TIMEOUT
-
-     Old Streamlit:
-     SESSION_TIMEOUT = 30 * 60
+     SESSION
   ========================================================== */
+
+  const lastActivity =
+    useRef(
+      Date.now()
+    );
+
+
+  function touch() {
+
+    lastActivity.current =
+      Date.now();
+  }
+
 
   useEffect(() => {
-    const activityEvents = [
+
+    const events = [
       "mousedown",
       "keydown",
       "touchstart",
       "scroll",
     ];
 
-    const handleActivity = () => {
-      refreshActivity();
-    };
 
-    activityEvents.forEach(
-      (eventName) => {
+    const handler =
+      () =>
+        touch();
+
+
+    events.forEach(
+      (event) =>
+
         window.addEventListener(
-          eventName,
-          handleActivity,
+          event,
+          handler,
           {
-            passive: true,
+            passive:
+              true,
           }
-        );
-      }
+        )
     );
 
-    const interval =
+
+    const timer =
       window.setInterval(
         () => {
-          const inactiveFor =
-            Date.now() -
-            lastActivityRef.current;
 
           if (
-            inactiveFor >=
-              SESSION_TIMEOUT_MS &&
-            !logoutTriggeredRef.current
+            Date.now() -
+              lastActivity.current >=
+            SESSION_TIMEOUT
           ) {
-            logoutTriggeredRef.current =
-              true;
-
-            alert(
-              "Logged out due to 30 minutes of inactivity."
-            );
 
             onLogout?.();
           }
         },
+
         15000
       );
 
+
     return () => {
+
       window.clearInterval(
-        interval
+        timer
       );
 
-      activityEvents.forEach(
-        (eventName) => {
+
+      events.forEach(
+        (event) =>
+
           window.removeEventListener(
-            eventName,
-            handleActivity
-          );
-        }
+            event,
+            handler
+          )
       );
     };
-  }, [
-    onLogout,
-    refreshActivity,
-  ]);
+
+  }, [onLogout]);
 
 
   /* ==========================================================
-     DATABASE STATUS
+     LIVE TRANSFERS
 
-     D1 ONLY.
-     Google called = 0.
+     Automatically called when
+     entering branch dashboard.
+
+     Also polls every 15 seconds.
+
+     Backend decides whether Google
+     actually needs to be called.
   ========================================================== */
 
-  const loadDatabaseStatus =
+  const loadTransfers =
     useCallback(
-      async () => {
+
+      async (
+        openPopup =
+          false
+      ) => {
+
+        if (
+          !branch?.code
+        ) {
+
+          return;
+        }
+
+
         try {
+
+          setTransferLoading(
+            true
+          );
+
+
           const response =
             await fetch(
-              API.databaseStatus,
+
+              `/api/staff/bart/pending-transfers?branch=${encodeURIComponent(
+                branch.code
+              )}`,
+
               {
                 cache:
                   "no-store",
               }
             );
 
+
           const data =
             await response.json();
+
 
           if (
             !response.ok ||
             !data.success
           ) {
-            return;
-          }
 
-          setDatabaseStatus({
-            branches:
-              Number(
-                data.bartBranches ||
-                  0
-              ),
-
-            transfers:
-              Number(
-                data.transfers ||
-                  0
-              ),
-
-            lastSync:
-              data.lastSync ||
-              null,
-          });
-        } catch (error) {
-          console.error(
-            "Database status:",
-            error
-          );
-        }
-      },
-      []
-    );
-
-
-  /* ==========================================================
-     LOAD PENDING TRANSFERS
-
-     D1 ONLY.
-     This replaces check_for_pending_transfers().
-  ========================================================== */
-
-  const loadPendingTransfers =
-    useCallback(
-      async ({
-        openFirst =
-          true,
-      } = {}) => {
-        if (!branch?.code) {
-          return;
-        }
-
-        try {
-          setTransfersLoading(
-            true
-          );
-
-          const url =
-            `${API.pendingTransfers}` +
-            `?branch=${encodeURIComponent(
-              branch.code
-            )}`;
-
-          const response =
-            await fetch(url, {
-              cache:
-                "no-store",
-            });
-
-          const data =
-            await response.json();
-
-          if (
-            !response.ok ||
-            !data.success
-          ) {
             throw new Error(
               data.message ||
-                "Unable to check transfers."
+              "Unable to check transfers."
             );
           }
+
 
           const transfers =
             Array.isArray(
               data.transfers
             )
+
               ? data.transfers
+
               : [];
+
 
           setPendingTransfers(
             transfers
           );
 
-          /*
-            Same behavior as Streamlit:
-            pending transfer dialog is shown
-            after login.
-          */
 
           if (
-            openFirst &&
+            openPopup &&
             transfers.length >
               0
           ) {
-            setActiveTransfer(
+
+            setSelectedTransfer(
               transfers[0]
             );
           }
+
+
         } catch (error) {
+
           console.error(
-            "Pending transfer error:",
             error
           );
 
-          setPendingTransfers(
-            []
-          );
         } finally {
-          setTransfersLoading(
+
+          setTransferLoading(
             false
           );
         }
       },
+
       [
         branch?.code,
       ]
     );
 
 
-  /* ==========================================================
-     FIRST DASHBOARD LOAD
-  ========================================================== */
+  /*
+    Immediate check when branch enters.
+  */
 
   useEffect(() => {
-    refreshActivity();
 
-    loadDatabaseStatus();
+    loadTransfers(
+      true
+    );
 
-    loadPendingTransfers({
-      openFirst: true,
-    });
+
+    /*
+      Continue checking every 15 sec.
+
+      Most of these requests hit D1.
+      Backend only refreshes Google when
+      shared transfer cache is stale.
+    */
+
+    const interval =
+      window.setInterval(
+        () => {
+
+          loadTransfers(
+            false
+          );
+        },
+
+        15000
+      );
+
+
+    return () =>
+      window.clearInterval(
+        interval
+      );
+
   }, [
-    branch?.code,
-    loadDatabaseStatus,
-    loadPendingTransfers,
-    refreshActivity,
+    loadTransfers,
   ]);
 
 
   /* ==========================================================
-     ACCEPT / REJECT
-
-     Backend performs Google operations.
-
-     ACCEPT:
-     Transfer Status -> Accepted
-
-     REJECT:
-     Origin stock += Qty
-     Destination stock -= Qty
-     Transfer Status -> Rejected
+     TRANSFER RESPONSE
   ========================================================== */
 
-  async function respondToTransfer(
+  async function respondTransfer(
     action
   ) {
+
     if (
-      !activeTransfer ||
-      transferActionLoading
+      !selectedTransfer
     ) {
+
       return;
     }
 
-    const isReject =
-      action === "reject";
 
-    if (isReject) {
-      const confirmed =
+    if (
+      action ===
+      "reject"
+    ) {
+
+      const confirmReject =
         window.confirm(
-          "Reject this transfer?\n\nThe stock will be returned to the origin branch and removed from this branch."
+          "Reject this transfer?\n\nStock will be returned to the origin branch and removed from this branch."
         );
 
-      if (!confirmed) {
+
+      if (
+        !confirmReject
+      ) {
+
         return;
       }
     }
 
-    try {
-      refreshActivity();
 
-      setTransferActionLoading(
+    try {
+
+      setTransferBusy(
         true
       );
 
-      setTransferMessage(
-        null
-      );
 
       const response =
         await fetch(
-          API.transferRespond,
+
+          "/api/staff/bart/transfer/respond",
+
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -815,65 +962,77 @@ export default function BartStaffDashboard({
 
             body:
               JSON.stringify({
+
                 transferId:
-                  activeTransfer.id,
+                  selectedTransfer.id,
 
                 action,
               }),
           }
         );
 
+
       const data =
         await response.json();
+
 
       if (
         !response.ok ||
         !data.success
       ) {
+
         throw new Error(
           data.message ||
-            `Unable to ${action} transfer.`
+          "Transfer operation failed."
         );
       }
 
-      setTransferMessage({
-        type: "success",
 
-        text:
-          action ===
-          "accept"
-            ? `Transfer ${activeTransfer.id} accepted successfully.`
-            : `Transfer ${activeTransfer.id} rejected. Stock reversal completed.`,
-      });
+      alert(
+        data.message ||
+        "Transfer updated successfully."
+      );
 
-      setActiveTransfer(
+
+      setSelectedTransfer(
         null
       );
 
+
       /*
-        Reload pending list FROM D1.
+        Immediately refresh D1 list.
       */
 
-      await loadPendingTransfers({
-        openFirst: false,
-      });
-
-      await loadDatabaseStatus();
-    } catch (error) {
-      console.error(
-        "Transfer response:",
-        error
+      await loadTransfers(
+        false
       );
 
-      setTransferMessage({
-        type: "error",
 
-        text:
-          error.message ||
-          "Transfer operation failed.",
-      });
+      /*
+        If reject changed stock,
+        clear currently displayed stock.
+      */
+
+      if (
+        action ===
+        "reject"
+      ) {
+
+        setStock(
+          null
+        );
+      }
+
+
+    } catch (error) {
+
+      alert(
+        error.message
+      );
+
     } finally {
-      setTransferActionLoading(
+
+      setTransferBusy(
         false
       );
     }
@@ -881,92 +1040,225 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     REFRESH DATABASE
+     STOCK VIEW
 
-     THIS is the intentional Google -> D1 call.
+     Normal:
+     D1 cached data if under 30 min.
+
+     First/open/stale:
+     Google -> D1.
+
+     Force refresh:
+     Google immediately.
+  ========================================================== */
+
+  async function loadStock(
+    force = false
+  ) {
+
+    if (
+      !branch?.code
+    ) {
+
+      return;
+    }
+
+
+    try {
+
+      setStockLoading(
+        true
+      );
+
+
+      setStockError(
+        ""
+      );
+
+
+      const url =
+        `/api/staff/bart/stock-view?branch=${encodeURIComponent(
+          branch.code
+        )}${
+          force
+            ? "&refresh=1"
+            : ""
+        }`;
+
+
+      const response =
+        await fetch(
+          url,
+          {
+            cache:
+              "no-store",
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+
+        throw new Error(
+          data.message ||
+          "Unable to load stock."
+        );
+      }
+
+
+      setStock(
+        data.stock
+      );
+
+
+      setStockSource(
+        data.source
+      );
+
+
+      setStockSyncedAt(
+        data.syncedAt
+      );
+
+
+    } catch (error) {
+
+      setStockError(
+        error.message ||
+        "Unable to load stock."
+      );
+
+    } finally {
+
+      setStockLoading(
+        false
+      );
+    }
+  }
+
+
+  /* ==========================================================
+     STOCK VIEW BUTTON
+  ========================================================== */
+
+  async function toggleStockView() {
+
+    touch();
+
+
+    const newState =
+      !showStock;
+
+
+    setShowStock(
+      newState
+    );
+
+
+    /*
+      Only load when opening.
+    */
+
+    if (
+      newState &&
+      !stock
+    ) {
+
+      await loadStock(
+        false
+      );
+    }
+  }
+
+
+  /* ==========================================================
+     DATABASE REFRESH
+
+     Master branch/password/SheetIDs.
   ========================================================== */
 
   async function refreshDatabase() {
+
     const password =
       window.prompt(
         "Enter database refresh password:"
       );
 
+
     if (!password) {
+
       return;
     }
 
+
     try {
-      refreshActivity();
 
       setDatabaseRefreshing(
         true
       );
 
-      setDatabaseMessage({
-        type: "info",
-
-        text:
-          "Reading latest branch and transfer data from Google Sheets...",
-      });
 
       const response =
         await fetch(
-          API.databaseSync,
+
+          "/api/admin/sync-bart",
+
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
+
               "X-Admin-Key":
                 password,
             },
           }
         );
 
+
       const data =
         await response.json();
+
 
       if (
         !response.ok ||
         !data.success
       ) {
+
         throw new Error(
           data.message ||
-            "Database refresh failed."
+          "Refresh failed."
         );
       }
 
-      setDatabaseMessage({
-        type:
-          "success",
 
-        text:
-          `Database updated: ${
-            data.branches ??
-            data.count ??
-            0
-          } branches and ${
-            data.transfers ??
-            0
-          } transfers synced.`,
-      });
+      alert(
+        `Database refreshed.\n\nBranches: ${data.branches}\nTransfers: ${data.transfers}`
+      );
 
-      await loadDatabaseStatus();
 
-      await loadPendingTransfers({
-        openFirst: false,
-      });
+      await loadTransfers(
+        false
+      );
+
 
       onRefresh?.();
-    } catch (error) {
-      setDatabaseMessage({
-        type: "error",
 
-        text:
-          error.message ||
-          "Database refresh failed.",
-      });
+
+    } catch (error) {
+
+      alert(
+        error.message
+      );
+
     } finally {
+
       setDatabaseRefreshing(
         false
       );
@@ -975,59 +1267,35 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     NORMAL SCREEN REFRESH
-
-     DOES NOT CALL GOOGLE.
+     MODULE CLICK
   ========================================================== */
 
-  async function refreshScreen() {
-    refreshActivity();
-
-    await Promise.all([
-      loadDatabaseStatus(),
-
-      loadPendingTransfers({
-        openFirst: false,
-      }),
-    ]);
-
-    onRefresh?.();
-  }
-
-
-  /* ==========================================================
-     MODULE OPEN
-  ========================================================== */
-
-  function openModule(
-    moduleId
+  async function moduleClick(
+    module
   ) {
-    refreshActivity();
+
+    touch();
+
+
+    if (
+      module ===
+      "stock-view"
+    ) {
+
+      await toggleStockView();
+
+      return;
+    }
+
+
+    /*
+      Remaining pages are connected
+      in next conversion steps.
+    */
 
     onModule?.(
-      moduleId
+      module
     );
-  }
-
-
-  /* ==========================================================
-     LAST SYNC FORMAT
-  ========================================================== */
-
-  function formatLastSync(
-    value
-  ) {
-    if (!value) {
-      return "Never";
-    }
-
-    try {
-      return new Date(
-        value
-      ).toLocaleString();
-    } catch {
-      return value;
-    }
   }
 
 
@@ -1037,6 +1305,7 @@ export default function BartStaffDashboard({
 
   return (
     <div className="bart-dashboard">
+
       <div className="bart-dashboard-grid" />
 
       <div className="bart-dashboard-glow glow-one" />
@@ -1044,24 +1313,18 @@ export default function BartStaffDashboard({
       <div className="bart-dashboard-glow glow-two" />
 
 
-      {/* =====================================================
-          NAV
-      ===================================================== */}
+      {/* ======================================================
+          NAVBAR
+      ====================================================== */}
 
       <header className="bart-dashboard-nav">
-        <motion.div
-          className="bart-dash-brand"
-          initial={{
-            opacity: 0,
-            x: -18,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-        >
+
+        <div className="bart-dash-brand">
+
           <div className="bart-dash-logo">
-            <Coffee size={19} />
+            <Coffee
+              size={19}
+            />
           </div>
 
           <div>
@@ -1073,42 +1336,32 @@ export default function BartStaffDashboard({
               STAFF OPERATIONS
             </span>
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          className="bart-nav-actions"
-          initial={{
-            opacity: 0,
-            x: 18,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-        >
+
+        <div className="bart-nav-actions">
+
           <div className="bart-session-status">
             <span />
 
             LIVE SESSION
           </div>
 
-          {/* GOOGLE -> D1 DATABASE REFRESH */}
 
           <button
-            type="button"
             className="bart-icon-button"
-            disabled={
-              databaseRefreshing
-            }
             onClick={
               refreshDatabase
             }
-            title="Refresh Database from Google Sheets"
+            disabled={
+              databaseRefreshing
+            }
+            title="Refresh Database"
           >
             {databaseRefreshing ? (
               <LoaderCircle
                 size={17}
-                className="branch-loading-spinner"
+                className="dam-spin"
               />
             ) : (
               <Database
@@ -1117,14 +1370,26 @@ export default function BartStaffDashboard({
             )}
           </button>
 
-          {/* NORMAL D1 REFRESH */}
 
           <button
-            type="button"
             className="bart-icon-button"
-            onClick={
-              refreshScreen
-            }
+            onClick={() => {
+
+              loadTransfers(
+                false
+              );
+
+              if (
+                showStock
+              ) {
+
+                loadStock(
+                  false
+                );
+              }
+
+              onRefresh?.();
+            }}
             title="Refresh Dashboard"
           >
             <RefreshCcw
@@ -1132,73 +1397,49 @@ export default function BartStaffDashboard({
             />
           </button>
 
-          {/* LOGOUT */}
 
           <button
-            type="button"
             className="bart-icon-button danger"
-            onClick={() => {
-              refreshActivity();
-
-              onLogout?.();
-            }}
-            title="Logout"
+            onClick={() =>
+              onLogout?.()
+            }
           >
             <LogOut
               size={17}
             />
           </button>
-        </motion.div>
+        </div>
       </header>
 
 
-      {/* =====================================================
+      {/* ======================================================
           MAIN
-      ===================================================== */}
+      ====================================================== */}
 
       <main className="bart-dashboard-main">
-        <motion.button
-          type="button"
-          className="bart-back-button"
-          onClick={() => {
-            refreshActivity();
 
-            onBack?.();
-          }}
-          initial={{
-            opacity: 0,
-            x: -10,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
+        <button
+          className="bart-back-button"
+          onClick={() =>
+            onBack?.()
+          }
         >
           <ArrowLeft
             size={15}
           />
 
           CHANGE BRANCH
-        </motion.button>
+        </button>
 
 
-        {/* ===================================================
-            HERO
-        =================================================== */}
+        {/* HERO */}
 
         <section className="bart-dashboard-hero">
-          <motion.div
-            className="bart-hero-copy"
-            initial={{
-              opacity: 0,
-              y: 28,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-          >
+
+          <div className="bart-hero-copy">
+
             <div className="bart-mini-label">
+
               <Activity
                 size={12}
               />
@@ -1206,9 +1447,9 @@ export default function BartStaffDashboard({
               BART BRANCH NETWORK
             </div>
 
+
             <h1>
               Branch operations,
-
               <br />
 
               <span>
@@ -1216,31 +1457,20 @@ export default function BartStaffDashboard({
               </span>
             </h1>
 
+
             <p>
-              Manage stock records,
-              transfers, schedules and
-              daily branch operations
-              from your BART workspace.
+              Manage stock, transfers,
+              schedules and daily branch
+              operations from your BART
+              workspace.
             </p>
-          </motion.div>
+          </div>
 
 
-          {/* ACTIVE BRANCH */}
+          <div className="bart-branch-card">
 
-          <motion.div
-            className="bart-branch-card"
-            initial={{
-              opacity: 0,
-              y: 25,
-              scale: 0.96,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1,
-            }}
-          >
             <div className="bart-branch-top">
+
               <div className="bart-branch-location">
                 <MapPin
                   size={16}
@@ -1252,26 +1482,33 @@ export default function BartStaffDashboard({
               </span>
             </div>
 
+
             <h2>
-              {branch?.name ||
-                "BART Branch"}
+              {
+                branch?.name
+              }
             </h2>
 
+
             <div className="bart-branch-code">
-              {branch?.code ||
-                "B001"}
+              {
+                branch?.code
+              }
             </div>
 
+
             <div className="bart-branch-meta">
+
               <div>
-                <Timer
+                <Clock3
                   size={14}
                 />
 
                 <span>
-                  30 Min Session
+                  Session Active
                 </span>
               </div>
+
 
               <div>
                 <ShieldCheck
@@ -1283,78 +1520,71 @@ export default function BartStaffDashboard({
                 </span>
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
 
 
-        {/* ===================================================
-            TRANSFER CENTER
-        =================================================== */}
+        {/* ====================================================
+            LIVE TRANSFER CENTER
+        ==================================================== */}
 
-        <motion.section
-          className={`bart-notification-strip ${
-            pendingTransfers.length >
-            0
-              ? "has-pending-transfer"
-              : ""
-          }`}
-          initial={{
-            opacity: 0,
-            y: 18,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
+        <section
+          className={
+            `bart-notification-strip ${
+              pendingTransfers.length >
+              0
+                ? "dam-has-transfer"
+                : ""
+            }`
+          }
         >
+
           <div className="bart-notification-icon">
             <Bell
               size={17}
             />
           </div>
 
+
           <div className="bart-notification-text">
+
             <small>
-              TRANSFER CENTER
+              LIVE TRANSFER CENTER
             </small>
 
+
             <strong>
-              {transfersLoading
-                ? "Checking pending transfers..."
+
+              {transferLoading
+                ? "Checking latest transfers..."
                 : pendingTransfers.length >
                   0
-                ? `${
-                    pendingTransfers.length
-                  } pending transfer${
+                ? `${pendingTransfers.length} pending transfer${
                     pendingTransfers.length >
                     1
                       ? "s"
                       : ""
                   }`
                 : "No pending transfers right now"}
+
             </strong>
           </div>
 
-          <button
-            type="button"
-            disabled={
-              transfersLoading ||
-              pendingTransfers.length ===
-                0
-            }
-            onClick={() => {
-              refreshActivity();
 
-              if (
-                pendingTransfers.length >
-                0
-              ) {
-                setActiveTransfer(
-                  pendingTransfers[0]
-                );
-              }
-            }}
+          <button
+            disabled={
+              pendingTransfers.length ===
+              0
+            }
+            onClick={() =>
+              setSelectedTransfer(
+                pendingTransfers[
+                  0
+                ]
+              )
+            }
           >
+
             {pendingTransfers.length >
             0
               ? "Review Transfer"
@@ -1364,219 +1594,15 @@ export default function BartStaffDashboard({
               size={15}
             />
           </button>
-        </motion.section>
+        </section>
 
 
-        {/* ===================================================
-            TRANSFER RESULT
-        =================================================== */}
-
-        <AnimatePresence>
-          {transferMessage && (
-            <motion.div
-              className={`bart-operation-message ${transferMessage.type}`}
-              initial={{
-                opacity: 0,
-                y: -8,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              exit={{
-                opacity: 0,
-              }}
-            >
-              {transferMessage.type ===
-              "success" ? (
-                <CheckCircle2
-                  size={16}
-                />
-              ) : (
-                <XCircle
-                  size={16}
-                />
-              )}
-
-              <span>
-                {
-                  transferMessage.text
-                }
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setTransferMessage(
-                    null
-                  )
-                }
-              >
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-
-        {/* ===================================================
-            DATABASE STATUS
-        =================================================== */}
-
-        <motion.section
-          className="bart-database-status-card"
-          initial={{
-            opacity: 0,
-            y: 15,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-        >
-          <div className="bart-db-status-left">
-            <div className="bart-db-icon">
-              <Database
-                size={17}
-              />
-            </div>
-
-            <div>
-              <small>
-                LIVE CACHE
-              </small>
-
-              <strong>
-                Cloudflare D1
-              </strong>
-            </div>
-          </div>
-
-          <div className="bart-db-stat">
-            <small>
-              BRANCHES
-            </small>
-
-            <strong>
-              {
-                databaseStatus.branches
-              }
-            </strong>
-          </div>
-
-          <div className="bart-db-stat">
-            <small>
-              TRANSFERS
-            </small>
-
-            <strong>
-              {
-                databaseStatus.transfers
-              }
-            </strong>
-          </div>
-
-          <div className="bart-db-sync">
-            <small>
-              LAST GOOGLE SYNC
-            </small>
-
-            <strong>
-              {formatLastSync(
-                databaseStatus.lastSync
-              )}
-            </strong>
-          </div>
-
-          <button
-            type="button"
-            className="database-refresh-btn"
-            disabled={
-              databaseRefreshing
-            }
-            onClick={
-              refreshDatabase
-            }
-          >
-            {databaseRefreshing ? (
-              <LoaderCircle
-                className="branch-loading-spinner"
-                size={16}
-              />
-            ) : (
-              <RotateCcw
-                size={16}
-              />
-            )}
-
-            {databaseRefreshing
-              ? "SYNCING..."
-              : "REFRESH DATABASE"}
-          </button>
-        </motion.section>
-
-
-        {/* DATABASE MESSAGE */}
-
-        <AnimatePresence>
-          {databaseMessage && (
-            <motion.div
-              className={`bart-operation-message ${databaseMessage.type}`}
-              initial={{
-                opacity: 0,
-                y: -8,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              exit={{
-                opacity: 0,
-              }}
-            >
-              {databaseMessage.type ===
-              "success" ? (
-                <CheckCircle2
-                  size={16}
-                />
-              ) : databaseMessage.type ===
-                "error" ? (
-                <XCircle
-                  size={16}
-                />
-              ) : (
-                <LoaderCircle
-                  size={16}
-                  className="branch-loading-spinner"
-                />
-              )}
-
-              <span>
-                {
-                  databaseMessage.text
-                }
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setDatabaseMessage(
-                    null
-                  )
-                }
-              >
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-
-        {/* ===================================================
-            MODULE HEADING
-        =================================================== */}
+        {/* ====================================================
+            MODULES
+        ==================================================== */}
 
         <section className="bart-module-header">
+
           <div>
             <span>
               OPERATIONS
@@ -1587,67 +1613,79 @@ export default function BartStaffDashboard({
             </h2>
           </div>
 
+
           <div className="bart-module-count">
             04 MODULES
           </div>
         </section>
 
 
-        {/* ===================================================
-            MODULES
-        =================================================== */}
-
         <section className="bart-module-grid">
+
           {modules.map(
             (
               module,
               index
             ) => {
+
               const Icon =
                 module.icon;
 
+
               return (
                 <motion.button
-                  type="button"
                   key={
                     module.id
                   }
-                  className="bart-module-card"
+                  type="button"
+                  className={`bart-module-card ${
+                    module.id ===
+                      "stock-view" &&
+                    showStock
+                      ? "dam-module-active"
+                      : ""
+                  }`}
                   onClick={() =>
-                    openModule(
+                    moduleClick(
                       module.id
                     )
                   }
                   initial={{
-                    opacity: 0,
-                    y: 30,
+                    opacity:
+                      0,
+
+                    y:
+                      25,
                   }}
                   animate={{
-                    opacity: 1,
-                    y: 0,
+                    opacity:
+                      1,
+
+                    y:
+                      0,
                   }}
                   transition={{
                     delay:
-                      0.18 +
                       index *
-                        0.07,
+                      0.05,
                   }}
                   whileHover={{
-                    y: -7,
-                  }}
-                  whileTap={{
-                    scale:
-                      0.985,
+                    y:
+                      -6,
                   }}
                 >
+
                   <div className="bart-card-light" />
 
+
                   <div className="bart-module-top">
+
                     <div className="bart-module-icon">
                       <Icon
                         size={22}
                       />
                     </div>
+
 
                     <span className="bart-module-number">
                       {
@@ -1656,11 +1694,13 @@ export default function BartStaffDashboard({
                     </span>
                   </div>
 
+
                   <div className="bart-module-subtitle">
                     {
                       module.subtitle
                     }
                   </div>
+
 
                   <h3>
                     {
@@ -1668,21 +1708,44 @@ export default function BartStaffDashboard({
                     }
                   </h3>
 
+
                   <p>
                     {
                       module.description
                     }
                   </p>
 
+
                   <div className="bart-module-open">
+
                     <span>
-                      OPEN MODULE
+
+                      {module.id ===
+                        "stock-view" &&
+                      showStock
+                        ? "CLOSE VIEW"
+                        : "OPEN MODULE"}
+
                     </span>
 
+
                     <div>
-                      <ArrowRight
-                        size={16}
-                      />
+
+                      {module.id ===
+                        "stock-view" &&
+                      showStock ? (
+
+                        <Eye
+                          size={16}
+                        />
+
+                      ) : (
+
+                        <ArrowRight
+                          size={16}
+                        />
+
+                      )}
                     </div>
                   </div>
                 </motion.button>
@@ -1692,100 +1755,243 @@ export default function BartStaffDashboard({
         </section>
 
 
-        {/* ===================================================
-            BOTTOM STATUS
-        =================================================== */}
+        {/* ====================================================
+            ACTUAL STOCK VIEW
+        ==================================================== */}
 
-        <motion.section
-          className="bart-bottom-status"
-          initial={{
-            opacity: 0,
-          }}
-          animate={{
-            opacity: 1,
-          }}
-          transition={{
-            delay: 0.45,
-          }}
-        >
+        <AnimatePresence>
+
+          {showStock && (
+
+            <motion.section
+              className="dam-stock-view"
+              initial={{
+                opacity:
+                  0,
+
+                y:
+                  20,
+              }}
+              animate={{
+                opacity:
+                  1,
+
+                y:
+                  0,
+              }}
+              exit={{
+                opacity:
+                  0,
+
+                y:
+                  10,
+              }}
+            >
+
+              <div className="dam-stock-view-header">
+
+                <div>
+
+                  <span>
+                    {branch?.code} / STOCK VIEW
+                  </span>
+
+                  <h2>
+                    {branch?.name} Inventory
+                  </h2>
+
+                  <p>
+                    Daily and weekly stock records.
+                  </p>
+                </div>
+
+
+                <div className="dam-stock-actions">
+
+                  {stockSource && (
+
+                    <span className="dam-stock-source">
+                      {stockSource}
+                    </span>
+                  )}
+
+
+                  <button
+                    disabled={
+                      stockLoading
+                    }
+                    onClick={() =>
+                      loadStock(
+                        true
+                      )
+                    }
+                  >
+
+                    {stockLoading ? (
+
+                      <LoaderCircle
+                        size={15}
+                        className="dam-spin"
+                      />
+
+                    ) : (
+
+                      <RotateCcw
+                        size={15}
+                      />
+
+                    )}
+
+                    REFRESH STOCK
+                  </button>
+
+
+                  <button
+                    onClick={() =>
+                      setShowStock(
+                        false
+                      )
+                    }
+                  >
+                    <X
+                      size={15}
+                    />
+                  </button>
+                </div>
+              </div>
+
+
+              {stockLoading &&
+              !stock ? (
+
+                <div className="dam-stock-loading">
+
+                  <LoaderCircle
+                    size={25}
+                    className="dam-spin"
+                  />
+
+                  Loading branch stock...
+                </div>
+
+              ) : stockError ? (
+
+                <div className="dam-stock-error">
+
+                  <XCircle
+                    size={18}
+                  />
+
+                  {
+                    stockError
+                  }
+                </div>
+
+              ) : stock ? (
+
+                <>
+
+                  <StockTable
+                    title="Daily Items Stock"
+                    rows={
+                      stock.daily
+                    }
+                  />
+
+
+                  <StockTable
+                    title="Weekly Items Stock"
+                    rows={
+                      stock.weekly
+                    }
+                  />
+
+                </>
+
+              ) : null}
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+
+        {/* ====================================================
+            BOTTOM STATUS
+        ==================================================== */}
+
+        <section className="bart-bottom-status">
+
           <div>
+
             <PackageOpen
               size={17}
             />
 
             <span>
+
               <strong>
-                Branch Operations
+                Smart Cache
               </strong>
 
               <small>
-                Ready for staff use
+                D1 protects Google API
               </small>
+
             </span>
           </div>
 
+
           <div className="bart-status-line" />
 
+
           <div>
+
             <ShieldCheck
               size={17}
             />
 
             <span>
+
               <strong>
-                D1 Protected
+                Live Transfers
               </strong>
 
               <small>
-                Repeated reads do not hit Google
+                Automatic transfer checks
               </small>
+
             </span>
           </div>
-
-          <div className="bart-status-line" />
-
-          <div>
-            <Clock3
-              size={17}
-            />
-
-            <span>
-              <strong>
-                Session Security
-              </strong>
-
-              <small>
-                30-minute inactivity logout
-              </small>
-            </span>
-          </div>
-        </motion.section>
+        </section>
       </main>
 
 
-      {/* =====================================================
-          PENDING TRANSFER POPUP
-      ===================================================== */}
+      {/* ======================================================
+          TRANSFER POPUP
+      ====================================================== */}
 
-      <TransferModal
+      <TransferPopup
         transfer={
-          activeTransfer
+          selectedTransfer
         }
-        loading={
-          transferActionLoading
+
+        busy={
+          transferBusy
         }
-        onClose={() =>
-          setActiveTransfer(
+
+        close={() =>
+          setSelectedTransfer(
             null
           )
         }
-        onAccept={() =>
-          respondToTransfer(
+
+        accept={() =>
+          respondTransfer(
             "accept"
           )
         }
-        onReject={() =>
-          respondToTransfer(
+
+        reject={() =>
+          respondTransfer(
             "reject"
           )
         }
