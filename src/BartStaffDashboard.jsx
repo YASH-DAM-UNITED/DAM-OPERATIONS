@@ -6,8 +6,6 @@ import {
   useState,
 } from "react";
 
-
-import BartStaffSchedule from "./BartStaffSchedule";
 import {
   AnimatePresence,
   motion,
