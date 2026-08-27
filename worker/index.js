@@ -168,6 +168,45 @@ async function ensureDatabase(env) {
       expires_at INTEGER NOT NULL
     )
   `).run();
+
+/* ============================================================
+   STOCK RECORD CACHE
+============================================================ */
+
+await env.DB.prepare(`
+  CREATE TABLE IF NOT EXISTS stock_record_cache (
+    branch_code TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    synced_at INTEGER NOT NULL
+  )
+`).run();
+
+
+/* ============================================================
+   STOCK RECORD DRAFTS
+
+   Persistent across browser refresh / device session.
+============================================================ */
+
+await env.DB.prepare(`
+  CREATE TABLE IF NOT EXISTS stock_drafts (
+    draft_key TEXT PRIMARY KEY,
+    branch_code TEXT NOT NULL,
+    stock_date TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`).run();
+
+
+
+
+
+
+
+
+   
 }
 
 
@@ -3250,6 +3289,1142 @@ async function databaseStatus(
 ============================================================ */
 
 export default {
+
+
+
+
+
+
+
+
+/* ============================================================
+   STOCK RECORD
+============================================================ */
+
+const STOCK_RECORD_CACHE_SECONDS = 120;
+
+
+/* ============================================================
+   BAKERY SKUS
+
+   EXACT LIST FROM OLD STREAMLIT
+============================================================ */
+
+const BAKERY_SKUS = new Set([
+  "F066",
+  "F081",
+  "CB054",
+  "S019",
+  "CB055",
+  "CB076",
+  "CB056",
+  "K154",
+  "K256",
+  "CB078",
+  "CB057",
+  "CB072",
+]);
+
+
+/* ============================================================
+   FIND SECTION
+============================================================ */
+
+function findSectionIndex(
+  values,
+  sectionName
+) {
+  const target =
+    String(sectionName)
+      .trim()
+      .toUpperCase();
+
+  for (
+    let i = 0;
+    i < values.length;
+    i++
+  ) {
+    if (
+      String(values[i] || "")
+        .trim()
+        .toUpperCase() ===
+      target
+    ) {
+      return i;
+    }
+  }
+
+  return null;
+}
+
+
+/* ============================================================
+   BUILD STOCK RECORD STRUCTURE
+
+   Same Daily / Weekly / Bakery logic
+   as Streamlit.
+============================================================ */
+
+function buildStockRecordData(
+  sheetData
+) {
+  if (
+    !Array.isArray(sheetData) ||
+    !sheetData.length
+  ) {
+    throw new Error(
+      "Stocks sheet returned empty data."
+    );
+  }
+
+  const columnA =
+    sheetData.map(
+      (row) =>
+        String(
+          row?.[0] || ""
+        ).trim()
+    );
+
+  const dailyStart =
+    findSectionIndex(
+      columnA,
+      "DAILY ITEM"
+    );
+
+  const weeklyStart =
+    findSectionIndex(
+      columnA,
+      "WEEKLY ITEM"
+    );
+
+  if (
+    dailyStart === null ||
+    weeklyStart === null
+  ) {
+    throw new Error(
+      "'DAILY ITEM' or 'WEEKLY ITEM' section not found."
+    );
+  }
+
+
+  function normalItems(
+    mode
+  ) {
+    const items = [];
+
+    const start =
+      mode === "daily"
+        ? dailyStart + 1
+        : weeklyStart + 1;
+
+    const end =
+      mode === "daily"
+        ? weeklyStart
+        : sheetData.length;
+
+    for (
+      let index = start;
+      index < end;
+      index++
+    ) {
+      const row =
+        sheetData[index] || [];
+
+      const name =
+        String(
+          row[0] || ""
+        ).trim();
+
+      if (!name) {
+        continue;
+      }
+
+      const upper =
+        name.toUpperCase();
+
+      if (
+        upper === "DAILY ITEM" ||
+        upper === "WEEKLY ITEM"
+      ) {
+        continue;
+      }
+
+      items.push({
+        name,
+
+        sku:
+          String(
+            row[1] || ""
+          ).trim(),
+
+        uom:
+          String(
+            row[2] || ""
+          ).trim(),
+
+        row:
+          index + 1,
+      });
+    }
+
+    return items;
+  }
+
+
+  /*
+    Bakery scans entire sheet and
+    checks Column B against fixed SKUs.
+  */
+
+  const bakery = [];
+
+  for (
+    let index = 1;
+    index < sheetData.length;
+    index++
+  ) {
+    const row =
+      sheetData[index] || [];
+
+    const name =
+      String(
+        row[0] || ""
+      ).trim();
+
+    const sku =
+      String(
+        row[1] || ""
+      ).trim();
+
+    if (
+      name &&
+      BAKERY_SKUS.has(sku)
+    ) {
+      bakery.push({
+        name,
+        sku,
+
+        uom:
+          String(
+            row[2] || ""
+          ).trim(),
+
+        row:
+          index + 1,
+      });
+    }
+  }
+
+
+  return {
+    headers:
+      sheetData[0] || [],
+
+    daily:
+      normalItems("daily"),
+
+    weekly:
+      normalItems("weekly"),
+
+    bakery,
+
+    dailyStart,
+    weeklyStart,
+  };
+}
+
+
+/* ============================================================
+   DUPLICATE CHECK
+
+   Bakery NEVER blocks duplicates.
+============================================================ */
+
+function stockAlreadySubmitted(
+  sheetData,
+  structure,
+  mode,
+  date
+) {
+  if (
+    mode === "bakery"
+  ) {
+    return false;
+  }
+
+  const headers =
+    sheetData[0] || [];
+
+  const columnIndex =
+    headers.indexOf(date);
+
+  if (
+    columnIndex === -1
+  ) {
+    return false;
+  }
+
+  const start =
+    mode === "daily"
+      ? structure.dailyStart + 1
+      : structure.weeklyStart + 1;
+
+  const end =
+    mode === "daily"
+      ? structure.weeklyStart
+      : sheetData.length;
+
+  for (
+    let rowIndex = start;
+    rowIndex < end;
+    rowIndex++
+  ) {
+    const row =
+      sheetData[rowIndex] || [];
+
+    if (
+      columnIndex <
+        row.length &&
+      String(
+        row[columnIndex] || ""
+      ).trim()
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+/* ============================================================
+   GET BRANCH SHEET ID
+============================================================ */
+
+async function getBartBranchForStock(
+  env,
+  branchCode
+) {
+  return env.DB.prepare(`
+    SELECT
+      code,
+      name,
+      sheet_id
+
+    FROM branches
+
+    WHERE
+      code = ?
+      AND brand = 'bart'
+
+    LIMIT 1
+  `)
+    .bind(branchCode)
+    .first();
+}
+
+
+/* ============================================================
+   LOAD STOCK RECORD STRUCTURE
+
+   D1 cache for 2 minutes.
+============================================================ */
+
+async function loadStockRecordStructure(
+  env,
+  branchCode,
+  force = false
+) {
+  await ensureDatabase(env);
+
+  const branch =
+    await getBartBranchForStock(
+      env,
+      branchCode
+    );
+
+  if (
+    !branch ||
+    !branch.sheet_id
+  ) {
+    throw new Error(
+      "Branch SheetID not available."
+    );
+  }
+
+  const now =
+    Math.floor(
+      Date.now() / 1000
+    );
+
+  const cached =
+    await env.DB.prepare(`
+      SELECT
+        payload,
+        synced_at
+
+      FROM stock_record_cache
+
+      WHERE branch_code = ?
+
+      LIMIT 1
+    `)
+      .bind(branchCode)
+      .first();
+
+
+  if (
+    !force &&
+    cached &&
+    now -
+      Number(
+        cached.synced_at
+      ) <
+      STOCK_RECORD_CACHE_SECONDS
+  ) {
+    return {
+      branch,
+      source: "D1",
+
+      sheetData:
+        JSON.parse(
+          cached.payload
+        ),
+    };
+  }
+
+
+  const rows =
+    await getSheetValues(
+      env,
+      branch.sheet_id,
+      "Stocks!A:ZZ"
+    );
+
+  await env.DB.prepare(`
+    INSERT INTO stock_record_cache (
+      branch_code,
+      payload,
+      synced_at
+    )
+
+    VALUES (?, ?, ?)
+
+    ON CONFLICT(branch_code)
+    DO UPDATE SET
+      payload =
+        excluded.payload,
+      synced_at =
+        excluded.synced_at
+  `)
+    .bind(
+      branchCode,
+      JSON.stringify(rows),
+      now
+    )
+    .run();
+
+
+  return {
+    branch,
+    source: "GOOGLE->D1",
+    sheetData: rows,
+  };
+}
+
+
+/* ============================================================
+   STOCK RECORD INIT
+
+   Returns:
+   Daily items
+   Weekly items
+   Bakery items
+   Duplicate flags
+   Existing drafts
+============================================================ */
+
+async function stockRecordInit(
+  env,
+  branchCode,
+  date
+) {
+  const loaded =
+    await loadStockRecordStructure(
+      env,
+      branchCode
+    );
+
+  const structure =
+    buildStockRecordData(
+      loaded.sheetData
+    );
+
+
+  const draftsResult =
+    await env.DB.prepare(`
+      SELECT
+        mode,
+        payload,
+        updated_at
+
+      FROM stock_drafts
+
+      WHERE
+        branch_code = ?
+        AND stock_date = ?
+    `)
+      .bind(
+        branchCode,
+        date
+      )
+      .all();
+
+
+  const drafts = {};
+
+  for (
+    const draft of
+    draftsResult.results || []
+  ) {
+    try {
+      drafts[draft.mode] = {
+        values:
+          JSON.parse(
+            draft.payload
+          ),
+
+        updatedAt:
+          draft.updated_at,
+      };
+    } catch {
+      // ignore broken draft
+    }
+  }
+
+
+  return {
+    success: true,
+
+    source:
+      loaded.source,
+
+    branch: {
+      code:
+        loaded.branch.code,
+
+      name:
+        loaded.branch.name,
+    },
+
+    date,
+
+    duplicate: {
+      daily:
+        stockAlreadySubmitted(
+          loaded.sheetData,
+          structure,
+          "daily",
+          date
+        ),
+
+      weekly:
+        stockAlreadySubmitted(
+          loaded.sheetData,
+          structure,
+          "weekly",
+          date
+        ),
+
+      bakery:
+        false,
+    },
+
+    items: {
+      daily:
+        structure.daily,
+
+      weekly:
+        structure.weekly,
+
+      bakery:
+        structure.bakery,
+    },
+
+    drafts,
+  };
+}
+
+
+/* ============================================================
+   DRAFT KEY
+============================================================ */
+
+function makeStockDraftKey(
+  branchCode,
+  date,
+  mode
+) {
+  return `${branchCode}_${date}_${mode}`;
+}
+
+
+/* ============================================================
+   SAVE DRAFT
+============================================================ */
+
+async function saveStockDraft(
+  env,
+  body
+) {
+  const branchCode =
+    String(
+      body.branchCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const date =
+    String(
+      body.date || ""
+    ).trim();
+
+  const mode =
+    String(
+      body.mode || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const values =
+    body.values &&
+    typeof body.values ===
+      "object"
+      ? body.values
+      : {};
+
+
+  if (
+    !branchCode ||
+    !date ||
+    ![
+      "daily",
+      "weekly",
+      "bakery",
+    ].includes(mode)
+  ) {
+    throw new Error(
+      "Invalid draft information."
+    );
+  }
+
+
+  const key =
+    makeStockDraftKey(
+      branchCode,
+      date,
+      mode
+    );
+
+  const now =
+    Date.now();
+
+
+  await env.DB.prepare(`
+    INSERT INTO stock_drafts (
+      draft_key,
+      branch_code,
+      stock_date,
+      mode,
+      payload,
+      updated_at
+    )
+
+    VALUES (?, ?, ?, ?, ?, ?)
+
+    ON CONFLICT(draft_key)
+    DO UPDATE SET
+      payload =
+        excluded.payload,
+      updated_at =
+        excluded.updated_at
+  `)
+    .bind(
+      key,
+      branchCode,
+      date,
+      mode,
+      JSON.stringify(values),
+      now
+    )
+    .run();
+
+
+  return {
+    success: true,
+    savedAt: now,
+  };
+}
+
+
+/* ============================================================
+   DELETE DRAFT
+============================================================ */
+
+async function deleteStockDraft(
+  env,
+  branchCode,
+  date,
+  mode
+) {
+  const key =
+    makeStockDraftKey(
+      branchCode,
+      date,
+      mode
+    );
+
+  await env.DB.prepare(`
+    DELETE FROM stock_drafts
+    WHERE draft_key = ?
+  `)
+    .bind(key)
+    .run();
+
+
+  return {
+    success: true,
+  };
+}
+
+
+/* ============================================================
+   GOOGLE STOCK SUBMISSION
+
+   IMPORTANT:
+   This ALWAYS fetches LIVE Google sheet
+   before final submission.
+
+   D1 cache is NOT trusted for final write.
+============================================================ */
+
+async function submitStockRecord(
+  env,
+  body
+) {
+  await ensureDatabase(env);
+
+
+  const branchCode =
+    String(
+      body.branchCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const date =
+    String(
+      body.date || ""
+    ).trim();
+
+  const mode =
+    String(
+      body.mode || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const values =
+    body.values &&
+    typeof body.values ===
+      "object"
+      ? body.values
+      : {};
+
+
+  if (
+    !branchCode ||
+    !date ||
+    ![
+      "daily",
+      "weekly",
+      "bakery",
+    ].includes(mode)
+  ) {
+    throw new Error(
+      "Invalid submission information."
+    );
+  }
+
+
+  const branch =
+    await getBartBranchForStock(
+      env,
+      branchCode
+    );
+
+
+  if (
+    !branch ||
+    !branch.sheet_id
+  ) {
+    throw new Error(
+      "Branch SheetID missing."
+    );
+  }
+
+
+  /*
+    FINAL submission always checks
+    live Google data.
+
+    Prevents discrepancy even if cache
+    was slightly old.
+  */
+
+  const liveSheet =
+    await getSheetValues(
+      env,
+      branch.sheet_id,
+      "Stocks!A:ZZ"
+    );
+
+
+  const structure =
+    buildStockRecordData(
+      liveSheet
+    );
+
+
+  /*
+    Re-check duplicate at server side.
+  */
+
+  if (
+    stockAlreadySubmitted(
+      liveSheet,
+      structure,
+      mode,
+      date
+    )
+  ) {
+    return {
+      success: false,
+
+      duplicate: true,
+
+      message:
+        "Data for this date has already been submitted. No rewrite is possible.",
+    };
+  }
+
+
+  const modeItems =
+    structure[mode];
+
+
+  if (
+    !Array.isArray(modeItems) ||
+    !modeItems.length
+  ) {
+    throw new Error(
+      "No stock items available for this mode."
+    );
+  }
+
+
+  /*
+    Validate ALL expected items.
+
+    Same principle as Streamlit:
+    no missing or non-numeric quantities.
+  */
+
+  const missing = [];
+  const invalid = [];
+
+
+  for (
+    const item of modeItems
+  ) {
+    const value =
+      String(
+        values[
+          item.name
+        ] ?? ""
+      ).trim();
+
+    if (!value) {
+      missing.push(
+        item.name
+      );
+
+      continue;
+    }
+
+    if (
+      !/^\d+$/.test(value)
+    ) {
+      invalid.push(
+        item.name
+      );
+    }
+  }
+
+
+  if (
+    invalid.length
+  ) {
+    return {
+      success: false,
+
+      validation: true,
+
+      type: "invalid",
+
+      items: invalid,
+
+      message:
+        "Some quantities contain non-numeric values.",
+    };
+  }
+
+
+  if (
+    missing.length
+  ) {
+    return {
+      success: false,
+
+      validation: true,
+
+      type: "missing",
+
+      items: missing,
+
+      message:
+        "Some quantities are still empty.",
+    };
+  }
+
+
+  /*
+    Find existing date column,
+    or create next column.
+  */
+
+  const headers =
+    liveSheet[0] || [];
+
+
+  let dateColumnIndex =
+    headers.indexOf(date);
+
+
+  let googleColumnNumber;
+
+
+  const updates = [];
+
+
+  if (
+    dateColumnIndex === -1
+  ) {
+    dateColumnIndex =
+      headers.length;
+
+    googleColumnNumber =
+      dateColumnIndex + 1;
+
+    const dateColumnLetter =
+      columnNumberToLetters(
+        googleColumnNumber
+      );
+
+    updates.push({
+      range:
+        `Stocks!${dateColumnLetter}1`,
+
+      values:
+        [[date]],
+    });
+  } else {
+    googleColumnNumber =
+      dateColumnIndex + 1;
+  }
+
+
+  /*
+    LIVE Column A mapping.
+
+    Equivalent to write_sheet.col_values(1)
+    from Streamlit.
+  */
+
+  const itemToRow =
+    new Map();
+
+
+  liveSheet.forEach(
+    (row, index) => {
+      const item =
+        String(
+          row?.[0] || ""
+        ).trim();
+
+      if (item) {
+        itemToRow.set(
+          item,
+          index + 1
+        );
+      }
+    }
+  );
+
+
+  const columnLetter =
+    columnNumberToLetters(
+      googleColumnNumber
+    );
+
+
+  for (
+    const item of modeItems
+  ) {
+    const row =
+      itemToRow.get(
+        item.name
+      );
+
+    if (!row) {
+      continue;
+    }
+
+    updates.push({
+      range:
+        `Stocks!${columnLetter}${row}`,
+
+      values: [
+        [
+          String(
+            values[
+              item.name
+            ]
+          ).trim(),
+        ],
+      ],
+    });
+  }
+
+
+  if (
+    updates.length === 0
+  ) {
+    throw new Error(
+      "No stock cells available to update."
+    );
+  }
+
+
+  /*
+    ONE Google batch write.
+  */
+
+  await batchWriteSheet(
+    env,
+    branch.sheet_id,
+    updates
+  );
+
+
+  const transactionId =
+    crypto
+      .randomUUID()
+      .replace(/-/g, "")
+      .slice(0, 8)
+      .toUpperCase();
+
+
+  const submissionTime =
+    new Date()
+      .toISOString();
+
+
+  /*
+    Clear draft.
+  */
+
+  await deleteStockDraft(
+    env,
+    branchCode,
+    date,
+    mode
+  );
+
+
+  /*
+    Stock has changed.
+
+    Clear BOTH stock caches.
+  */
+
+  await env.DB.prepare(`
+    DELETE FROM stock_cache
+    WHERE branch_code = ?
+  `)
+    .bind(branchCode)
+    .run();
+
+
+  await env.DB.prepare(`
+    DELETE FROM stock_record_cache
+    WHERE branch_code = ?
+  `)
+    .bind(branchCode)
+    .run();
+
+
+  return {
+    success: true,
+
+    transactionId,
+
+    submissionTime,
+
+    branch: {
+      code:
+        branch.code,
+
+      name:
+        branch.name,
+    },
+
+    mode,
+    date,
+
+    itemsWritten:
+      updates.length -
+      (
+        headers.indexOf(
+          date
+        ) === -1
+          ? 1
+          : 0
+      ),
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+   
 
   async fetch(
     request,
