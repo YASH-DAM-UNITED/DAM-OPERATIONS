@@ -1,13 +1,27 @@
 /* ============================================================
-   DAM OPERATIONS BACKEND
-   BART STAFF
+   DAM OPERATIONS
+   BART STAFF BACKEND
 
    React
-     ↓
+      ↓
    Cloudflare Worker
-     ↓
-   D1 = repeated/live reads
-   Google Sheets = controlled source/writes
+      ↓
+   D1 Cache + Google Sheets
+
+   MASTER DATA:
+   Manual Google -> D1 sync
+
+   TRANSFERS:
+   Automatic short live cache (~15 sec)
+
+   STOCK VIEW:
+   Per-branch cache (~30 min)
+
+============================================================ */
+
+
+/* ============================================================
+   CONFIG
 ============================================================ */
 
 const GOOGLE_TOKEN_URL =
@@ -16,28 +30,47 @@ const GOOGLE_TOKEN_URL =
 const GOOGLE_SCOPE =
   "https://www.googleapis.com/auth/spreadsheets";
 
+const TRANSFER_CACHE_SECONDS = 15;
+
+const STOCK_CACHE_SECONDS =
+  30 * 60;
+
 
 /* ============================================================
-   RESPONSE HELPERS
+   RESPONSE
 ============================================================ */
 
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
+
     "Access-Control-Allow-Headers":
       "Content-Type, X-Admin-Key",
+
     "Access-Control-Allow-Methods":
       "GET, POST, OPTIONS",
   };
 }
 
-function jsonResponse(data, status = 200) {
+
+function jsonResponse(
+  data,
+  status = 200
+) {
   return new Response(
-    JSON.stringify(data, null, 2),
+    JSON.stringify(
+      data,
+      null,
+      2
+    ),
+
     {
       status,
+
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
+
         ...corsHeaders(),
       },
     }
@@ -50,11 +83,15 @@ function jsonResponse(data, status = 200) {
 ============================================================ */
 
 async function ensureDatabase(env) {
+
   if (!env.DB) {
     throw new Error(
-      "D1 binding 'DB' is missing."
+      "D1 binding DB is missing."
     );
   }
+
+
+  /* BRANCH MASTER */
 
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS branches (
@@ -69,23 +106,13 @@ async function ensureDatabase(env) {
 
 
   await env.DB.prepare(`
-    CREATE INDEX IF NOT EXISTS idx_branches_brand
+    CREATE INDEX IF NOT EXISTS
+    idx_branches_brand
     ON branches(brand)
   `).run();
 
 
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS system_meta (
-      key TEXT PRIMARY KEY,
-      value TEXT,
-      updated_at TEXT NOT NULL
-    )
-  `).run();
-
-
-  /*
-    Mirrors MASTERBRANCHSHEET -> Transfers
-  */
+  /* TRANSFERS */
 
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS transfers (
@@ -102,84 +129,151 @@ async function ensureDatabase(env) {
 
 
   await env.DB.prepare(`
-    CREATE INDEX IF NOT EXISTS idx_transfers_destination_status
+    CREATE INDEX IF NOT EXISTS
+    idx_transfers_destination_status
     ON transfers(destination, status)
+  `).run();
+
+
+  /* STOCK VIEW CACHE */
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS stock_cache (
+      branch_code TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      synced_at INTEGER NOT NULL
+    )
+  `).run();
+
+
+  /* GENERAL META */
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS system_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `).run();
+
+
+  /*
+    Prevent 40 branches from
+    refreshing Google simultaneously.
+  */
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS sync_locks (
+      key TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    )
   `).run();
 }
 
 
 /* ============================================================
-   PASSWORD HASHING
+   PASSWORD HASH
 ============================================================ */
 
-async function hashPassword(password) {
-  const bytes =
+async function hashPassword(
+  password
+) {
+
+  const encoded =
     new TextEncoder().encode(
       String(password ?? "")
     );
 
+
   const digest =
     await crypto.subtle.digest(
       "SHA-256",
-      bytes
+      encoded
     );
+
 
   return Array.from(
     new Uint8Array(digest)
   )
-    .map((byte) =>
-      byte
-        .toString(16)
-        .padStart(2, "0")
+    .map(
+      (byte) =>
+        byte
+          .toString(16)
+          .padStart(2, "0")
     )
     .join("");
 }
 
 
 /* ============================================================
-   GOOGLE SERVICE ACCOUNTS
+   GOOGLE ACCOUNTS
 ============================================================ */
 
 function getGoogleAccounts(env) {
+
   const accounts = [];
+
+
+  /* CONNECTION 1 */
 
   if (
     env.GOOGLE_CLIENT_EMAIL &&
     env.GOOGLE_PRIVATE_KEY
   ) {
+
     accounts.push({
-      id: "google-1",
-      email: env.GOOGLE_CLIENT_EMAIL,
-      privateKey: env.GOOGLE_PRIVATE_KEY,
+      id:
+        "google-1",
+
+      email:
+        env.GOOGLE_CLIENT_EMAIL,
+
+      privateKey:
+        env.GOOGLE_PRIVATE_KEY,
     });
   }
+
+
+  /* CONNECTION 2 */
 
   if (
     env.GOOGLE_CLIENT_EMAIL_2 &&
     env.GOOGLE_PRIVATE_KEY_2
   ) {
+
     accounts.push({
-      id: "google-2",
-      email: env.GOOGLE_CLIENT_EMAIL_2,
-      privateKey: env.GOOGLE_PRIVATE_KEY_2,
+      id:
+        "google-2",
+
+      email:
+        env.GOOGLE_CLIENT_EMAIL_2,
+
+      privateKey:
+        env.GOOGLE_PRIVATE_KEY_2,
     });
   }
 
+
   if (!accounts.length) {
+
     throw new Error(
-      "No Google service accounts configured."
+      "No Google service account configured."
     );
   }
+
 
   return accounts;
 }
 
 
 /* ============================================================
-   GOOGLE JWT HELPERS
+   GOOGLE JWT
 ============================================================ */
 
-function base64UrlEncodeString(input) {
+function base64UrlEncodeString(
+  input
+) {
+
   return btoa(input)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -187,16 +281,28 @@ function base64UrlEncodeString(input) {
 }
 
 
-function arrayBufferToBase64Url(buffer) {
+function arrayBufferToBase64Url(
+  buffer
+) {
+
   const bytes =
-    new Uint8Array(buffer);
+    new Uint8Array(
+      buffer
+    );
 
   let binary = "";
 
-  for (const byte of bytes) {
+
+  for (
+    const byte of bytes
+  ) {
+
     binary +=
-      String.fromCharCode(byte);
+      String.fromCharCode(
+        byte
+      );
   }
+
 
   return btoa(binary)
     .replace(/\+/g, "-")
@@ -205,17 +311,26 @@ function arrayBufferToBase64Url(buffer) {
 }
 
 
-function pemToArrayBuffer(pem) {
+function pemToArrayBuffer(
+  pem
+) {
+
   if (!pem) {
+
     throw new Error(
       "Google private key missing."
     );
   }
 
+
   const normalized =
     String(pem)
-      .replace(/\\n/g, "\n")
+      .replace(
+        /\\n/g,
+        "\n"
+      )
       .trim();
+
 
   const clean =
     normalized
@@ -227,29 +342,32 @@ function pemToArrayBuffer(pem) {
         /-----END PRIVATE KEY-----/g,
         ""
       )
-      .replace(/\s/g, "");
+      .replace(
+        /\s/g,
+        ""
+      );
 
-  if (!clean) {
-    throw new Error(
-      "Google private key is empty."
-    );
-  }
 
-  const binary = atob(clean);
+  const binary =
+    atob(clean);
+
 
   const bytes =
     new Uint8Array(
       binary.length
     );
 
+
   for (
     let i = 0;
     i < binary.length;
     i++
   ) {
+
     bytes[i] =
       binary.charCodeAt(i);
   }
+
 
   return bytes.buffer;
 }
@@ -266,13 +384,16 @@ const tokenCache =
 async function getGoogleAccessToken(
   account
 ) {
+
   const now =
     Date.now();
+
 
   const cached =
     tokenCache.get(
       account.id
     );
+
 
   if (
     cached &&
@@ -280,6 +401,7 @@ async function getGoogleAccessToken(
     cached.expiresAt >
       now + 60000
   ) {
+
     return cached.token;
   }
 
@@ -291,12 +413,16 @@ async function getGoogleAccessToken(
 
 
   const header = {
-    alg: "RS256",
-    typ: "JWT",
+    alg:
+      "RS256",
+
+    typ:
+      "JWT",
   };
 
 
   const claims = {
+
     iss:
       account.email,
 
@@ -314,24 +440,29 @@ async function getGoogleAccessToken(
   };
 
 
-  const headerEncoded =
+  const encodedHeader =
     base64UrlEncodeString(
-      JSON.stringify(header)
+      JSON.stringify(
+        header
+      )
     );
 
 
-  const claimsEncoded =
+  const encodedClaims =
     base64UrlEncodeString(
-      JSON.stringify(claims)
+      JSON.stringify(
+        claims
+      )
     );
 
 
-  const unsignedJWT =
-    `${headerEncoded}.${claimsEncoded}`;
+  const unsignedToken =
+    `${encodedHeader}.${encodedClaims}`;
 
 
   const key =
     await crypto.subtle.importKey(
+
       "pkcs8",
 
       pemToArrayBuffer(
@@ -354,18 +485,20 @@ async function getGoogleAccessToken(
 
   const signature =
     await crypto.subtle.sign(
+
       "RSASSA-PKCS1-v1_5",
 
       key,
 
-      new TextEncoder().encode(
-        unsignedJWT
-      )
+      new TextEncoder()
+        .encode(
+          unsignedToken
+        )
     );
 
 
   const jwt =
-    `${unsignedJWT}.` +
+    `${unsignedToken}.` +
     arrayBufferToBase64Url(
       signature
     );
@@ -373,17 +506,22 @@ async function getGoogleAccessToken(
 
   const response =
     await fetch(
+
       GOOGLE_TOKEN_URL,
+
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
+
           "Content-Type":
             "application/x-www-form-urlencoded",
         },
 
         body:
           new URLSearchParams({
+
             grant_type:
               "urn:ietf:params:oauth:grant-type:jwt-bearer",
 
@@ -394,29 +532,32 @@ async function getGoogleAccessToken(
     );
 
 
-  const data =
+  const result =
     await response.json();
 
 
   if (!response.ok) {
+
     throw new Error(
-      data.error_description ||
-      data.error ||
+      result.error_description ||
+      result.error ||
       "Google authentication failed."
     );
   }
 
 
   tokenCache.set(
+
     account.id,
+
     {
       token:
-        data.access_token,
+        result.access_token,
 
       expiresAt:
         now +
         (
-          data.expires_in ||
+          result.expires_in ||
           3600
         ) *
           1000,
@@ -424,12 +565,12 @@ async function getGoogleAccessToken(
   );
 
 
-  return data.access_token;
+  return result.access_token;
 }
 
 
 /* ============================================================
-   GOOGLE DUAL CONNECTION
+   DUAL GOOGLE CONNECTION
 ============================================================ */
 
 let googleCounter = 0;
@@ -438,35 +579,50 @@ let googleCounter = 0;
 function rotatedGoogleAccounts(
   env
 ) {
+
   const accounts =
     getGoogleAccounts(env);
 
-  const index =
+
+  const start =
     googleCounter %
     accounts.length;
 
+
   googleCounter++;
 
+
   return [
-    ...accounts.slice(index),
-    ...accounts.slice(0, index),
+
+    ...accounts.slice(
+      start
+    ),
+
+    ...accounts.slice(
+      0,
+      start
+    ),
   ];
 }
 
 
 async function googleRequest(
   env,
-  makeRequest
+  requestFactory
 ) {
+
   const accounts =
     rotatedGoogleAccounts(env);
 
-  let lastError = null;
+
+  let lastError =
+    null;
 
 
   for (
     const account of accounts
   ) {
+
     try {
 
       const token =
@@ -476,11 +632,16 @@ async function googleRequest(
 
 
       const response =
-        await makeRequest(
+        await requestFactory(
           token,
           account
         );
 
+
+      /*
+        Try second account on
+        quota/rate error.
+      */
 
       if (
         response.status === 429 ||
@@ -489,7 +650,7 @@ async function googleRequest(
 
         lastError =
           new Error(
-            `${account.id} quota/rate limited`
+            `${account.id} rate limited`
           );
 
         continue;
@@ -500,13 +661,14 @@ async function googleRequest(
 
     } catch (error) {
 
-      lastError =
-        error;
-
       console.error(
-        account.id,
+        `${account.id} failed`,
         error
       );
+
+
+      lastError =
+        error;
     }
   }
 
@@ -514,7 +676,7 @@ async function googleRequest(
   throw (
     lastError ||
     new Error(
-      "All Google connections failed."
+      "All Google accounts failed."
     )
   );
 }
@@ -542,18 +704,35 @@ async function getSheetValues(
 
   const response =
     await googleRequest(
+
       env,
 
-      (token) =>
-        fetch(
+      (
+        token,
+        account
+      ) => {
+
+        console.log(
+          "GOOGLE READ:",
+          account.id,
+          range
+        );
+
+
+        return fetch(
           url,
           {
+            method:
+              "GET",
+
             headers: {
+
               Authorization:
                 `Bearer ${token}`,
             },
           }
-        )
+        );
+      }
     );
 
 
@@ -562,9 +741,10 @@ async function getSheetValues(
 
 
   if (!response.ok) {
+
     throw new Error(
       data?.error?.message ||
-      "Google read failed."
+      "Google Sheet read failed."
     );
   }
 
@@ -592,15 +772,28 @@ async function batchWriteSheet(
 
   const response =
     await googleRequest(
+
       env,
 
-      (token) =>
-        fetch(
+      (
+        token,
+        account
+      ) => {
+
+        console.log(
+          "GOOGLE WRITE:",
+          account.id
+        );
+
+
+        return fetch(
           url,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
+
               Authorization:
                 `Bearer ${token}`,
 
@@ -610,13 +803,15 @@ async function batchWriteSheet(
 
             body:
               JSON.stringify({
+
                 valueInputOption:
                   "USER_ENTERED",
 
                 data,
               }),
           }
-        )
+        );
+      }
     );
 
 
@@ -625,6 +820,7 @@ async function batchWriteSheet(
 
 
   if (!response.ok) {
+
     throw new Error(
       result?.error?.message ||
       "Google write failed."
@@ -637,23 +833,35 @@ async function batchWriteSheet(
 
 
 /* ============================================================
-   HEADER NORMALIZER
+   HEADER NORMALIZATION
 ============================================================ */
 
-function normalizeHeader(value) {
+function normalizeHeader(
+  value
+) {
+
   return String(
     value || ""
   )
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/_/g, "")
-    .replace(/-/g, "");
+    .replace(
+      /\s+/g,
+      ""
+    )
+    .replace(
+      /_/g,
+      ""
+    )
+    .replace(
+      /-/g,
+      ""
+    );
 }
 
 
 /* ============================================================
-   READ MASTER BRANCHES
+   MASTER BRANCH DATA
 ============================================================ */
 
 async function readBartMaster(
@@ -662,13 +870,17 @@ async function readBartMaster(
 
   const rows =
     await getSheetValues(
+
       env,
+
       env.MASTER_SHEET_ID,
+
       "Sheet1!A:Z"
     );
 
 
   if (!rows.length) {
+
     return [];
   }
 
@@ -684,15 +896,18 @@ async function readBartMaster(
       "branchcode"
     );
 
+
   const nameIndex =
     headers.indexOf(
       "branchname"
     );
 
+
   const sheetIdIndex =
     headers.indexOf(
       "sheetid"
     );
+
 
   const passwordIndex =
     headers.indexOf(
@@ -704,8 +919,9 @@ async function readBartMaster(
     codeIndex === -1 ||
     nameIndex === -1
   ) {
+
     throw new Error(
-      "Branch columns missing."
+      "BranchCode / BranchName missing."
     );
   }
 
@@ -720,30 +936,38 @@ async function readBartMaster(
 
     const code =
       String(
-        row[codeIndex] || ""
+        row[
+          codeIndex
+        ] || ""
       )
         .trim()
         .toUpperCase();
 
 
     if (
-      !code.startsWith("B")
+      !code.startsWith(
+        "B"
+      )
     ) {
+
       continue;
     }
 
 
     const password =
       passwordIndex >= 0
+
         ? String(
             row[
               passwordIndex
             ] || ""
           ).trim()
+
         : "";
 
 
     branches.push({
+
       code,
 
       brand:
@@ -751,16 +975,20 @@ async function readBartMaster(
 
       name:
         String(
-          row[nameIndex] || ""
+          row[
+            nameIndex
+          ] || ""
         ).trim(),
 
       sheetId:
         sheetIdIndex >= 0
+
           ? String(
               row[
                 sheetIdIndex
               ] || ""
             ).trim()
+
           : "",
 
       passwordHash:
@@ -776,27 +1004,26 @@ async function readBartMaster(
 
 
 /* ============================================================
-   READ TRANSFERS MASTER
+   READ TRANSFERS GOOGLE
 ============================================================ */
 
-async function readTransfersMaster(
+async function readTransfersGoogle(
   env
 ) {
 
-  /*
-    Your Python reads:
-    MASTERBRANCHSHEET -> Transfers
-  */
-
   const rows =
     await getSheetValues(
+
       env,
+
       env.MASTER_SHEET_ID,
+
       "Transfers!A:Z"
     );
 
 
   if (!rows.length) {
+
     return [];
   }
 
@@ -807,33 +1034,43 @@ async function readTransfersMaster(
     );
 
 
-  function index(name) {
-    return headers.indexOf(
-      normalizeHeader(name)
-    );
-  }
+  const findIndex =
+    (name) =>
+      headers.indexOf(
+        normalizeHeader(name)
+      );
 
 
   const idIndex =
-    index("ID");
+    findIndex("ID");
+
 
   const originIndex =
-    index("Origin");
+    findIndex("Origin");
+
 
   const destinationIndex =
-    index("Destination");
+    findIndex(
+      "Destination"
+    );
+
 
   const itemsIndex =
-    index("Items");
+    findIndex("Items");
 
-  const qtyIndex =
-    index("Quantities");
+
+  const quantitiesIndex =
+    findIndex(
+      "Quantities"
+    );
+
 
   const reasonIndex =
-    index("Reason");
+    findIndex("Reason");
+
 
   const statusIndex =
-    index("Status");
+    findIndex("Status");
 
 
   if (
@@ -841,8 +1078,9 @@ async function readTransfersMaster(
     originIndex === -1 ||
     destinationIndex === -1
   ) {
+
     throw new Error(
-      "Transfers sheet required columns missing."
+      "Required Transfers columns missing."
     );
   }
 
@@ -859,14 +1097,19 @@ async function readTransfersMaster(
 
     .map(
       (row) => ({
+
         id:
           String(
-            row[idIndex] || ""
+            row[
+              idIndex
+            ] || ""
           ).trim(),
 
         origin:
           String(
-            row[originIndex] || ""
+            row[
+              originIndex
+            ] || ""
           ).trim(),
 
         destination:
@@ -878,39 +1121,47 @@ async function readTransfersMaster(
 
         items:
           itemsIndex >= 0
+
             ? String(
                 row[
                   itemsIndex
                 ] || ""
               )
+
             : "",
 
         quantities:
-          qtyIndex >= 0
+          quantitiesIndex >= 0
+
             ? String(
                 row[
-                  qtyIndex
+                  quantitiesIndex
                 ] || ""
               )
+
             : "",
 
         reason:
           reasonIndex >= 0
+
             ? String(
                 row[
                   reasonIndex
                 ] || ""
               )
+
             : "",
 
         status:
           statusIndex >= 0
+
             ? String(
                 row[
                   statusIndex
                 ] ||
                 "Pending"
               ).trim()
+
             : "Pending",
       })
     );
@@ -918,75 +1169,144 @@ async function readTransfersMaster(
 
 
 /* ============================================================
-   ADMIN KEY
+   SYNC LOCK
 ============================================================ */
 
-function adminAuthorized(
-  request,
-  env
+async function acquireLock(
+  env,
+  key,
+  seconds = 20
 ) {
 
-  return (
-    Boolean(
-      env.ADMIN_SYNC_KEY
-    ) &&
+  const now =
+    Math.floor(
+      Date.now() / 1000
+    );
 
-    request.headers.get(
-      "X-Admin-Key"
-    ) ===
-      env.ADMIN_SYNC_KEY
+
+  const expires =
+    now + seconds;
+
+
+  const result =
+    await env.DB.prepare(`
+      INSERT INTO sync_locks (
+        key,
+        expires_at
+      )
+
+      VALUES (?, ?)
+
+      ON CONFLICT(key)
+      DO UPDATE SET
+        expires_at = excluded.expires_at
+
+      WHERE
+        sync_locks.expires_at < ?
+    `)
+      .bind(
+        key,
+        expires,
+        now
+      )
+      .run();
+
+
+  return (
+    Number(
+      result?.meta?.changes ||
+      0
+    ) > 0
+  );
+}
+
+
+async function releaseLock(
+  env,
+  key
+) {
+
+  await env.DB.prepare(`
+    DELETE FROM sync_locks
+    WHERE key = ?
+  `)
+    .bind(key)
+    .run();
+}
+
+
+/* ============================================================
+   SYSTEM META
+============================================================ */
+
+async function setMeta(
+  env,
+  key,
+  value
+) {
+
+  const now =
+    new Date()
+      .toISOString();
+
+
+  await env.DB.prepare(`
+    INSERT INTO system_meta (
+      key,
+      value,
+      updated_at
+    )
+
+    VALUES (?, ?, ?)
+
+    ON CONFLICT(key)
+    DO UPDATE SET
+      value =
+        excluded.value,
+
+      updated_at =
+        excluded.updated_at
+  `)
+    .bind(
+      key,
+      String(value),
+      now
+    )
+    .run();
+}
+
+
+async function getMeta(
+  env,
+  key
+) {
+
+  const result =
+    await env.DB.prepare(`
+      SELECT value
+      FROM system_meta
+      WHERE key = ?
+      LIMIT 1
+    `)
+      .bind(key)
+      .first();
+
+
+  return (
+    result?.value ||
+    null
   );
 }
 
 
 /* ============================================================
-   REFRESH DATABASE
-   GOOGLE -> D1
+   SAVE TRANSFERS TO D1
 ============================================================ */
 
-async function syncBartDatabase(
-  request,
-  env
+async function saveTransfersToD1(
+  env,
+  transfers
 ) {
-
-  if (
-    !adminAuthorized(
-      request,
-      env
-    )
-  ) {
-
-    return jsonResponse(
-      {
-        success: false,
-        message:
-          "Invalid admin sync key.",
-      },
-      401
-    );
-  }
-
-
-  await ensureDatabase(
-    env
-  );
-
-
-  /*
-    ONE controlled refresh:
-
-    Branches + Transfers
-  */
-
-  const [
-    branches,
-    transfers,
-  ] =
-    await Promise.all([
-      readBartMaster(env),
-      readTransfersMaster(env),
-    ]);
-
 
   const now =
     new Date()
@@ -995,48 +1315,6 @@ async function syncBartDatabase(
 
   const statements = [];
 
-
-  /* BRANCHES */
-
-  statements.push(
-    env.DB.prepare(`
-      DELETE FROM branches
-      WHERE brand = ?
-    `).bind(
-      "bart"
-    )
-  );
-
-
-  for (
-    const branch of branches
-  ) {
-
-    statements.push(
-      env.DB.prepare(`
-        INSERT INTO branches (
-          code,
-          brand,
-          name,
-          sheet_id,
-          password_hash,
-          updated_at
-        )
-
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(
-        branch.code,
-        branch.brand,
-        branch.name,
-        branch.sheetId,
-        branch.passwordHash,
-        now
-      )
-    );
-  }
-
-
-  /* TRANSFERS */
 
   statements.push(
     env.DB.prepare(`
@@ -1062,41 +1340,22 @@ async function syncBartDatabase(
           updated_at
         )
 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        transfer.id,
-        transfer.origin,
-        transfer.destination,
-        transfer.items,
-        transfer.quantities,
-        transfer.reason,
-        transfer.status,
-        now
-      )
+        VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?
+        )
+      `)
+        .bind(
+          transfer.id,
+          transfer.origin,
+          transfer.destination,
+          transfer.items,
+          transfer.quantities,
+          transfer.reason,
+          transfer.status,
+          now
+        )
     );
   }
-
-
-  statements.push(
-    env.DB.prepare(`
-      INSERT INTO system_meta (
-        key,
-        value,
-        updated_at
-      )
-
-      VALUES (?, ?, ?)
-
-      ON CONFLICT(key)
-      DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `).bind(
-      "bart_last_sync",
-      now,
-      now
-    )
-  );
 
 
   await env.DB.batch(
@@ -1104,12 +1363,310 @@ async function syncBartDatabase(
   );
 
 
+  await setMeta(
+    env,
+    "transfers_last_sync_ms",
+    Date.now()
+  );
+}
+
+
+/* ============================================================
+   AUTOMATIC LIVE TRANSFERS
+
+   Maximum desired age:
+   ~15 seconds.
+
+   40 branch opens do NOT mean
+   40 Google reads.
+============================================================ */
+
+async function ensureTransfersFresh(
+  env
+) {
+
+  await ensureDatabase(
+    env
+  );
+
+
+  const previous =
+    Number(
+      await getMeta(
+        env,
+        "transfers_last_sync_ms"
+      ) || 0
+    );
+
+
+  const age =
+    Date.now() -
+    previous;
+
+
+  if (
+    previous &&
+    age <
+      TRANSFER_CACHE_SECONDS *
+        1000
+  ) {
+
+    return {
+      refreshed:
+        false,
+
+      source:
+        "D1",
+    };
+  }
+
+
+  /*
+    Try to become the ONE request
+    allowed to refresh Google.
+  */
+
+  const acquired =
+    await acquireLock(
+      env,
+      "transfer-live-sync",
+      20
+    );
+
+
+  if (!acquired) {
+
+    /*
+      Another request is already
+      refreshing Google.
+
+      We serve D1 immediately.
+    */
+
+    return {
+      refreshed:
+        false,
+
+      source:
+        "D1-WAITING-FOR-SYNC",
+    };
+  }
+
+
+  try {
+
+    /*
+      Re-check freshness after
+      acquiring lock.
+    */
+
+    const again =
+      Number(
+        await getMeta(
+          env,
+          "transfers_last_sync_ms"
+        ) || 0
+      );
+
+
+    if (
+      again &&
+      Date.now() -
+        again <
+        TRANSFER_CACHE_SECONDS *
+          1000
+    ) {
+
+      return {
+        refreshed:
+          false,
+
+        source:
+          "D1",
+      };
+    }
+
+
+    const transfers =
+      await readTransfersGoogle(
+        env
+      );
+
+
+    await saveTransfersToD1(
+      env,
+      transfers
+    );
+
+
+    return {
+      refreshed:
+        true,
+
+      source:
+        "GOOGLE->D1",
+
+      count:
+        transfers.length,
+    };
+
+  } finally {
+
+    await releaseLock(
+      env,
+      "transfer-live-sync"
+    );
+  }
+}
+
+
+/* ============================================================
+   MANUAL BRANCH DATABASE REFRESH
+============================================================ */
+
+function adminAuthorized(
+  request,
+  env
+) {
+
+  return (
+    Boolean(
+      env.ADMIN_SYNC_KEY
+    ) &&
+
+    request.headers.get(
+      "X-Admin-Key"
+    ) ===
+      env.ADMIN_SYNC_KEY
+  );
+}
+
+
+async function syncBartDatabase(
+  request,
+  env
+) {
+
+  if (
+    !adminAuthorized(
+      request,
+      env
+    )
+  ) {
+
+    return jsonResponse(
+      {
+        success:
+          false,
+
+        message:
+          "Invalid database refresh password.",
+      },
+
+      401
+    );
+  }
+
+
+  await ensureDatabase(
+    env
+  );
+
+
+  const branches =
+    await readBartMaster(
+      env
+    );
+
+
+  const now =
+    new Date()
+      .toISOString();
+
+
+  const statements = [];
+
+
+  statements.push(
+    env.DB.prepare(`
+      DELETE FROM branches
+      WHERE brand = ?
+    `)
+      .bind(
+        "bart"
+      )
+  );
+
+
+  for (
+    const branch of branches
+  ) {
+
+    statements.push(
+      env.DB.prepare(`
+        INSERT INTO branches (
+          code,
+          brand,
+          name,
+          sheet_id,
+          password_hash,
+          updated_at
+        )
+
+        VALUES (
+          ?, ?, ?, ?, ?, ?
+        )
+      `)
+        .bind(
+          branch.code,
+          branch.brand,
+          branch.name,
+          branch.sheetId,
+          branch.passwordHash,
+          now
+        )
+    );
+  }
+
+
+  await env.DB.batch(
+    statements
+  );
+
+
+  await setMeta(
+    env,
+    "bart_last_sync",
+    now
+  );
+
+
+  /*
+    Also get Transfers once.
+
+    But transfers do NOT depend
+    on this button afterward.
+  */
+
+  const transfers =
+    await readTransfersGoogle(
+      env
+    );
+
+
+  await saveTransfersToD1(
+    env,
+    transfers
+  );
+
+
   return jsonResponse({
+
     success:
       true,
 
     message:
-      "BART database refreshed.",
+      "BART database refreshed successfully.",
 
     branches:
       branches.length,
@@ -1125,7 +1682,6 @@ async function syncBartDatabase(
 
 /* ============================================================
    BART BRANCH LIST
-   D1 ONLY
 ============================================================ */
 
 async function getBartBranches(
@@ -1164,7 +1720,6 @@ async function getBartBranches(
 
 /* ============================================================
    BART LOGIN
-   D1 ONLY
 ============================================================ */
 
 async function bartLogin(
@@ -1177,8 +1732,28 @@ async function bartLogin(
   );
 
 
-  const body =
-    await request.json();
+  let body;
+
+
+  try {
+
+    body =
+      await request.json();
+
+  } catch {
+
+    return jsonResponse(
+      {
+        success:
+          false,
+
+        message:
+          "Invalid request.",
+      },
+
+      400
+    );
+  }
 
 
   const branchCode =
@@ -1227,19 +1802,20 @@ async function bartLogin(
         message:
           "Branch not found.",
       },
+
       404
     );
   }
 
 
-  const entered =
+  const enteredHash =
     await hashPassword(
       password
     );
 
 
   if (
-    entered !==
+    enteredHash !==
     branch.password_hash
   ) {
 
@@ -1251,16 +1827,19 @@ async function bartLogin(
         message:
           "Incorrect password.",
       },
+
       401
     );
   }
 
 
   return jsonResponse({
+
     success:
       true,
 
     branch: {
+
       code:
         branch.code,
 
@@ -1272,8 +1851,7 @@ async function bartLogin(
 
 
 /* ============================================================
-   PENDING TRANSFERS
-   D1 ONLY
+   LIVE PENDING TRANSFERS
 ============================================================ */
 
 async function getPendingTransfers(
@@ -1281,9 +1859,15 @@ async function getPendingTransfers(
   branchCode
 ) {
 
-  await ensureDatabase(
-    env
-  );
+  /*
+    THIS automatically checks whether
+    transfer cache needs Google refresh.
+  */
+
+  const freshness =
+    await ensureTransfersFresh(
+      env
+    );
 
 
   const branch =
@@ -1295,6 +1879,7 @@ async function getPendingTransfers(
       FROM branches
 
       WHERE code = ?
+
       LIMIT 1
     `)
       .bind(
@@ -1304,16 +1889,17 @@ async function getPendingTransfers(
 
 
   if (!branch) {
-    return [];
+
+    return {
+      transfers:
+        [],
+
+      freshness,
+    };
   }
 
 
-  /*
-    Old Streamlit compares full:
-    B001 - BRANCH NAME
-  */
-
-  const fullBranch =
+  const destination =
     `${branch.code} - ${branch.name}`;
 
 
@@ -1337,22 +1923,26 @@ async function getPendingTransfers(
       ORDER BY updated_at DESC
     `)
       .bind(
-        fullBranch
+        destination
       )
       .all();
 
 
-  return (
-    result.results ||
-    []
-  );
+  return {
+
+    transfers:
+      result.results ||
+      [],
+
+    freshness,
+  };
 }
 
 
 /* ============================================================
-   TRANSFER ITEM PARSER
+   TRANSFER PARSER
 
-   PORTED FROM PYTHON
+   SAME BEHAVIOR AS STREAMLIT
 ============================================================ */
 
 function parseTransferItems(
@@ -1362,7 +1952,12 @@ function parseTransferItems(
   const itemsText =
     String(
       transfer.items || ""
-    );
+    )
+      .replace(
+        /â€¢/g,
+        "•"
+      );
+
 
   const quantitiesText =
     String(
@@ -1374,6 +1969,7 @@ function parseTransferItems(
     !itemsText.trim() ||
     !quantitiesText.trim()
   ) {
+
     return [];
   }
 
@@ -1381,68 +1977,77 @@ function parseTransferItems(
   const items =
     itemsText
       .split("\n")
+
       .map(
         (item) =>
           item
             .replace(
-              "• ",
+              /^•\s*/,
               ""
             )
             .trim()
       )
+
       .filter(Boolean);
 
 
   const quantities =
     quantitiesText
       .split("\n")
+
       .map(
         (qty) =>
           qty.trim()
       )
+
       .filter(Boolean);
 
 
   const cart = [];
 
 
-  const size =
+  for (
+    let i = 0;
+    i <
     Math.min(
       items.length,
       quantities.length
     );
-
-
-  for (
-    let i = 0;
-    i < size;
     i++
   ) {
 
-    let item =
+    let rawItem =
       items[i];
 
 
     if (
-      item.includes("]")
+      rawItem.includes(
+        "]"
+      )
     ) {
-      item =
-        item
-          .split("]")
-          .slice(1)
-          .join("]")
+
+      rawItem =
+        rawItem
+          .split(
+            "]",
+            2
+          )[1]
           .trim();
     }
 
 
-    item =
-      item
-        .split(" (")[0]
+    const itemName =
+      rawItem
+        .split(
+          " ("
+        )[0]
         .trim();
 
 
     cart.push({
-      item,
+
+      item:
+        itemName,
 
       qty:
         quantities[i],
@@ -1478,7 +2083,8 @@ function columnNumberToLetters(
 
     result =
       String.fromCharCode(
-        65 + remainder
+        65 +
+        remainder
       ) +
       result;
 
@@ -1499,34 +2105,31 @@ function columnNumberToLetters(
 
 /* ============================================================
    YESTERDAY DATE
-
-   Same format as Python:
-   YYYY-MM-DD
 ============================================================ */
 
 function yesterdayDate() {
 
-  const d =
+  const now =
     new Date();
 
 
-  d.setUTCDate(
-    d.getUTCDate() - 1
+  now.setUTCDate(
+    now.getUTCDate() -
+    1
   );
 
 
-  return d
+  return now
     .toISOString()
-    .slice(0, 10);
+    .slice(
+      0,
+      10
+    );
 }
 
 
 /* ============================================================
-   MODIFY BRANCH STOCK
-
-   add / subtract
-
-   Preserves Python behavior.
+   STOCK REVERSAL
 ============================================================ */
 
 async function modifyBranchStock(
@@ -1538,13 +2141,17 @@ async function modifyBranchStock(
 
   const rows =
     await getSheetValues(
+
       env,
+
       spreadsheetId,
+
       "Stocks!A:ZZ"
     );
 
 
   if (!rows.length) {
+
     throw new Error(
       "Stocks sheet is empty."
     );
@@ -1568,13 +2175,14 @@ async function modifyBranchStock(
   if (
     dateIndex === -1
   ) {
+
     throw new Error(
       `Could not find stock date ${date}`
     );
   }
 
 
-  const itemNames =
+  const itemColumn =
     rows.map(
       (row) =>
         String(
@@ -1591,7 +2199,7 @@ async function modifyBranchStock(
   ) {
 
     const rowIndex =
-      itemNames.indexOf(
+      itemColumn.indexOf(
         entry.item
       );
 
@@ -1599,38 +2207,46 @@ async function modifyBranchStock(
     if (
       rowIndex === -1
     ) {
+
       continue;
     }
 
 
-    const currentRaw =
-      rows[rowIndex]?.[
+    const oldValue =
+      rows[
+        rowIndex
+      ]?.[
         dateIndex
       ];
 
 
     const current =
-      currentRaw &&
+      oldValue &&
       String(
-        currentRaw
+        oldValue
       ).trim()
+
         ? Number(
-            currentRaw
+            oldValue
           )
+
         : 0;
 
 
-    const qty =
-      parseInt(
-        entry.qty,
-        10
-      );
+    const quantity =
+      Number(
+        entry.qty
+      ) || 0;
 
 
     const newValue =
       mode === "subtract"
-        ? current - qty
-        : current + qty;
+
+        ? current -
+          quantity
+
+        : current +
+          quantity;
 
 
     const column =
@@ -1639,13 +2255,10 @@ async function modifyBranchStock(
       );
 
 
-    const sheetRow =
-      rowIndex + 1;
-
-
     updates.push({
+
       range:
-        `Stocks!${column}${sheetRow}`,
+        `Stocks!${column}${rowIndex + 1}`,
 
       values:
         [[newValue]],
@@ -1654,6 +2267,7 @@ async function modifyBranchStock(
 
 
   if (!updates.length) {
+
     throw new Error(
       "Transfer items not found in Stocks sheet."
     );
@@ -1661,15 +2275,26 @@ async function modifyBranchStock(
 
 
   await batchWriteSheet(
+
     env,
+
     spreadsheetId,
+
     updates
   );
+
+
+  /*
+    Stock changed:
+    delete branch stock cache.
+  */
+
+  return true;
 }
 
 
 /* ============================================================
-   FIND TRANSFER ROW IN GOOGLE
+   FIND GOOGLE TRANSFER ROW
 ============================================================ */
 
 async function findTransferRow(
@@ -1679,19 +2304,20 @@ async function findTransferRow(
 
   const rows =
     await getSheetValues(
+
       env,
+
       env.MASTER_SHEET_ID,
+
       "Transfers!A:Z"
     );
 
 
-  if (!rows.length) {
-    return null;
-  }
-
-
   const headers =
-    rows[0].map(
+    (
+      rows[0] ||
+      []
+    ).map(
       normalizeHeader
     );
 
@@ -1700,6 +2326,7 @@ async function findTransferRow(
     headers.indexOf(
       "id"
     );
+
 
   const statusIndex =
     headers.indexOf(
@@ -1711,8 +2338,9 @@ async function findTransferRow(
     idIndex === -1 ||
     statusIndex === -1
   ) {
+
     throw new Error(
-      "Transfers ID/Status columns missing."
+      "Transfers ID / Status column missing."
     );
   }
 
@@ -1725,18 +2353,21 @@ async function findTransferRow(
 
     if (
       String(
-        rows[i][idIndex] ||
-        ""
+        rows[i][
+          idIndex
+        ] || ""
       ).trim() ===
       transferId
     ) {
 
       return {
+
         row:
           i + 1,
 
         statusColumn:
-          statusIndex + 1,
+          statusIndex +
+          1,
       };
     }
   }
@@ -1747,7 +2378,7 @@ async function findTransferRow(
 
 
 /* ============================================================
-   UPDATE TRANSFER STATUS IN GOOGLE
+   UPDATE GOOGLE TRANSFER STATUS
 ============================================================ */
 
 async function updateGoogleTransferStatus(
@@ -1764,8 +2395,9 @@ async function updateGoogleTransferStatus(
 
 
   if (!location) {
+
     throw new Error(
-      "Transfer ID not found in Google."
+      "Transfer not found in Google."
     );
   }
 
@@ -1777,8 +2409,11 @@ async function updateGoogleTransferStatus(
 
 
   await batchWriteSheet(
+
     env,
+
     env.MASTER_SHEET_ID,
+
     [
       {
         range:
@@ -1793,7 +2428,7 @@ async function updateGoogleTransferStatus(
 
 
 /* ============================================================
-   ACCEPT / REJECT TRANSFER
+   ACCEPT / REJECT
 ============================================================ */
 
 async function respondTransfer(
@@ -1812,13 +2447,15 @@ async function respondTransfer(
 
   const transferId =
     String(
-      body.transferId || ""
+      body.transferId ||
+      ""
     ).trim();
 
 
   const action =
     String(
-      body.action || ""
+      body.action ||
+      ""
     )
       .trim()
       .toLowerCase();
@@ -1829,7 +2466,9 @@ async function respondTransfer(
     ![
       "accept",
       "reject",
-    ].includes(action)
+    ].includes(
+      action
+    )
   ) {
 
     return jsonResponse(
@@ -1840,6 +2479,7 @@ async function respondTransfer(
         message:
           "Invalid transfer request.",
       },
+
       400
     );
   }
@@ -1848,11 +2488,8 @@ async function respondTransfer(
   const transfer =
     await env.DB.prepare(`
       SELECT *
-
       FROM transfers
-
       WHERE id = ?
-
       LIMIT 1
     `)
       .bind(
@@ -1871,6 +2508,7 @@ async function respondTransfer(
         message:
           "Transfer not found.",
       },
+
       404
     );
   }
@@ -1889,182 +2527,37 @@ async function respondTransfer(
         message:
           "Transfer already processed.",
       },
+
       409
     );
   }
 
 
-  const finalStatus =
-    action === "accept"
+  const status =
+    action ===
+    "accept"
+
       ? "Accepted"
+
       : "Rejected";
 
 
   /*
-    ACCEPT:
+    Preserve old Streamlit order:
 
-    Old Python only changes status.
-  */
-
-  if (
-    action === "accept"
-  ) {
-
-    await updateGoogleTransferStatus(
-      env,
-      transferId,
-      "Accepted"
-    );
-
-
-    await env.DB.prepare(`
-      UPDATE transfers
-
-      SET
-        status = ?,
-        updated_at = ?
-
-      WHERE id = ?
-    `)
-      .bind(
-        "Accepted",
-        new Date()
-          .toISOString(),
-        transferId
-      )
-      .run();
-
-
-    return jsonResponse({
-      success:
-        true,
-
-      status:
-        "Accepted",
-    });
-  }
-
-
-  /*
-    REJECT:
-
-    1. Parse cart
-    2. Get origin/destination codes
-    3. Find SheetIDs from D1
-    4. Add stock back to origin
-    5. Subtract from destination
-    6. Mark Google transfer Rejected
-    7. Mark D1 transfer Rejected
-  */
-
-
-  const cart =
-    parseTransferItems(
-      transfer
-    );
-
-
-  const originCode =
-    String(
-      transfer.origin
-    )
-      .split(" - ")[0]
-      .trim();
-
-
-  const destinationCode =
-    String(
-      transfer.destination
-    )
-      .split(" - ")[0]
-      .trim();
-
-
-  const origin =
-    await env.DB.prepare(`
-      SELECT
-        sheet_id
-
-      FROM branches
-
-      WHERE code = ?
-
-      LIMIT 1
-    `)
-      .bind(
-        originCode
-      )
-      .first();
-
-
-  const destination =
-    await env.DB.prepare(`
-      SELECT
-        sheet_id
-
-      FROM branches
-
-      WHERE code = ?
-
-      LIMIT 1
-    `)
-      .bind(
-        destinationCode
-      )
-      .first();
-
-
-  if (
-    !origin?.sheet_id ||
-    !destination?.sheet_id
-  ) {
-
-    throw new Error(
-      "Origin or destination SheetID unavailable."
-    );
-  }
-
-
-  /*
-    SAME AS OLD PYTHON:
-
-    add back origin
-  */
-
-  await modifyBranchStock(
-    env,
-    origin.sheet_id,
-    cart,
-    "add"
-  );
-
-
-  /*
-    remove destination
-  */
-
-  await modifyBranchStock(
-    env,
-    destination.sheet_id,
-    cart,
-    "subtract"
-  );
-
-
-  /*
-    Update master transfer
+    1. Change Transfer status
+    2. If rejected perform reversal
   */
 
   await updateGoogleTransferStatus(
+
     env,
+
     transferId,
-    "Rejected"
+
+    status
   );
 
-
-  /*
-    Update D1
-  */
 
   await env.DB.prepare(`
     UPDATE transfers
@@ -2076,7 +2569,7 @@ async function respondTransfer(
     WHERE id = ?
   `)
     .bind(
-      "Rejected",
+      status,
       new Date()
         .toISOString(),
       transferId
@@ -2084,16 +2577,582 @@ async function respondTransfer(
     .run();
 
 
+  if (
+    action ===
+    "reject"
+  ) {
+
+    const cart =
+      parseTransferItems(
+        transfer
+      );
+
+
+    const originCode =
+      String(
+        transfer.origin
+      )
+        .split(
+          " - "
+        )[0]
+        .trim();
+
+
+    const destinationCode =
+      String(
+        transfer.destination
+      )
+        .split(
+          " - "
+        )[0]
+        .trim();
+
+
+    const origin =
+      await env.DB.prepare(`
+        SELECT sheet_id
+        FROM branches
+        WHERE code = ?
+        LIMIT 1
+      `)
+        .bind(
+          originCode
+        )
+        .first();
+
+
+    const destination =
+      await env.DB.prepare(`
+        SELECT sheet_id
+        FROM branches
+        WHERE code = ?
+        LIMIT 1
+      `)
+        .bind(
+          destinationCode
+        )
+        .first();
+
+
+    if (
+      !origin?.sheet_id ||
+      !destination?.sheet_id
+    ) {
+
+      throw new Error(
+        "Origin or destination SheetID missing."
+      );
+    }
+
+
+    /* ADD BACK ORIGIN */
+
+    await modifyBranchStock(
+
+      env,
+
+      origin.sheet_id,
+
+      cart,
+
+      "add"
+    );
+
+
+    /* REMOVE DESTINATION */
+
+    await modifyBranchStock(
+
+      env,
+
+      destination.sheet_id,
+
+      cart,
+
+      "subtract"
+    );
+
+
+    /*
+      Clear stock caches because
+      quantities changed.
+    */
+
+    await env.DB.prepare(`
+      DELETE FROM stock_cache
+
+      WHERE branch_code
+      IN (?, ?)
+    `)
+      .bind(
+        originCode,
+        destinationCode
+      )
+      .run();
+  }
+
+
   return jsonResponse({
+
     success:
       true,
 
-    status:
-      "Rejected",
+    status,
 
     message:
-      "Stock returned to origin and removed from destination.",
+      action ===
+      "accept"
+
+        ? "Transfer accepted successfully."
+
+        : "Transfer rejected and stock reversal completed.",
   });
+}
+
+
+/* ============================================================
+   STOCK VIEW PARSER
+
+   Ported from fetch_stock_data()
+============================================================ */
+
+function parseStockData(
+  data
+) {
+
+  if (
+    !data ||
+    !data.length
+  ) {
+
+    return {
+      headers: [],
+      daily: [],
+      weekly: [],
+    };
+  }
+
+
+  const headers =
+    data[0];
+
+
+  const dateColumns =
+    headers.slice(1);
+
+
+  const daily = [];
+  const weekly = [];
+
+
+  let currentSection =
+    null;
+
+
+  for (
+    const row of data
+  ) {
+
+    const rowText =
+      row
+        .join(" ")
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      rowText.includes(
+        "daily item"
+      )
+    ) {
+
+      currentSection =
+        "daily";
+
+      continue;
+    }
+
+
+    if (
+      rowText.includes(
+        "weekly item"
+      )
+    ) {
+
+      currentSection =
+        "weekly";
+
+      continue;
+    }
+
+
+    if (
+      currentSection ===
+        null ||
+      !row ||
+      !row[0]
+    ) {
+
+      continue;
+    }
+
+
+    const item =
+      String(
+        row[0]
+      ).trim();
+
+
+    const rowValues =
+      row.slice(1);
+
+
+    const values = [
+      ...rowValues,
+    ];
+
+
+    while (
+      values.length <
+      dateColumns.length
+    ) {
+
+      values.push("");
+    }
+
+
+    const cleaned = [];
+    let total = 0;
+
+
+    for (
+      let i = 0;
+      i <
+      dateColumns.length;
+      i++
+    ) {
+
+      const value =
+        values[i] ?? "";
+
+
+      /*
+        SAME AS PYTHON:
+        first 2 fields stay as-is.
+      */
+
+      if (
+        i < 2
+      ) {
+
+        cleaned.push(
+          value
+        );
+
+        continue;
+      }
+
+
+      const number =
+        value === ""
+
+          ? 0
+
+          : Number(
+              value
+            );
+
+
+      const safeNumber =
+        Number.isFinite(
+          number
+        )
+
+          ? number
+
+          : 0;
+
+
+      cleaned.push(
+        safeNumber
+      );
+
+
+      total +=
+        safeNumber;
+    }
+
+
+    const rowObject = {
+      Item:
+        item,
+    };
+
+
+    dateColumns.forEach(
+      (
+        column,
+        index
+      ) => {
+
+        rowObject[
+          column
+        ] =
+          cleaned[
+            index
+          ];
+      }
+    );
+
+
+    rowObject.Total =
+      total;
+
+
+    if (
+      currentSection ===
+      "daily"
+    ) {
+
+      daily.push(
+        rowObject
+      );
+
+    } else {
+
+      weekly.push(
+        rowObject
+      );
+    }
+  }
+
+
+  return {
+
+    headers:
+      [
+        "Item",
+        ...dateColumns,
+        "Total",
+      ],
+
+    daily,
+
+    weekly,
+  };
+}
+
+
+/* ============================================================
+   STOCK VIEW
+
+   D1 cache:
+   30 minutes per branch
+============================================================ */
+
+async function getStockView(
+  env,
+  branchCode,
+  forceRefresh = false
+) {
+
+  await ensureDatabase(
+    env
+  );
+
+
+  const branch =
+    await env.DB.prepare(`
+      SELECT
+        code,
+        name,
+        sheet_id
+
+      FROM branches
+
+      WHERE code = ?
+
+      LIMIT 1
+    `)
+      .bind(
+        branchCode
+      )
+      .first();
+
+
+  if (
+    !branch ||
+    !branch.sheet_id
+  ) {
+
+    throw new Error(
+      "Branch SheetID not found."
+    );
+  }
+
+
+  const cached =
+    await env.DB.prepare(`
+      SELECT
+        payload,
+        synced_at
+
+      FROM stock_cache
+
+      WHERE branch_code = ?
+
+      LIMIT 1
+    `)
+      .bind(
+        branchCode
+      )
+      .first();
+
+
+  const now =
+    Math.floor(
+      Date.now() /
+      1000
+    );
+
+
+  if (
+    !forceRefresh &&
+    cached &&
+    now -
+      Number(
+        cached.synced_at
+      ) <
+      STOCK_CACHE_SECONDS
+  ) {
+
+    return {
+
+      source:
+        "D1",
+
+      syncedAt:
+        Number(
+          cached.synced_at
+        ),
+
+      data:
+        JSON.parse(
+          cached.payload
+        ),
+    };
+  }
+
+
+  /*
+    Prevent duplicate Google reads
+    for same branch.
+  */
+
+  const lockKey =
+    `stock-${branchCode}`;
+
+
+  const acquired =
+    await acquireLock(
+      env,
+      lockKey,
+      20
+    );
+
+
+  if (
+    !acquired &&
+    cached
+  ) {
+
+    return {
+
+      source:
+        "D1",
+
+      syncedAt:
+        Number(
+          cached.synced_at
+        ),
+
+      data:
+        JSON.parse(
+          cached.payload
+        ),
+    };
+  }
+
+
+  try {
+
+    const rows =
+      await getSheetValues(
+
+        env,
+
+        branch.sheet_id,
+
+        "Stocks!A:ZZ"
+      );
+
+
+    const parsed =
+      parseStockData(
+        rows
+      );
+
+
+    await env.DB.prepare(`
+      INSERT INTO stock_cache (
+        branch_code,
+        payload,
+        synced_at
+      )
+
+      VALUES (?, ?, ?)
+
+      ON CONFLICT(branch_code)
+      DO UPDATE SET
+
+        payload =
+          excluded.payload,
+
+        synced_at =
+          excluded.synced_at
+    `)
+      .bind(
+        branchCode,
+        JSON.stringify(
+          parsed
+        ),
+        now
+      )
+      .run();
+
+
+    return {
+
+      source:
+        "GOOGLE->D1",
+
+      syncedAt:
+        now,
+
+      data:
+        parsed,
+    };
+
+  } finally {
+
+    if (acquired) {
+
+      await releaseLock(
+        env,
+        lockKey
+      );
+    }
+  }
 }
 
 
@@ -2110,7 +3169,7 @@ async function databaseStatus(
   );
 
 
-  const branches =
+  const branchCount =
     await env.DB.prepare(`
       SELECT
         COUNT(*) total
@@ -2125,7 +3184,7 @@ async function databaseStatus(
       .first();
 
 
-  const transfers =
+  const transferCount =
     await env.DB.prepare(`
       SELECT
         COUNT(*) total
@@ -2135,22 +3194,24 @@ async function databaseStatus(
       .first();
 
 
-  const sync =
-    await env.DB.prepare(`
-      SELECT
-        value
+  const lastSync =
+    await getMeta(
+      env,
+      "bart_last_sync"
+    );
 
-      FROM system_meta
 
-      WHERE key = ?
-    `)
-      .bind(
-        "bart_last_sync"
-      )
-      .first();
+  const transferSyncMs =
+    Number(
+      await getMeta(
+        env,
+        "transfers_last_sync_ms"
+      ) || 0
+    );
 
 
   return jsonResponse({
+
     success:
       true,
 
@@ -2159,16 +3220,24 @@ async function databaseStatus(
 
     bartBranches:
       Number(
-        branches?.total || 0
+        branchCount?.total ||
+        0
       ),
 
     transfers:
       Number(
-        transfers?.total || 0
+        transferCount?.total ||
+        0
       ),
 
-    lastSync:
-      sync?.value || null,
+    lastSync,
+
+    transfersLastSync:
+      transferSyncMs
+        ? new Date(
+            transferSyncMs
+          ).toISOString()
+        : null,
 
     googleCalled:
       false,
@@ -2177,7 +3246,7 @@ async function databaseStatus(
 
 
 /* ============================================================
-   MAIN WORKER
+   WORKER
 ============================================================ */
 
 export default {
@@ -2201,7 +3270,8 @@ export default {
       return new Response(
         null,
         {
-          status: 204,
+          status:
+            204,
 
           headers:
             corsHeaders(),
@@ -2212,7 +3282,9 @@ export default {
 
     try {
 
-      /* TEST */
+      /* ==============================================
+         TEST
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2220,13 +3292,18 @@ export default {
       ) {
 
         return jsonResponse({
+
           success:
             true,
 
           version:
-            "BART-STAFF-V4",
+            "BART-LIVE-V5",
+
+          message:
+            "BART live-transfer + stock-view backend active",
 
           envCheck: {
+
             GOOGLE_CLIENT_EMAIL:
               Boolean(
                 env.GOOGLE_CLIENT_EMAIL
@@ -2266,7 +3343,9 @@ export default {
       }
 
 
-      /* DATABASE STATUS */
+      /* ==============================================
+         DATABASE STATUS
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2282,7 +3361,9 @@ export default {
       }
 
 
-      /* REFRESH DATABASE */
+      /* ==============================================
+         MANUAL MASTER REFRESH
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2299,7 +3380,9 @@ export default {
       }
 
 
-      /* BART BRANCHES */
+      /* ==============================================
+         BRANCH LIST
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2316,6 +3399,7 @@ export default {
 
 
         return jsonResponse({
+
           success:
             true,
 
@@ -2333,7 +3417,9 @@ export default {
       }
 
 
-      /* BART LOGIN */
+      /* ==============================================
+         LOGIN
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2350,7 +3436,11 @@ export default {
       }
 
 
-      /* PENDING TRANSFERS */
+      /* ==============================================
+         LIVE PENDING TRANSFERS
+
+         Auto Google refresh when cache stale.
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2370,7 +3460,7 @@ export default {
             .toUpperCase();
 
 
-        const transfers =
+        const result =
           await getPendingTransfers(
             env,
             branchCode
@@ -2378,24 +3468,25 @@ export default {
 
 
         return jsonResponse({
+
           success:
             true,
 
-          source:
-            "D1",
-
-          googleCalled:
-            false,
-
           count:
-            transfers.length,
+            result.transfers.length,
 
-          transfers,
+          transfers:
+            result.transfers,
+
+          transferFreshness:
+            result.freshness,
         });
       }
 
 
-      /* ACCEPT / REJECT TRANSFER */
+      /* ==============================================
+         ACCEPT / REJECT
+      ============================================== */
 
       if (
         url.pathname ===
@@ -2412,7 +3503,72 @@ export default {
       }
 
 
-      /* FRONTEND */
+      /* ==============================================
+         STOCK VIEW
+
+         Example:
+         /api/staff/bart/stock-view?branch=B022
+
+         Force refresh:
+         ?branch=B022&refresh=1
+      ============================================== */
+
+      if (
+        url.pathname ===
+          "/api/staff/bart/stock-view" &&
+
+        request.method ===
+          "GET"
+      ) {
+
+        const branchCode =
+          String(
+            url.searchParams.get(
+              "branch"
+            ) || ""
+          )
+            .trim()
+            .toUpperCase();
+
+
+        const force =
+          url.searchParams.get(
+            "refresh"
+          ) ===
+          "1";
+
+
+        const result =
+          await getStockView(
+            env,
+            branchCode,
+            force
+          );
+
+
+        return jsonResponse({
+
+          success:
+            true,
+
+          branch:
+            branchCode,
+
+          source:
+            result.source,
+
+          syncedAt:
+            result.syncedAt,
+
+          stock:
+            result.data,
+        });
+      }
+
+
+      /* ==============================================
+         REACT FRONTEND
+      ============================================== */
 
       if (
         env.ASSETS
@@ -2432,14 +3588,14 @@ export default {
           message:
             "Route not found.",
         },
+
         404
       );
-
 
     } catch (error) {
 
       console.error(
-        "DAM BACKEND ERROR:",
+        "DAM BACKEND:",
         error
       );
 
