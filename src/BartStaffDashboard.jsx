@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -43,7 +42,6 @@ import {
 
 import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
-import BartStaffSchedule from "./BartStaffSchedule";
 
 
 /* ============================================================
@@ -1239,17 +1237,6 @@ export default function BartStaffDashboard({
 
     if (
       moduleId ===
-      "schedule"
-    ) {
-      setActiveModule(
-        "staff-schedule"
-      );
-
-      return;
-    }
-
-    if (
-      moduleId ===
       "stock-view"
     ) {
       await toggleStockView();
@@ -1353,27 +1340,6 @@ export default function BartStaffDashboard({
             The dashboard polling effect starts again automatically.
           */
 
-          setActiveModule(
-            null
-          );
-        }}
-      />
-    );
-  }
-
-
-  /* ==========================================================
-     STAFF SCHEDULE MODULE
-  ========================================================== */
-
-  if (
-    activeModule ===
-    "staff-schedule"
-  ) {
-    return (
-      <BartStaffSchedule
-        branch={branch}
-        onBack={() => {
           setActiveModule(
             null
           );
