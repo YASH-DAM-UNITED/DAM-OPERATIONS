@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import "./index.css";
+import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
 
 /* =========================================================
@@ -557,6 +558,321 @@ function BrandWorld({ onBack, selectBrand }) {
   );
 }
 
+
+/* =========================================================
+   CINEMATIC BRANCH NETWORK LOADER
+========================================================= */
+
+function BranchNetworkLoader({ brand }) {
+  const steps = [
+    "Connecting branch directory",
+    "Reading live D1 network",
+    "Preparing secure branch access",
+  ];
+
+  return (
+    <motion.div
+      className="cin-branch-loader"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div
+        className="cin-loader-aura"
+        style={{
+          "--cin-brand": brand.primary,
+          "--cin-brand-2": brand.secondary,
+        }}
+      />
+
+      <div className="cin-loader-grid" />
+
+      <motion.div
+        className="cin-loader-core"
+        initial={{ scale: 0.82, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 130, damping: 18 }}
+      >
+        <motion.div
+          className="cin-radar"
+          animate={{ rotate: 360 }}
+          transition={{
+            repeat: Infinity,
+            duration: 5,
+            ease: "linear",
+          }}
+          style={{ "--cin-brand": brand.primary }}
+        >
+          <span />
+          <span />
+          <span />
+          <i />
+        </motion.div>
+
+        <motion.div
+          className="cin-brand-orbit"
+          animate={{
+            scale: [1, 1.06, 1],
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: 2.2,
+          }}
+        >
+          <strong>{brand.code}</strong>
+        </motion.div>
+
+        <span className="cin-loader-kicker">
+          DAM / {brand.name} NETWORK
+        </span>
+
+        <h2>Locating your branches.</h2>
+
+        <p>
+          Synchronizing the operational network and preparing secure access.
+        </p>
+
+        <div className="cin-loader-progress">
+          <motion.div
+            initial={{ width: "8%" }}
+            animate={{ width: ["8%", "58%", "88%", "100%"] }}
+            transition={{
+              duration: 1.8,
+              repeat: Infinity,
+              repeatType: "reverse",
+              ease: "easeInOut",
+            }}
+            style={{ background: brand.primary }}
+          />
+        </div>
+
+        <div className="cin-loader-steps">
+          {steps.map((step, index) => (
+            <motion.div
+              key={step}
+              initial={{ opacity: 0.25 }}
+              animate={{ opacity: [0.25, 1, 0.25] }}
+              transition={{
+                delay: index * 0.35,
+                repeat: Infinity,
+                duration: 1.4,
+              }}
+            >
+              <span style={{ background: brand.primary }} />
+              {step}
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+
+/* =========================================================
+   CINEMATIC BRANCH LAUNCH SEQUENCE
+========================================================= */
+
+function BranchLaunchSequence({
+  brand,
+  branch,
+  onComplete,
+}) {
+  const [phase, setPhase] =
+    useState(0);
+
+  const phases = [
+    {
+      icon: ShieldCheck,
+      label: "AUTHENTICATED",
+      text: "Branch identity verified",
+    },
+    {
+      icon: Activity,
+      label: "LIVE NETWORK",
+      text: "Transfer channel connected",
+    },
+    {
+      icon: Boxes,
+      label: "OPERATIONS",
+      text: "Inventory workspace ready",
+    },
+  ];
+
+  useEffect(() => {
+    const phase1 =
+      setTimeout(
+        () => setPhase(1),
+        650
+      );
+
+    const phase2 =
+      setTimeout(
+        () => setPhase(2),
+        1250
+      );
+
+    const finish =
+      setTimeout(
+        () => onComplete?.(),
+        2450
+      );
+
+    return () => {
+      clearTimeout(phase1);
+      clearTimeout(phase2);
+      clearTimeout(finish);
+    };
+  }, [onComplete]);
+
+  return (
+    <motion.div
+      className="cin-launch"
+      style={{
+        "--cin-brand": brand.primary,
+        "--cin-brand-2": brand.secondary,
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{
+        opacity: 0,
+        scale: 1.035,
+        filter: "blur(10px)",
+      }}
+      transition={{ duration: 0.45 }}
+    >
+      <div className="cin-launch-grid" />
+      <div className="cin-launch-noise" />
+      <div className="cin-launch-beam cin-launch-beam-a" />
+      <div className="cin-launch-beam cin-launch-beam-b" />
+
+      <motion.div
+        className="cin-launch-content"
+        initial={{
+          opacity: 0,
+          scale: 0.92,
+          y: 25,
+        }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+        }}
+        transition={{
+          type: "spring",
+          stiffness: 150,
+          damping: 19,
+        }}
+      >
+        <motion.div
+          className="cin-launch-ring"
+          animate={{ rotate: 360 }}
+          transition={{
+            repeat: Infinity,
+            duration: 7,
+            ease: "linear",
+          }}
+        >
+          <span />
+          <span />
+          <span />
+        </motion.div>
+
+        <motion.div
+          className="cin-launch-code"
+          animate={{
+            scale: [1, 1.04, 1],
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: 2,
+          }}
+        >
+          {branch.code}
+        </motion.div>
+
+        <motion.div
+          className="cin-launch-status"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          <span />
+          SECURE BRANCH LINK ESTABLISHED
+        </motion.div>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          {branch.name}
+        </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.62 }}
+          transition={{ delay: 0.38 }}
+        >
+          Entering the BART operations network.
+        </motion.p>
+
+        <div className="cin-launch-phases">
+          {phases.map((item, index) => {
+            const Icon = item.icon;
+            const active = phase >= index;
+
+            return (
+              <motion.div
+                key={item.label}
+                className={`cin-launch-phase ${active ? "active" : ""}`}
+                animate={{
+                  opacity: active ? 1 : 0.28,
+                  y: active ? 0 : 6,
+                }}
+              >
+                <div>
+                  {active ? (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                    >
+                      <Icon size={15} />
+                    </motion.span>
+                  ) : (
+                    <span className="cin-phase-dot" />
+                  )}
+                </div>
+
+                <section>
+                  <strong>{item.label}</strong>
+                  <small>{item.text}</small>
+                </section>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div className="cin-launch-line">
+          <motion.div
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{
+              duration: 2.2,
+              ease: "easeInOut",
+            }}
+          />
+        </div>
+
+        <small className="cin-launch-footer">
+          DAM OPERATIONS • BART STAFF NETWORK
+        </small>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+
 /* =========================================================
    BRANCH SELECT
 
@@ -752,19 +1068,105 @@ function BranchScreen({
             </span>
           </div>
 
-          {loading && (
-            <div
-              style={{
-                padding: "45px 20px",
-                textAlign: "center",
-                color:
-                  "var(--text-muted)",
-                fontSize: "10px",
-              }}
-            >
-              Loading live branch network...
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {loading && (
+              <motion.div
+                key="branch-loader"
+                className="cin-inline-branch-loader"
+                initial={{
+                  opacity: 0,
+                  y: 12,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: -10,
+                }}
+              >
+                <div className="cin-inline-radar">
+                  <motion.span
+                    animate={{
+                      rotate: 360,
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 2.4,
+                      ease: "linear",
+                    }}
+                    style={{
+                      borderTopColor:
+                        brand.primary,
+                    }}
+                  />
+
+                  <motion.div
+                    animate={{
+                      scale: [
+                        1,
+                        1.12,
+                        1,
+                      ],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 1.5,
+                    }}
+                    style={{
+                      background:
+                        brand.primary,
+                    }}
+                  >
+                    {brand.code}
+                  </motion.div>
+                </div>
+
+                <strong>
+                  CONNECTING {brand.name} NETWORK
+                </strong>
+
+                <span>
+                  Reading live branch directory from DAM Operations
+                </span>
+
+                <div className="cin-inline-progress">
+                  <motion.i
+                    animate={{
+                      x: [
+                        "-100%",
+                        "330%",
+                      ],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 1.4,
+                      ease: "easeInOut",
+                    }}
+                    style={{
+                      background:
+                        `linear-gradient(90deg, transparent, ${brand.primary}, transparent)`,
+                    }}
+                  />
+                </div>
+
+                <div className="cin-inline-pulses">
+                  <span>
+                    DIRECTORY
+                  </span>
+
+                  <span>
+                    D1 CACHE
+                  </span>
+
+                  <span>
+                    SECURE ACCESS
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {!loading && error && (
             <div
@@ -1339,6 +1741,11 @@ function App() {
     setAuthenticatedBranch,
   ] = useState(null);
 
+  const [
+    launchBranch,
+    setLaunchBranch,
+  ] = useState(null);
+
   /* =======================================================
      PORTAL
   ======================================================= */
@@ -1401,8 +1808,12 @@ function App() {
       selectedBrand?.id ===
       "bart"
     ) {
+      setLaunchBranch(
+        backendBranch
+      );
+
       setPage(
-        "bart-dashboard"
+        "branch-launch"
       );
 
       return;
@@ -1415,6 +1826,10 @@ function App() {
 
   function logoutStaff() {
     setAuthenticatedBranch(
+      null
+    );
+
+    setLaunchBranch(
       null
     );
 
@@ -1547,6 +1962,33 @@ function App() {
           />
         )}
 
+      {/* CINEMATIC BART BRANCH LAUNCH */}
+
+      {page ===
+        "branch-launch" &&
+        selectedBrand?.id ===
+          "bart" &&
+        launchBranch && (
+          <BranchLaunchSequence
+            key={`launch-${launchBranch.code}`}
+            brand={
+              selectedBrand
+            }
+            branch={
+              launchBranch
+            }
+            onComplete={() => {
+              setLaunchBranch(
+                null
+              );
+
+              setPage(
+                "bart-dashboard"
+              );
+            }}
+          />
+        )}
+
       {/* BART DASHBOARD */}
 
       {page ===
@@ -1558,12 +2000,27 @@ function App() {
             key="bart-dashboard"
             initial={{
               opacity: 0,
+              scale: 1.018,
+              filter: "blur(14px)",
             }}
             animate={{
               opacity: 1,
+              scale: 1,
+              filter: "blur(0px)",
             }}
             exit={{
               opacity: 0,
+              scale: 0.992,
+              filter: "blur(8px)",
+            }}
+            transition={{
+              duration: 0.6,
+              ease: [
+                0.22,
+                1,
+                0.36,
+                1,
+              ],
             }}
           >
             <BartStaffDashboard
