@@ -3,7 +3,7 @@
    BART STAFF BACKEND
 
    VERSION:
-   BART-STAFF-SCHEDULE-V8
+   BART-STOCK-TRANSFER-V7
 ============================================================ */
 
 
@@ -173,15 +173,6 @@ async function ensureDatabase(env) {
     CREATE INDEX IF NOT EXISTS
     idx_stock_drafts_branch_date
     ON stock_drafts(branch_code, stock_date)
-  `).run();
-
-
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS schedule_cache (
-      cache_key TEXT PRIMARY KEY,
-      payload TEXT NOT NULL,
-      synced_at INTEGER NOT NULL
-    )
   `).run();
 
 
@@ -1252,34 +1243,26 @@ async function releaseLock(
 }
 
 
-
 /* ============================================================
    MASTER BRANCH READ
 ============================================================ */
 
-async function readMasterBranches(
+async function readBartMaster(
   env
 ) {
 
-  if (!env.MASTER_SHEET_ID) {
-    throw new Error(
-      "MASTER_SHEET_ID is missing."
-    );
-  }
-
-
   const rows =
     await getSheetValues(
+
       env,
+
       env.MASTER_SHEET_ID,
+
       "Sheet1!A:Z"
     );
 
 
-  if (
-    !rows ||
-    rows.length < 2
-  ) {
+  if (!rows.length) {
 
     return [];
   }
@@ -1292,62 +1275,36 @@ async function readMasterBranches(
 
 
   const codeIndex =
-    headers.findIndex(
-      (header) =>
-        [
-          "branchcode",
-          "code",
-        ].includes(
-          header
-        )
+    headers.indexOf(
+      "branchcode"
     );
 
 
   const nameIndex =
-    headers.findIndex(
-      (header) =>
-        [
-          "branchname",
-          "name",
-        ].includes(
-          header
-        )
+    headers.indexOf(
+      "branchname"
     );
 
 
   const sheetIndex =
-    headers.findIndex(
-      (header) =>
-        [
-          "sheetid",
-          "spreadsheetid",
-          "googlesheetid",
-        ].includes(
-          header
-        )
+    headers.indexOf(
+      "sheetid"
     );
 
 
   const passwordIndex =
-    headers.findIndex(
-      (header) =>
-        [
-          "password",
-          "branchpassword",
-          "pass",
-        ].includes(
-          header
-        )
+    headers.indexOf(
+      "password"
     );
 
 
   if (
-    codeIndex < 0 ||
-    nameIndex < 0
+    codeIndex === -1 ||
+    nameIndex === -1
   ) {
 
     throw new Error(
-      "Branch Code / Branch Name columns not found in MASTERBRANCHSHEET."
+      "BranchCode or BranchName missing."
     );
   }
 
@@ -1356,79 +1313,69 @@ async function readMasterBranches(
 
 
   for (
-    let i = 1;
-    i < rows.length;
-    i++
+    const row of
+    rows.slice(1)
   ) {
-
-    const row =
-      rows[i] ||
-      [];
-
 
     const code =
       String(
-        row[codeIndex] ||
-        ""
+        row[
+          codeIndex
+        ] || ""
       )
         .trim()
         .toUpperCase();
 
 
-    const name =
-      String(
-        row[nameIndex] ||
-        ""
+    if (
+      !code.startsWith(
+        "B"
       )
-        .trim()
-        .toUpperCase();
+    ) {
 
-
-    const sheetId =
-      sheetIndex >= 0
-        ? String(
-            row[sheetIndex] ||
-            ""
-          ).trim()
-        : "";
+      continue;
+    }
 
 
     const password =
       passwordIndex >= 0
         ? String(
-            row[passwordIndex] ||
-            ""
+            row[
+              passwordIndex
+            ] || ""
           ).trim()
+
         : "";
 
 
-    /*
-      Only BART branches.
-      B001, B002, B003...
-    */
-
-    if (
-      !/^B\d+/i.test(
-        code
-      )
-    ) {
-      continue;
-    }
-
-
-    if (
-      !code ||
-      !name
-    ) {
-      continue;
-    }
-
-
     branches.push({
+
       code,
-      name,
-      sheetId,
-      password,
+
+      brand:
+        "bart",
+
+      name:
+        String(
+          row[
+            nameIndex
+          ] || ""
+        ).trim(),
+
+      sheetId:
+        sheetIndex >= 0
+          ? String(
+              row[
+                sheetIndex
+              ] || ""
+            ).trim()
+
+        : "",
+
+      passwordHash:
+        await hashPassword(
+          password
+        ),
     });
   }
 
@@ -1438,82 +1385,79 @@ async function readMasterBranches(
 
 
 /* ============================================================
-   MASTER TRANSFER READ
+   GET BRANCH
 ============================================================ */
 
-async function readMasterTransfers(
+async function getBartBranch(
+  env,
+  code
+) {
+
+  return env.DB.prepare(`
+    SELECT
+      code,
+      name,
+      sheet_id,
+      password_hash
+
+    FROM branches
+
+    WHERE
+      code = ?
+      AND brand = 'bart'
+
+    LIMIT 1
+  `)
+    .bind(
+      code
+    )
+    .first();
+}
+
+
+/* ============================================================
+   MANUAL SYNC AUTH
+============================================================ */
+
+function adminAuthorized(
+  request,
   env
 ) {
 
-  if (!env.MASTER_SHEET_ID) {
-    throw new Error(
-      "MASTER_SHEET_ID is missing."
+  return (
+
+    Boolean(
+      env.ADMIN_SYNC_KEY
+    ) &&
+
+    request.headers.get(
+      "X-Admin-Key"
+    ) ===
+    env.ADMIN_SYNC_KEY
+  );
+}
+
+
+/* ============================================================
+   TRANSFER GOOGLE READ
+============================================================ */
+
+async function readTransfersGoogle(
+  env
+) {
+
+  const rows =
+    await getSheetValues(
+
+      env,
+
+      env.MASTER_SHEET_ID,
+
+      "Transfers!A:Z"
     );
-  }
 
 
-  let rows = [];
-
-
-  /*
-    Transfer tab names may differ between
-    versions of the master workbook.
-
-    Try the known tab names.
-  */
-
-  const ranges = [
-    "Stock Transfer!A:Z",
-    "StockTransfer!A:Z",
-    "Transfers!A:Z",
-  ];
-
-
-  let lastError =
-    null;
-
-
-  for (
-    const range of ranges
-  ) {
-
-    try {
-
-      rows =
-        await getSheetValues(
-          env,
-          env.MASTER_SHEET_ID,
-          range
-        );
-
-
-      if (
-        rows &&
-        rows.length > 0
-      ) {
-        break;
-      }
-
-    } catch (error) {
-
-      lastError =
-        error;
-    }
-  }
-
-
-  if (
-    !rows ||
-    rows.length === 0
-  ) {
-
-    if (lastError) {
-      console.log(
-        "Transfer sheet read warning:",
-        lastError.message
-      );
-    }
-
+  if (!rows.length) {
 
     return [];
   }
@@ -1525,381 +1469,342 @@ async function readMasterTransfers(
     );
 
 
-  function findHeader(
-    possibilities
-  ) {
-
-    return headers.findIndex(
-      (header) =>
-        possibilities.includes(
-          header
+  const index =
+    (name) =>
+      headers.indexOf(
+        normalizeHeader(
+          name
         )
-    );
-  }
-
-
-  const idIndex =
-    findHeader([
-      "transferid",
-      "id",
-      "transactionid",
-      "txid",
-    ]);
-
-
-  const originIndex =
-    findHeader([
-      "origin",
-      "originbranch",
-      "frombranch",
-      "from",
-    ]);
-
-
-  const destinationIndex =
-    findHeader([
-      "destination",
-      "destinationbranch",
-      "tobranch",
-      "to",
-    ]);
-
-
-  const itemsIndex =
-    findHeader([
-      "items",
-      "item",
-      "itemdetails",
-      "products",
-    ]);
-
-
-  const quantityIndex =
-    findHeader([
-      "quantities",
-      "quantity",
-      "qty",
-    ]);
-
-
-  const reasonIndex =
-    findHeader([
-      "reason",
-      "date",
-      "transferdate",
-      "datetime",
-      "timestamp",
-    ]);
-
-
-  const statusIndex =
-    findHeader([
-      "status",
-      "transferstatus",
-    ]);
-
-
-  if (
-    idIndex < 0 ||
-    originIndex < 0 ||
-    destinationIndex < 0
-  ) {
-
-    throw new Error(
-      "Transfer sheet required columns not found."
-    );
-  }
-
-
-  const transfers = [];
-
-
-  for (
-    let i = 1;
-    i < rows.length;
-    i++
-  ) {
-
-    const row =
-      rows[i] ||
-      [];
-
-
-    const id =
-      String(
-        row[idIndex] ||
-        ""
-      ).trim();
-
-
-    if (!id) {
-      continue;
-    }
-
-
-    transfers.push({
-
-      id,
-
-      origin:
-        String(
-          row[originIndex] ||
-          ""
-        ).trim(),
-
-      destination:
-        String(
-          row[destinationIndex] ||
-          ""
-        ).trim(),
-
-      items:
-        itemsIndex >= 0
-          ? String(
-              row[itemsIndex] ||
-              ""
-            )
-          : "",
-
-      quantities:
-        quantityIndex >= 0
-          ? String(
-              row[quantityIndex] ||
-              ""
-            )
-          : "",
-
-      reason:
-        reasonIndex >= 0
-          ? String(
-              row[reasonIndex] ||
-              ""
-            )
-          : "",
-
-      status:
-        statusIndex >= 0
-          ? String(
-              row[statusIndex] ||
-              "Pending"
-            ).trim()
-          : "Pending",
-    });
-  }
-
-
-  return transfers;
-}
-
-
-/* ============================================================
-   SYNC BART BRANCHES TO D1
-============================================================ */
-
-async function syncBartBranches(
-  env
-) {
-
-  const branches =
-    await readMasterBranches(
-      env
-    );
-
-
-  const now =
-    new Date()
-      .toISOString();
-
-
-  for (
-    const branch of branches
-  ) {
-
-    const passwordHash =
-      await hashPassword(
-        branch.password
       );
 
 
-    await env.DB.prepare(`
-      INSERT INTO branches (
-        code,
-        brand,
-        name,
-        sheet_id,
-        password_hash,
-        updated_at
-      )
+  const idIndex =
+    index("ID");
 
-      VALUES (
-        ?,
-        'bart',
-        ?,
-        ?,
-        ?,
-        ?
-      )
+  const originIndex =
+    index("Origin");
 
-      ON CONFLICT(code)
-      DO UPDATE SET
+  const destinationIndex =
+    index("Destination");
 
-        brand =
-          excluded.brand,
+  const itemsIndex =
+    index("Items");
 
-        name =
-          excluded.name,
+  const quantitiesIndex =
+    index("Quantities");
 
-        sheet_id =
-          excluded.sheet_id,
+  const reasonIndex =
+    index("Reason");
 
-        password_hash =
-          excluded.password_hash,
+  const statusIndex =
+    index("Status");
 
-        updated_at =
-          excluded.updated_at
-    `)
-      .bind(
-        branch.code,
-        branch.name,
-        branch.sheetId,
-        passwordHash,
-        now
-      )
-      .run();
-  }
+  const timestampIndex =
+    index("Timestamp");
 
-
-  /*
-    Remove BART branches that no longer exist
-    in MASTERBRANCHSHEET.
-  */
 
   if (
-    branches.length > 0
+    idIndex === -1 ||
+    originIndex === -1 ||
+    destinationIndex === -1
   ) {
 
-    const placeholders =
-      branches
-        .map(
-          () => "?"
-        )
-        .join(",");
-
-
-    await env.DB.prepare(`
-      DELETE FROM branches
-
-      WHERE
-        brand = 'bart'
-
-        AND code NOT IN (
-          ${placeholders}
-        )
-    `)
-      .bind(
-        ...branches.map(
-          (branch) =>
-            branch.code
-        )
-      )
-      .run();
+    throw new Error(
+      "Required Transfers columns missing."
+    );
   }
 
 
-  return branches.length;
+  return rows
+    .slice(1)
+
+    .filter(
+      (row) =>
+        String(
+          row[
+            idIndex
+          ] || ""
+        ).trim()
+    )
+
+    .map(
+      (row) => ({
+
+        id:
+          String(
+            row[
+              idIndex
+            ] || ""
+          ).trim(),
+
+        origin:
+          String(
+            row[
+              originIndex
+            ] || ""
+          ).trim(),
+
+        destination:
+          String(
+            row[
+              destinationIndex
+            ] || ""
+          ).trim(),
+
+        items:
+          itemsIndex >= 0
+            ? String(
+                row[
+                  itemsIndex
+                ] || ""
+              )
+            : "",
+
+        quantities:
+          quantitiesIndex >= 0
+            ? String(
+                row[
+                  quantitiesIndex
+                ] || ""
+              )
+            : "",
+
+        reason:
+          reasonIndex >= 0
+            ? String(
+                row[
+                  reasonIndex
+                ] || ""
+              )
+            : "",
+
+        status:
+          statusIndex >= 0
+            ? String(
+                row[
+                  statusIndex
+                ] ||
+                "Pending"
+              ).trim()
+
+            : "Pending",
+
+        timestamp:
+          timestampIndex >= 0
+            ? String(
+                row[
+                  timestampIndex
+                ] || ""
+              )
+            : "",
+      })
+    );
 }
 
 
 /* ============================================================
-   SYNC TRANSFERS TO D1
+   SAVE TRANSFERS D1
 ============================================================ */
 
-async function syncBartTransfers(
-  env
+async function saveTransfersToD1(
+  env,
+  transfers
 ) {
-
-  const transfers =
-    await readMasterTransfers(
-      env
-    );
-
 
   const now =
     new Date()
       .toISOString();
+
+
+  const statements = [
+
+    env.DB.prepare(`
+      DELETE FROM transfers
+    `),
+  ];
 
 
   for (
     const transfer of transfers
   ) {
 
-    await env.DB.prepare(`
-      INSERT INTO transfers (
-        id,
-        origin,
-        destination,
-        items,
-        quantities,
-        reason,
-        status,
-        updated_at
-      )
+    statements.push(
 
-      VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
+      env.DB.prepare(`
+        INSERT INTO transfers (
+          id,
+          origin,
+          destination,
+          items,
+          quantities,
+          reason,
+          status,
+          updated_at
+        )
 
-      ON CONFLICT(id)
-      DO UPDATE SET
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+        .bind(
 
-        origin =
-          excluded.origin,
+          transfer.id,
+          transfer.origin,
+          transfer.destination,
+          transfer.items,
+          transfer.quantities,
+          transfer.reason,
+          transfer.status,
 
-        destination =
-          excluded.destination,
-
-        items =
-          excluded.items,
-
-        quantities =
-          excluded.quantities,
-
-        reason =
-          excluded.reason,
-
-        status =
-          excluded.status,
-
-        updated_at =
-          excluded.updated_at
-    `)
-      .bind(
-        transfer.id,
-        transfer.origin,
-        transfer.destination,
-        transfer.items,
-        transfer.quantities,
-        transfer.reason,
-        transfer.status,
-        now
-      )
-      .run();
+          transfer.timestamp ||
+          now
+        )
+    );
   }
 
 
-  return transfers.length;
+  await env.DB.batch(
+    statements
+  );
+
+
+  await setMeta(
+    env,
+    "transfers_last_sync_ms",
+    Date.now()
+  );
 }
 
 
 /* ============================================================
-   COMPLETE BART DATABASE SYNC
+   LIVE TRANSFER REFRESH
+============================================================ */
+
+async function ensureTransfersFresh(
+  env
+) {
+
+  await ensureDatabase(
+    env
+  );
+
+
+  const lastSync =
+    Number(
+      await getMeta(
+        env,
+        "transfers_last_sync_ms"
+      ) || 0
+    );
+
+
+  if (
+    lastSync &&
+    Date.now() -
+    lastSync <
+    TRANSFER_CACHE_SECONDS *
+    1000
+  ) {
+
+    return {
+
+      source:
+        "D1",
+
+      refreshed:
+        false,
+    };
+  }
+
+
+  const acquired =
+    await acquireLock(
+
+      env,
+
+      "transfer-live-sync",
+
+      20
+    );
+
+
+  if (!acquired) {
+
+    return {
+
+      source:
+        "D1-SYNC-IN-PROGRESS",
+
+      refreshed:
+        false,
+    };
+  }
+
+
+  try {
+
+    const lastAgain =
+      Number(
+        await getMeta(
+          env,
+          "transfers_last_sync_ms"
+        ) || 0
+      );
+
+
+    if (
+      lastAgain &&
+      Date.now() -
+      lastAgain <
+      TRANSFER_CACHE_SECONDS *
+      1000
+    ) {
+
+      return {
+
+        source:
+          "D1",
+
+        refreshed:
+          false,
+      };
+    }
+
+
+    const transfers =
+      await readTransfersGoogle(
+        env
+      );
+
+
+    await saveTransfersToD1(
+      env,
+      transfers
+    );
+
+
+    return {
+
+      source:
+        "GOOGLE->D1",
+
+      refreshed:
+        true,
+
+      count:
+        transfers.length,
+    };
+
+  } finally {
+
+    await releaseLock(
+      env,
+      "transfer-live-sync"
+    );
+  }
+}
+
+
+/* ============================================================
+   MANUAL MASTER SYNC
 ============================================================ */
 
 async function syncBartDatabase(
@@ -1907,134 +1812,106 @@ async function syncBartDatabase(
   env
 ) {
 
-  const adminKey =
-    request.headers.get(
-      "X-Admin-Key"
-    );
-
-
   if (
-    !env.ADMIN_SYNC_KEY ||
-    adminKey !==
-      env.ADMIN_SYNC_KEY
+    !adminAuthorized(
+      request,
+      env
+    )
   ) {
 
     return jsonResponse(
       {
+
         success:
           false,
 
         message:
-          "Unauthorized.",
+          "Invalid database refresh password.",
       },
+
       401
     );
   }
 
 
-  const locked =
-    await acquireLock(
-      env,
-      "bart_full_sync",
-      60
+  await ensureDatabase(
+    env
+  );
+
+
+  const branches =
+    await readBartMaster(
+      env
     );
 
 
-  if (!locked) {
-
-    return jsonResponse(
-      {
-        success:
-          false,
-
-        message:
-          "BART database sync already running.",
-      },
-      409
-    );
-  }
+  const now =
+    new Date()
+      .toISOString();
 
 
-  try {
+  const statements = [
 
-    const branches =
-      await syncBartBranches(
-        env
-      );
-
-
-    const transfers =
-      await syncBartTransfers(
-        env
-      );
-
-
-    const lastSync =
-      new Date()
-        .toISOString();
-
-
-    await setMeta(
-      env,
-      "bart_last_sync",
-      lastSync
-    );
-
-
-    return jsonResponse({
-      success:
-        true,
-
-      message:
-        "BART database refreshed.",
-
-      branches,
-
-      transfers,
-
-      lastSync,
-    });
-
-  } finally {
-
-    await releaseLock(
-      env,
-      "bart_full_sync"
-    );
-  }
-}
-
-
-/* ============================================================
-   DATABASE STATUS
-============================================================ */
-
-async function databaseStatus(
-  env
-) {
-
-  const branchCount =
-    await env.DB.prepare(`
-      SELECT COUNT(*) AS count
-
-      FROM branches
-
+    env.DB.prepare(`
+      DELETE FROM branches
       WHERE brand = 'bart'
-    `).first();
+    `),
+  ];
 
 
-  const transferCount =
-    await env.DB.prepare(`
-      SELECT COUNT(*) AS count
-      FROM transfers
-    `).first();
+  for (
+    const branch of branches
+  ) {
 
+    statements.push(
 
-  const lastSync =
-    await getMeta(
-      env,
-      "bart_last_sync"
+      env.DB.prepare(`
+        INSERT INTO branches (
+          code,
+          brand,
+          name,
+          sheet_id,
+          password_hash,
+          updated_at
+        )
+
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+        .bind(
+
+          branch.code,
+          branch.brand,
+          branch.name,
+          branch.sheetId,
+          branch.passwordHash,
+          now
+        )
     );
+  }
+
+
+  await env.DB.batch(
+    statements
+  );
+
+
+  const transfers =
+    await readTransfersGoogle(
+      env
+    );
+
+
+  await saveTransfersToD1(
+    env,
+    transfers
+  );
+
+
+  await setMeta(
+    env,
+    "bart_last_sync",
+    now
+  );
 
 
   return jsonResponse({
@@ -2042,68 +1919,34 @@ async function databaseStatus(
     success:
       true,
 
-    database:
-      "D1",
+    message:
+      "BART database refreshed.",
 
-    bartBranches:
-      Number(
-        branchCount?.count ||
-        0
-      ),
+    branches:
+      branches.length,
 
     transfers:
-      Number(
-        transferCount?.count ||
-        0
-      ),
+      transfers.length,
 
-    lastSync,
-
-    googleCalled:
-      false,
+    lastSync:
+      now,
   });
 }
 
 
 /* ============================================================
-   GET BART BRANCH
-============================================================ */
-
-async function getBartBranch(
-  env,
-  branchCode
-) {
-
-  return await env.DB.prepare(`
-    SELECT
-      code,
-      name,
-      sheet_id,
-      password_hash
-
-    FROM branches
-
-    WHERE
-      brand = 'bart'
-      AND code = ?
-
-    LIMIT 1
-  `)
-    .bind(
-      branchCode
-    )
-    .first();
-}
-
-
-/* ============================================================
-   BART LOGIN
+   LOGIN
 ============================================================ */
 
 async function bartLogin(
   request,
   env
 ) {
+
+  await ensureDatabase(
+    env
+  );
+
 
   const body =
     await request.json();
@@ -2112,7 +1955,6 @@ async function bartLogin(
   const branchCode =
     String(
       body.branchCode ||
-      body.branch ||
       ""
     )
       .trim()
@@ -2126,24 +1968,6 @@ async function bartLogin(
     );
 
 
-  if (
-    !branchCode ||
-    !password
-  ) {
-
-    return jsonResponse(
-      {
-        success:
-          false,
-
-        message:
-          "Branch and password are required.",
-      },
-      400
-    );
-  }
-
-
   const branch =
     await getBartBranch(
       env,
@@ -2155,36 +1979,40 @@ async function bartLogin(
 
     return jsonResponse(
       {
+
         success:
           false,
 
         message:
           "Branch not found.",
       },
+
       404
     );
   }
 
 
-  const incomingHash =
+  const hash =
     await hashPassword(
       password
     );
 
 
   if (
-    incomingHash !==
+    hash !==
     branch.password_hash
   ) {
 
     return jsonResponse(
       {
+
         success:
           false,
 
         message:
           "Incorrect password.",
       },
+
       401
     );
   }
@@ -2196,6 +2024,7 @@ async function bartLogin(
       true,
 
     branch: {
+
       code:
         branch.code,
 
@@ -2207,301 +2036,7 @@ async function bartLogin(
 
 
 /* ============================================================
-   BRANCH CODE FROM TEXT
-============================================================ */
-
-function extractBranchCode(
-  value
-) {
-
-  const text =
-    String(
-      value ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const match =
-    text.match(
-      /\bB\d{3,}\b/
-    );
-
-
-  return match
-    ? match[0]
-    : "";
-}
-
-
-/* ============================================================
-   LIVE TRANSFER CACHE
-============================================================ */
-
-let transferMemoryCache = {
-  loadedAt:
-    0,
-
-  transfers:
-    [],
-};
-
-
-/* ============================================================
-   REFRESH LIVE TRANSFERS
-
-   IMPORTANT:
-   Transfers use a short cache so branch dashboard polling
-   does NOT hit Google every 15 seconds for every branch.
-
-   The first request after cache expiry refreshes Google.
-   Other branches then use that same fresh result.
-============================================================ */
-
-async function refreshLiveTransfers(
-  env
-) {
-
-  const now =
-    Date.now();
-
-
-  if (
-    transferMemoryCache.loadedAt &&
-    now -
-      transferMemoryCache.loadedAt <
-      TRANSFER_CACHE_SECONDS *
-      1000
-  ) {
-
-    return {
-      transfers:
-        transferMemoryCache.transfers,
-
-      source:
-        "MEMORY",
-
-      googleCalled:
-        false,
-
-      ageSeconds:
-        Math.floor(
-          (
-            now -
-            transferMemoryCache.loadedAt
-          ) /
-          1000
-        ),
-    };
-  }
-
-
-  const locked =
-    await acquireLock(
-      env,
-      "live_transfer_sync",
-      15
-    );
-
-
-  /*
-    Another request is already refreshing.
-    Return D1 immediately.
-  */
-
-  if (!locked) {
-
-    const rows =
-      await env.DB.prepare(`
-        SELECT
-          id,
-          origin,
-          destination,
-          items,
-          quantities,
-          reason,
-          status
-
-        FROM transfers
-
-        ORDER BY updated_at DESC
-      `).all();
-
-
-    return {
-      transfers:
-        rows.results ||
-        [],
-
-      source:
-        "D1",
-
-      googleCalled:
-        false,
-
-      ageSeconds:
-        null,
-    };
-  }
-
-
-  try {
-
-    const transfers =
-      await readMasterTransfers(
-        env
-      );
-
-
-    const updatedAt =
-      new Date()
-        .toISOString();
-
-
-    for (
-      const transfer of transfers
-    ) {
-
-      await env.DB.prepare(`
-        INSERT INTO transfers (
-          id,
-          origin,
-          destination,
-          items,
-          quantities,
-          reason,
-          status,
-          updated_at
-        )
-
-        VALUES (
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        )
-
-        ON CONFLICT(id)
-        DO UPDATE SET
-
-          origin =
-            excluded.origin,
-
-          destination =
-            excluded.destination,
-
-          items =
-            excluded.items,
-
-          quantities =
-            excluded.quantities,
-
-          reason =
-            excluded.reason,
-
-          status =
-            excluded.status,
-
-          updated_at =
-            excluded.updated_at
-      `)
-        .bind(
-          transfer.id,
-          transfer.origin,
-          transfer.destination,
-          transfer.items,
-          transfer.quantities,
-          transfer.reason,
-          transfer.status,
-          updatedAt
-        )
-        .run();
-    }
-
-
-    transferMemoryCache = {
-      loadedAt:
-        now,
-
-      transfers,
-    };
-
-
-    return {
-      transfers,
-
-      source:
-        "GOOGLE",
-
-      googleCalled:
-        true,
-
-      ageSeconds:
-        0,
-    };
-
-  } catch (error) {
-
-    /*
-      Google failure should NOT kill the branch dashboard.
-      Fall back to D1.
-    */
-
-    console.error(
-      "Live transfer refresh failed:",
-      error
-    );
-
-
-    const rows =
-      await env.DB.prepare(`
-        SELECT
-          id,
-          origin,
-          destination,
-          items,
-          quantities,
-          reason,
-          status
-
-        FROM transfers
-
-        ORDER BY updated_at DESC
-      `).all();
-
-
-    return {
-      transfers:
-        rows.results ||
-        [],
-
-      source:
-        "D1-FALLBACK",
-
-      googleCalled:
-        false,
-
-      ageSeconds:
-        null,
-    };
-
-  } finally {
-
-    await releaseLock(
-      env,
-      "live_transfer_sync"
-    );
-  }
-}
-
-
-/* ============================================================
-   GET PENDING TRANSFERS
+   PENDING TRANSFERS
 ============================================================ */
 
 async function getPendingTransfers(
@@ -2509,198 +2044,410 @@ async function getPendingTransfers(
   branchCode
 ) {
 
-  if (!branchCode) {
-
-    return {
-      transfers:
-        [],
-
-      freshness: {
-        source:
-          "NONE",
-
-        googleCalled:
-          false,
-      },
-    };
-  }
-
-
-  const live =
-    await refreshLiveTransfers(
+  const freshness =
+    await ensureTransfersFresh(
       env
     );
 
 
-  const pending =
-    live.transfers.filter(
-      (transfer) => {
-
-        const destination =
-          extractBranchCode(
-            transfer.destination
-          );
-
-
-        const status =
-          String(
-            transfer.status ||
-            ""
-          )
-            .trim()
-            .toLowerCase();
-
-
-        return (
-          destination ===
-            branchCode &&
-          status ===
-            "pending"
-        );
-      }
+  const branch =
+    await getBartBranch(
+      env,
+      branchCode
     );
+
+
+  if (!branch) {
+
+    return {
+
+      transfers:
+        [],
+
+      freshness,
+    };
+  }
+
+
+  const destination =
+    `${branch.code} - ${branch.name}`;
+
+
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        origin,
+        destination,
+        items,
+        quantities,
+        reason,
+        status,
+        updated_at
+
+      FROM transfers
+
+      WHERE
+        destination = ?
+        AND status = 'Pending'
+
+      ORDER BY updated_at DESC
+    `)
+      .bind(
+        destination
+      )
+      .all();
 
 
   return {
 
     transfers:
-      pending,
+      result.results ||
+      [],
 
-    freshness: {
-
-      source:
-        live.source,
-
-      googleCalled:
-        live.googleCalled,
-
-      ageSeconds:
-        live.ageSeconds,
-    },
+    freshness,
   };
 }
 
 
 /* ============================================================
-   FIND TRANSFER ROW IN GOOGLE
+   TRANSFER ITEM PARSER
 ============================================================ */
 
-async function findTransferGoogleRow(
+function parseTransferItems(
+  transfer
+) {
+
+  const items =
+    String(
+      transfer.items ||
+      ""
+    )
+      .replace(
+        /â€¢/g,
+        "•"
+      )
+      .split("\n")
+
+      .map(
+        (item) =>
+          item
+            .replace(
+              /^•\s*/,
+              ""
+            )
+            .trim()
+      )
+
+      .filter(Boolean);
+
+
+  const quantities =
+    String(
+      transfer.quantities ||
+      ""
+    )
+      .split("\n")
+      .map(
+        (value) =>
+          value.trim()
+      )
+      .filter(Boolean);
+
+
+  const cart = [];
+
+
+  for (
+    let i = 0;
+    i <
+    Math.min(
+      items.length,
+      quantities.length
+    );
+    i++
+  ) {
+
+    let item =
+      items[i];
+
+
+    if (
+      item.includes(
+        "]"
+      )
+    ) {
+
+      item =
+        item
+          .split("]")
+          .slice(1)
+          .join("]")
+          .trim();
+    }
+
+
+    item =
+      item
+        .split(
+          " ("
+        )[0]
+        .trim();
+
+
+    cart.push({
+
+      item,
+
+      qty:
+        quantities[i],
+    });
+  }
+
+
+  return cart;
+}
+
+
+/* ============================================================
+   MODIFY STOCK
+============================================================ */
+
+async function modifyBranchStock(
+  env,
+  spreadsheetId,
+  cart,
+  mode
+) {
+
+  const rows =
+    await getSheetValues(
+
+      env,
+
+      spreadsheetId,
+
+      "Stocks!A:ZZ"
+    );
+
+
+  const targetDate =
+    getJeddahYesterdayISO();
+
+
+  const headers =
+    rows[0] ||
+    [];
+
+
+  const columnIndex =
+    headers.indexOf(
+      targetDate
+    );
+
+
+  if (
+    columnIndex === -1
+  ) {
+
+    throw new Error(
+      `Stock date ${targetDate} not found.`
+    );
+  }
+
+
+  const itemRows =
+    new Map();
+
+
+  for (
+    let i = 1;
+    i < rows.length;
+    i++
+  ) {
+
+    const item =
+      String(
+        rows[i]?.[0] ||
+        ""
+      ).trim();
+
+
+    if (item) {
+
+      itemRows.set(
+        item,
+        i
+      );
+    }
+  }
+
+
+  const updates = [];
+
+
+  const letter =
+    columnNumberToLetters(
+      columnIndex + 1
+    );
+
+
+  for (
+    const entry of cart
+  ) {
+
+    if (
+      !itemRows.has(
+        entry.item
+      )
+    ) {
+
+      continue;
+    }
+
+
+    const rowIndex =
+      itemRows.get(
+        entry.item
+      );
+
+
+    const raw =
+      rows[
+        rowIndex
+      ]?.[
+        columnIndex
+      ];
+
+
+    const current =
+      Number(
+        String(
+          raw ?? ""
+        )
+          .replace(
+            /,/g,
+            ""
+          )
+          .trim() ||
+        0
+      ) ||
+      0;
+
+
+    const qty =
+      Number(
+        entry.qty
+      ) ||
+      0;
+
+
+    const next =
+      mode ===
+      "subtract"
+
+        ? current -
+          qty
+
+        : current +
+          qty;
+
+
+    updates.push({
+
+      range:
+        `Stocks!${letter}${rowIndex + 1}`,
+
+      values:
+        [[next]],
+    });
+  }
+
+
+  if (!updates.length) {
+
+    throw new Error(
+      "Transfer items not found."
+    );
+  }
+
+
+  await batchWriteSheet(
+
+    env,
+
+    spreadsheetId,
+
+    updates
+  );
+}
+
+
+/* ============================================================
+   FIND TRANSFER ROW
+============================================================ */
+
+async function findTransferRow(
   env,
   transferId
 ) {
 
-  const possibleRanges = [
-    "Stock Transfer!A:Z",
-    "StockTransfer!A:Z",
-    "Transfers!A:Z",
-  ];
+  const rows =
+    await getSheetValues(
+
+      env,
+
+      env.MASTER_SHEET_ID,
+
+      "Transfers!A:Z"
+    );
+
+
+  const headers =
+    (
+      rows[0] ||
+      []
+    ).map(
+      normalizeHeader
+    );
+
+
+  const idIndex =
+    headers.indexOf(
+      "id"
+    );
+
+
+  const statusIndex =
+    headers.indexOf(
+      "status"
+    );
 
 
   for (
-    const range of possibleRanges
+    let i = 1;
+    i < rows.length;
+    i++
   ) {
 
-    try {
+    if (
+      String(
+        rows[i]?.[
+          idIndex
+        ] ||
+        ""
+      ).trim() ===
+      transferId
+    ) {
 
-      const rows =
-        await getSheetValues(
-          env,
-          env.MASTER_SHEET_ID,
-          range
-        );
+      return {
 
+        row:
+          i + 1,
 
-      if (
-        !rows ||
-        rows.length < 2
-      ) {
-        continue;
-      }
-
-
-      const headers =
-        rows[0].map(
-          normalizeHeader
-        );
-
-
-      const idIndex =
-        headers.findIndex(
-          (header) =>
-            [
-              "transferid",
-              "id",
-              "transactionid",
-              "txid",
-            ].includes(
-              header
-            )
-        );
-
-
-      const statusIndex =
-        headers.findIndex(
-          (header) =>
-            [
-              "status",
-              "transferstatus",
-            ].includes(
-              header
-            )
-        );
-
-
-      if (
-        idIndex < 0 ||
-        statusIndex < 0
-      ) {
-        continue;
-      }
-
-
-      for (
-        let i = 1;
-        i < rows.length;
-        i++
-      ) {
-
-        if (
-          String(
-            rows[i]?.[
-              idIndex
-            ] ||
-            ""
-          ).trim() ===
-          transferId
-        ) {
-
-          const tabName =
-            range.split(
-              "!"
-            )[0];
-
-
-          return {
-            rowNumber:
-              i + 1,
-
-            statusColumn:
-              statusIndex +
-              1,
-
-            tabName,
-          };
-        }
-      }
-
-    } catch (error) {
-
-      console.log(
-        "Transfer lookup range failed:",
-        range,
-        error.message
-      );
+        statusColumn:
+          statusIndex + 1,
+      };
     }
   }
 
@@ -2710,13 +2457,69 @@ async function findTransferGoogleRow(
 
 
 /* ============================================================
-   RESPOND TO TRANSFER
+   TRANSFER STATUS WRITE
+============================================================ */
+
+async function updateTransferStatus(
+  env,
+  transferId,
+  status
+) {
+
+  const location =
+    await findTransferRow(
+      env,
+      transferId
+    );
+
+
+  if (!location) {
+
+    throw new Error(
+      "Transfer not found."
+    );
+  }
+
+
+  const letter =
+    columnNumberToLetters(
+      location.statusColumn
+    );
+
+
+  await batchWriteSheet(
+
+    env,
+
+    env.MASTER_SHEET_ID,
+
+    [
+      {
+
+        range:
+          `Transfers!${letter}${location.row}`,
+
+        values:
+          [[status]],
+      },
+    ]
+  );
+}
+
+
+/* ============================================================
+   ACCEPT / REJECT
 ============================================================ */
 
 async function respondTransfer(
   request,
   env
 ) {
+
+  await ensureDatabase(
+    env
+  );
+
 
   const body =
     await request.json();
@@ -2725,19 +2528,8 @@ async function respondTransfer(
   const transferId =
     String(
       body.transferId ||
-      body.id ||
       ""
     ).trim();
-
-
-  const branchCode =
-    String(
-      body.branchCode ||
-      body.branch ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
 
 
   const action =
@@ -2750,8 +2542,6 @@ async function respondTransfer(
 
 
   if (
-    !transferId ||
-    !branchCode ||
     ![
       "accept",
       "reject",
@@ -2762,12 +2552,14 @@ async function respondTransfer(
 
     return jsonResponse(
       {
+
         success:
           false,
 
         message:
-          "Invalid transfer response.",
+          "Invalid transfer action.",
       },
+
       400
     );
   }
@@ -2790,122 +2582,57 @@ async function respondTransfer(
 
     return jsonResponse(
       {
+
         success:
           false,
 
         message:
           "Transfer not found.",
       },
+
       404
     );
   }
 
 
   if (
-    extractBranchCode(
-      transfer.destination
-    ) !==
-    branchCode
+    transfer.status !==
+    "Pending"
   ) {
 
     return jsonResponse(
       {
+
         success:
           false,
 
         message:
-          "Transfer does not belong to this branch.",
+          "Transfer already processed.",
       },
-      403
-    );
-  }
 
-
-  const currentStatus =
-    String(
-      transfer.status ||
-      ""
-    )
-      .trim()
-      .toLowerCase();
-
-
-  if (
-    currentStatus !==
-    "pending"
-  ) {
-
-    return jsonResponse(
-      {
-        success:
-          false,
-
-        message:
-          `Transfer already ${transfer.status}.`,
-      },
       409
     );
   }
 
 
-  const newStatus =
+  const status =
     action ===
     "accept"
+
       ? "Accepted"
+
       : "Rejected";
 
 
-  /*
-    Update Google first.
-  */
+  await updateTransferStatus(
 
-  const googleRow =
-    await findTransferGoogleRow(
-      env,
-      transferId
-    );
-
-
-  if (!googleRow) {
-
-    return jsonResponse(
-      {
-        success:
-          false,
-
-        message:
-          "Transfer row not found in Google Sheet.",
-      },
-      404
-    );
-  }
-
-
-  const statusColumn =
-    columnNumberToLetters(
-      googleRow.statusColumn
-    );
-
-
-  await batchWriteSheet(
     env,
-    env.MASTER_SHEET_ID,
-    [
-      {
-        range:
-          `${googleRow.tabName}!` +
-          `${statusColumn}${googleRow.rowNumber}`,
 
-        values:
-          [[newStatus]],
-      },
-    ]
+    transferId,
+
+    status
   );
 
-
-  /*
-    Then update D1.
-  */
 
   await env.DB.prepare(`
     UPDATE transfers
@@ -2917,26 +2644,101 @@ async function respondTransfer(
     WHERE id = ?
   `)
     .bind(
-      newStatus,
+
+      status,
+
       new Date()
         .toISOString(),
+
       transferId
     )
     .run();
 
 
-  /*
-    Clear memory transfer cache so the next poll
-    sees the change immediately.
-  */
+  if (
+    action ===
+    "reject"
+  ) {
 
-  transferMemoryCache = {
-    loadedAt:
-      0,
+    const cart =
+      parseTransferItems(
+        transfer
+      );
 
-    transfers:
-      [],
-  };
+
+    const originCode =
+      transfer.origin
+        .split(
+          " - "
+        )[0];
+
+
+    const destinationCode =
+      transfer.destination
+        .split(
+          " - "
+        )[0];
+
+
+    const origin =
+      await getBartBranch(
+        env,
+        originCode
+      );
+
+
+    const destination =
+      await getBartBranch(
+        env,
+        destinationCode
+      );
+
+
+    await modifyBranchStock(
+
+      env,
+
+      origin.sheet_id,
+
+      cart,
+
+      "add"
+    );
+
+
+    await modifyBranchStock(
+
+      env,
+
+      destination.sheet_id,
+
+      cart,
+
+      "subtract"
+    );
+
+
+    await env.DB.prepare(`
+      DELETE FROM stock_cache
+      WHERE branch_code IN (?, ?)
+    `)
+      .bind(
+        originCode,
+        destinationCode
+      )
+      .run();
+
+
+    await env.DB.prepare(`
+      DELETE FROM stock_record_cache
+      WHERE branch_code IN (?, ?)
+    `)
+      .bind(
+        originCode,
+        destinationCode
+      )
+      .run();
+  }
 
 
   return jsonResponse({
@@ -2944,628 +2746,184 @@ async function respondTransfer(
     success:
       true,
 
-    transferId,
-
-    status:
-      newStatus,
+    status,
 
     message:
-      `Transfer ${newStatus.toLowerCase()} successfully.`,
+      action ===
+      "accept"
+
+        ? "Transfer accepted successfully."
+
+        : "Transfer rejected and stock reversal completed.",
   });
 }
 
 
 /* ============================================================
-   STOCK HELPERS
+   STOCK VIEW
 ============================================================ */
 
-function cleanSKU(value) {
-  return String(
-    value || ""
-  )
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
-}
-
-
-function numericValue(value) {
-
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return 0;
-  }
-
-
-  const cleaned =
-    String(value)
-      .replace(/,/g, "")
-      .trim();
-
-
-  const number =
-    Number(cleaned);
-
-
-  return Number.isFinite(number)
-    ? number
-    : 0;
-}
-
-
-function normalizeStockDate(value) {
-
-  const text =
-    String(
-      value || ""
-    ).trim();
-
-
-  if (!text) {
-    return "";
-  }
-
-
-  /*
-    Already ISO
-  */
-
-  if (
-    /^\d{4}-\d{2}-\d{2}$/.test(
-      text
-    )
-  ) {
-    return text;
-  }
-
-
-  /*
-    DD/MM/YYYY
-  */
-
-  let match =
-    text.match(
-      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
-    );
-
-
-  if (match) {
-
-    return [
-      match[3],
-      String(
-        match[2]
-      ).padStart(2, "0"),
-      String(
-        match[1]
-      ).padStart(2, "0"),
-    ].join("-");
-  }
-
-
-  /*
-    DD-MM-YYYY
-  */
-
-  match =
-    text.match(
-      /^(\d{1,2})-(\d{1,2})-(\d{4})$/
-    );
-
-
-  if (match) {
-
-    return [
-      match[3],
-      String(
-        match[2]
-      ).padStart(2, "0"),
-      String(
-        match[1]
-      ).padStart(2, "0"),
-    ].join("-");
-  }
-
-
-  /*
-    Google / JS parsable date fallback
-  */
-
-  const parsed =
-    new Date(text);
-
-
-  if (
-    !Number.isNaN(
-      parsed.getTime()
-    )
-  ) {
-
-    return [
-      parsed.getFullYear(),
-
-      String(
-        parsed.getMonth() + 1
-      ).padStart(2, "0"),
-
-      String(
-        parsed.getDate()
-      ).padStart(2, "0"),
-    ].join("-");
-  }
-
-
-  return text;
-}
-
-
-/* ============================================================
-   STOCK SHEET RANGE
-============================================================ */
-
-async function readBranchStockSheet(
-  env,
-  branch
+function parseStockViewData(
+  rows
 ) {
 
-  if (!branch) {
-
-    throw new Error(
-      "Branch not found."
-    );
-  }
+  const headers =
+    rows[0] ||
+    [];
 
 
-  if (!branch.sheet_id) {
-
-    throw new Error(
-      `${branch.code} does not have a Google Sheet ID.`
-    );
-  }
+  const columns =
+    headers.slice(1);
 
 
-  /*
-    Branch stock files have historically used
-    different stock tab names.
+  const daily = [];
 
-    Try known possibilities.
-  */
-
-  const ranges = [
-
-    "Stocks!A:ZZ",
-
-    "Stock!A:ZZ",
-
-    "Sheet1!A:ZZ",
-  ];
+  const weekly = [];
 
 
-  let lastError =
+  let section =
     null;
 
 
   for (
-    const range of ranges
+    const row of rows
   ) {
 
-    try {
-
-      const rows =
-        await getSheetValues(
-          env,
-          branch.sheet_id,
-          range
-        );
-
-
-      if (
-        rows &&
-        rows.length
-      ) {
-
-        return {
-          rows,
-          range,
-          tabName:
-            range.split(
-              "!"
-            )[0],
-        };
-      }
-
-    } catch (error) {
-
-      lastError =
-        error;
-
-
-      console.log(
-        `Stock range ${range} failed for ${branch.code}:`,
-        error.message
-      );
-    }
-  }
-
-
-  throw (
-    lastError ||
-    new Error(
-      `Unable to read stock sheet for ${branch.code}.`
-    )
-  );
-}
-
-
-/* ============================================================
-   DETECT STOCK DATE COLUMN
-============================================================ */
-
-function findStockDateColumn(
-  headerRow,
-  wantedDate
-) {
-
-  if (
-    !Array.isArray(
-      headerRow
-    )
-  ) {
-
-    return -1;
-  }
-
-
-  const normalizedWanted =
-    normalizeStockDate(
-      wantedDate
-    );
-
-
-  for (
-    let index = 0;
-    index < headerRow.length;
-    index++
-  ) {
-
-    const value =
-      normalizeStockDate(
-        headerRow[index]
-      );
+    const text =
+      (row || [])
+        .join(" ")
+        .trim()
+        .toLowerCase();
 
 
     if (
-      value ===
-      normalizedWanted
-    ) {
-
-      return index;
-    }
-  }
-
-
-  return -1;
-}
-
-
-/* ============================================================
-   STOCK SECTION DETECTION
-============================================================ */
-
-function detectStockSection(
-  value
-) {
-
-  const normalized =
-    String(
-      value || ""
-    )
-      .trim()
-      .toUpperCase()
-      .replace(/\s+/g, " ");
-
-
-  if (
-    normalized.includes(
-      "DAILY ITEM"
-    ) ||
-    normalized ===
-      "DAILY"
-  ) {
-
-    return "DAILY";
-  }
-
-
-  if (
-    normalized.includes(
-      "WEEKLY ITEM"
-    ) ||
-    normalized ===
-      "WEEKLY"
-  ) {
-
-    return "WEEKLY";
-  }
-
-
-  return null;
-}
-
-
-/* ============================================================
-   PARSE BRANCH STOCK
-============================================================ */
-
-function parseBranchStockRows(
-  rows,
-  wantedDate
-) {
-
-  if (
-    !rows ||
-    rows.length === 0
-  ) {
-
-    return {
-      date:
-        wantedDate,
-
-      dateFound:
-        false,
-
-      dateColumn:
-        -1,
-
-      daily:
-        [],
-
-      weekly:
-        [],
-
-      all:
-        [],
-    };
-  }
-
-
-  /*
-    Branch stock layout:
-
-    Column A = Item / section marker
-    Column B = SKU
-    Column C = Date marker / structural column
-    Column D = UOM
-
-    Date quantities begin from later columns.
-
-    We search the first few rows for the requested
-    date instead of assuming a fixed row.
-  */
-
-  let dateHeaderRowIndex =
-    -1;
-
-  let dateColumn =
-    -1;
-
-
-  const headerSearchLimit =
-    Math.min(
-      rows.length,
-      10
-    );
-
-
-  for (
-    let rowIndex = 0;
-    rowIndex < headerSearchLimit;
-    rowIndex++
-  ) {
-
-    const found =
-      findStockDateColumn(
-        rows[rowIndex],
-        wantedDate
-      );
-
-
-    if (
-      found !== -1
-    ) {
-
-      dateHeaderRowIndex =
-        rowIndex;
-
-      dateColumn =
-        found;
-
-      break;
-    }
-  }
-
-
-  let currentSection =
-    null;
-
-
-  const daily =
-    [];
-
-  const weekly =
-    [];
-
-  const all =
-    [];
-
-
-  for (
-    let rowIndex = 0;
-    rowIndex < rows.length;
-    rowIndex++
-  ) {
-
-    const row =
-      rows[rowIndex] ||
-      [];
-
-
-    const itemName =
-      String(
-        row[0] ||
-        ""
-      ).trim();
-
-
-    const section =
-      detectStockSection(
-        itemName
-      );
-
-
-    if (section) {
-
-      currentSection =
-        section;
-
-      continue;
-    }
-
-
-    const sku =
-      cleanSKU(
-        row[1]
-      );
-
-
-    const uom =
-      String(
-        row[3] ||
-        ""
-      ).trim();
-
-
-    /*
-      Ignore blank structural rows.
-    */
-
-    if (
-      !itemName &&
-      !sku
-    ) {
-
-      continue;
-    }
-
-
-    /*
-      Ignore header-like rows.
-    */
-
-    const normalizedItem =
-      normalizeHeader(
-        itemName
-      );
-
-
-    if (
-      [
-        "item",
-        "itemname",
-        "description",
-        "product",
-        "productname",
-      ].includes(
-        normalizedItem
+      text.includes(
+        "daily item"
       )
     ) {
 
+      section =
+        "daily";
+
       continue;
     }
 
 
     if (
-      !currentSection
+      text.includes(
+        "weekly item"
+      )
     ) {
 
-      /*
-        Some files can contain item rows before
-        a visible section marker.
-
-        Do not silently classify those.
-      */
+      section =
+        "weekly";
 
       continue;
     }
 
 
-    const quantity =
-      dateColumn >= 0
-        ? numericValue(
-            row[
-              dateColumn
-            ]
-          )
-        : 0;
+    if (
+      !section ||
+      !row?.[0]
+    ) {
+
+      continue;
+    }
 
 
-    const item = {
+    const item =
+      String(
+        row[0]
+      ).trim();
 
-      rowNumber:
-        rowIndex + 1,
 
-      item:
-        itemName,
+    const values =
+      row.slice(1);
 
-      name:
-        itemName,
 
-      sku,
+    while (
+      values.length <
+      columns.length
+    ) {
 
-      uom,
+      values.push("");
+    }
 
-      quantity,
 
-      qty:
-        quantity,
-
-      section:
-        currentSection,
-
-      type:
-        currentSection,
-
-      bakery:
-        BAKERY_SKUS.has(
-          sku
-        ),
+    const object = {
+      Item:
+        item,
     };
 
 
-    all.push(
-      item
+    let total = 0;
+
+
+    columns.forEach(
+      (
+        column,
+        index
+      ) => {
+
+        if (
+          index < 2
+        ) {
+
+          object[
+            column
+          ] =
+            values[index] ??
+            "";
+
+        } else {
+
+          const num =
+            Number(
+              values[index] ||
+              0
+            );
+
+
+          const safe =
+            Number.isFinite(
+              num
+            )
+
+              ? num
+
+              : 0;
+
+
+          object[
+            column
+          ] =
+            safe;
+
+
+          total +=
+            safe;
+        }
+      }
     );
 
 
+    object.Total =
+      total;
+
+
     if (
-      currentSection ===
-      "DAILY"
+      section ===
+      "daily"
     ) {
 
       daily.push(
-        item
+        object
       );
 
-    } else if (
-      currentSection ===
-      "WEEKLY"
-    ) {
+    } else {
 
       weekly.push(
-        item
+        object
       );
     }
   }
@@ -3573,68 +2931,101 @@ function parseBranchStockRows(
 
   return {
 
-    date:
-      wantedDate,
-
-    dateFound:
-      dateColumn >= 0,
-
-    dateHeaderRow:
-      dateHeaderRowIndex >= 0
-        ? dateHeaderRowIndex + 1
-        : null,
-
-    dateColumn:
-      dateColumn >= 0
-        ? dateColumn + 1
-        : -1,
-
     daily,
 
     weekly,
-
-    all,
   };
 }
 
 
-/* ============================================================
-   D1 STOCK VIEW CACHE
-============================================================ */
-
-async function getStockCache(
-  env,
-  branchCode
-) {
-
-  return await env.DB.prepare(`
-    SELECT
-      payload,
-      synced_at
-
-    FROM stock_cache
-
-    WHERE branch_code = ?
-
-    LIMIT 1
-  `)
-    .bind(
-      branchCode
-    )
-    .first();
-}
-
-
-async function saveStockCache(
+async function getStockView(
   env,
   branchCode,
-  payload
+  force = false
 ) {
+
+  const branch =
+    await getBartBranch(
+      env,
+      branchCode
+    );
+
+
+  if (!branch?.sheet_id) {
+
+    throw new Error(
+      "Branch SheetID missing."
+    );
+  }
+
 
   const now =
     Math.floor(
       Date.now() /
       1000
+    );
+
+
+  const cached =
+    await env.DB.prepare(`
+      SELECT
+        payload,
+        synced_at
+
+      FROM stock_cache
+
+      WHERE branch_code = ?
+
+      LIMIT 1
+    `)
+      .bind(
+        branchCode
+      )
+      .first();
+
+
+  if (
+    !force &&
+    cached &&
+    now -
+    Number(
+      cached.synced_at
+    ) <
+    STOCK_VIEW_CACHE_SECONDS
+  ) {
+
+    return {
+
+      source:
+        "D1",
+
+      syncedAt:
+        Number(
+          cached.synced_at
+        ),
+
+      data:
+        JSON.parse(
+          cached.payload
+        ),
+    };
+  }
+
+
+  const rows =
+    await getSheetValues(
+
+      env,
+
+      branch.sheet_id,
+
+      "Stocks!A:ZZ"
+    );
+
+
+  const parsed =
+    parseStockViewData(
+      rows
     );
 
 
@@ -3649,7 +3040,6 @@ async function saveStockCache(
 
     ON CONFLICT(branch_code)
     DO UPDATE SET
-
       payload =
         excluded.payload,
 
@@ -3657,27 +3047,264 @@ async function saveStockCache(
         excluded.synced_at
   `)
     .bind(
+
       branchCode,
+
       JSON.stringify(
-        payload
+        parsed
       ),
+
       now
     )
     .run();
 
 
-  return now;
+  return {
+
+    source:
+      "GOOGLE->D1",
+
+    syncedAt:
+      now,
+
+    data:
+      parsed,
+  };
 }
 
 
 /* ============================================================
-   STOCK VIEW
+   STOCK STRUCTURE
 ============================================================ */
 
-async function getStockView(
+function findSectionIndex(
+  values,
+  name
+) {
+
+  const target =
+    name
+      .trim()
+      .toUpperCase();
+
+
+  for (
+    let i = 0;
+    i < values.length;
+    i++
+  ) {
+
+    if (
+      String(
+        values[i] ||
+        ""
+      )
+        .trim()
+        .toUpperCase() ===
+      target
+    ) {
+
+      return i;
+    }
+  }
+
+
+  return null;
+}
+
+
+function buildStockRecordData(
+  sheet
+) {
+
+  const columnA =
+    sheet.map(
+      (row) =>
+        String(
+          row?.[0] ||
+          ""
+        ).trim()
+    );
+
+
+  const dailyStart =
+    findSectionIndex(
+      columnA,
+      "DAILY ITEM"
+    );
+
+
+  const weeklyStart =
+    findSectionIndex(
+      columnA,
+      "WEEKLY ITEM"
+    );
+
+
+  if (
+    dailyStart === null ||
+    weeklyStart === null
+  ) {
+
+    throw new Error(
+      "Daily or Weekly section missing."
+    );
+  }
+
+
+  function sectionItems(
+    mode
+  ) {
+
+    const items = [];
+
+
+    const start =
+      mode ===
+      "daily"
+
+        ? dailyStart + 1
+
+        : weeklyStart + 1;
+
+
+    const end =
+      mode ===
+      "daily"
+
+        ? weeklyStart
+
+        : sheet.length;
+
+
+    for (
+      let i = start;
+      i < end;
+      i++
+    ) {
+
+      const row =
+        sheet[i] ||
+        [];
+
+
+      const name =
+        String(
+          row[0] ||
+          ""
+        ).trim();
+
+
+      if (!name) {
+
+        continue;
+      }
+
+
+      items.push({
+
+        name,
+
+        sku:
+          String(
+            row[1] ||
+            ""
+          ).trim(),
+
+        uom:
+          String(
+            row[2] ||
+            ""
+          ).trim(),
+
+        row:
+          i + 1,
+      });
+    }
+
+
+    return items;
+  }
+
+
+  const bakery = [];
+
+
+  for (
+    let i = 1;
+    i < sheet.length;
+    i++
+  ) {
+
+    const row =
+      sheet[i] ||
+      [];
+
+
+    const sku =
+      String(
+        row[1] ||
+        ""
+      ).trim();
+
+
+    if (
+      BAKERY_SKUS.has(
+        sku
+      )
+    ) {
+
+      bakery.push({
+
+        name:
+          String(
+            row[0] ||
+            ""
+          ).trim(),
+
+        sku,
+
+        uom:
+          String(
+            row[2] ||
+            ""
+          ).trim(),
+
+        row:
+          i + 1,
+      });
+    }
+  }
+
+
+  return {
+
+    daily:
+      sectionItems(
+        "daily"
+      ),
+
+    weekly:
+      sectionItems(
+        "weekly"
+      ),
+
+    bakery,
+
+    dailyStart,
+
+    weeklyStart,
+  };
+}
+
+
+/* ============================================================
+   STOCK RECORD STRUCTURE CACHE
+============================================================ */
+
+async function loadStockRecordStructure(
   env,
   branchCode,
-  wantedDate,
   force = false
 ) {
 
@@ -3688,230 +3315,72 @@ async function getStockView(
     );
 
 
-  if (!branch) {
+  if (!branch?.sheet_id) {
+
+    throw new Error(
+      "Branch SheetID missing."
+    );
+  }
+
+
+  const now =
+    Math.floor(
+      Date.now() /
+      1000
+    );
+
+
+  const cached =
+    await env.DB.prepare(`
+      SELECT
+        payload,
+        synced_at
+
+      FROM stock_record_cache
+
+      WHERE branch_code = ?
+
+      LIMIT 1
+    `)
+      .bind(
+        branchCode
+      )
+      .first();
+
+
+  if (
+    !force &&
+    cached &&
+    now -
+    Number(
+      cached.synced_at
+    ) <
+    STOCK_RECORD_CACHE_SECONDS
+  ) {
 
     return {
-      success:
-        false,
 
-      message:
-        "Branch not found.",
+      branch,
+
+      source:
+        "D1",
+
+      sheetData:
+        JSON.parse(
+          cached.payload
+        ),
     };
   }
 
 
-  const date =
-    wantedDate ||
-    getJeddahYesterdayISO();
+  const rows =
+    await getSheetValues(
 
-
-  const now =
-    Math.floor(
-      Date.now() /
-      1000
-    );
-
-
-  /*
-    Use D1 cache first.
-
-    Cache payload includes the date.
-    Therefore don't return yesterday's cache
-    for another selected date.
-  */
-
-  if (!force) {
-
-    const cached =
-      await getStockCache(
-        env,
-        branchCode
-      );
-
-
-    if (cached) {
-
-      try {
-
-        const payload =
-          JSON.parse(
-            cached.payload
-          );
-
-
-        const age =
-          now -
-          Number(
-            cached.synced_at ||
-            0
-          );
-
-
-        if (
-          payload?.date ===
-            date &&
-          age <
-            STOCK_VIEW_CACHE_SECONDS
-        ) {
-
-          return {
-            success:
-              true,
-
-            source:
-              "D1",
-
-            googleCalled:
-              false,
-
-            cacheAgeSeconds:
-              age,
-
-            branch: {
-              code:
-                branch.code,
-
-              name:
-                branch.name,
-            },
-
-            ...payload,
-          };
-        }
-
-      } catch (error) {
-
-        console.log(
-          "Invalid stock cache:",
-          error.message
-        );
-      }
-    }
-  }
-
-
-  /*
-    Cache miss / force refresh:
-    read branch Google Sheet once.
-  */
-
-  const sheet =
-    await readBranchStockSheet(
       env,
-      branch
-    );
 
+      branch.sheet_id,
 
-  const parsed =
-    parseBranchStockRows(
-      sheet.rows,
-      date
-    );
-
-
-  const payload = {
-
-    date:
-      parsed.date,
-
-    dateFound:
-      parsed.dateFound,
-
-    dateHeaderRow:
-      parsed.dateHeaderRow,
-
-    dateColumn:
-      parsed.dateColumn,
-
-    tabName:
-      sheet.tabName,
-
-    daily:
-      parsed.daily,
-
-    weekly:
-      parsed.weekly,
-
-    all:
-      parsed.all,
-
-    syncedAt:
-      new Date()
-        .toISOString(),
-  };
-
-
-  await saveStockCache(
-    env,
-    branchCode,
-    payload
-  );
-
-
-  return {
-
-    success:
-      true,
-
-    source:
-      "GOOGLE->D1",
-
-    googleCalled:
-      true,
-
-    cacheAgeSeconds:
-      0,
-
-    branch: {
-      code:
-        branch.code,
-
-      name:
-        branch.name,
-    },
-
-    ...payload,
-  };
-}
-
-
-/* ============================================================
-   STOCK RECORD CACHE
-============================================================ */
-
-async function getStockRecordCache(
-  env,
-  branchCode
-) {
-
-  return await env.DB.prepare(`
-    SELECT
-      payload,
-      synced_at
-
-    FROM stock_record_cache
-
-    WHERE branch_code = ?
-
-    LIMIT 1
-  `)
-    .bind(
-      branchCode
-    )
-    .first();
-}
-
-
-async function saveStockRecordCache(
-  env,
-  branchCode,
-  payload
-) {
-
-  const now =
-    Math.floor(
-      Date.now() /
-      1000
+      "Stocks!A:ZZ"
     );
 
 
@@ -3926,7 +3395,6 @@ async function saveStockRecordCache(
 
     ON CONFLICT(branch_code)
     DO UPDATE SET
-
       payload =
         excluded.payload,
 
@@ -3934,10 +3402,11 @@ async function saveStockRecordCache(
         excluded.synced_at
   `)
     .bind(
+
       branchCode,
 
       JSON.stringify(
-        payload
+        rows
       ),
 
       now
@@ -3945,7 +3414,99 @@ async function saveStockRecordCache(
     .run();
 
 
-  return now;
+  return {
+
+    branch,
+
+    source:
+      "GOOGLE->D1",
+
+    sheetData:
+      rows,
+  };
+}
+
+
+/* ============================================================
+   DUPLICATE CHECK
+============================================================ */
+
+function stockAlreadySubmitted(
+  sheet,
+  structure,
+  mode,
+  date
+) {
+
+  if (
+    mode ===
+    "bakery"
+  ) {
+
+    return false;
+  }
+
+
+  const headers =
+    sheet[0] ||
+    [];
+
+
+  const column =
+    headers.indexOf(
+      date
+    );
+
+
+  if (
+    column === -1
+  ) {
+
+    return false;
+  }
+
+
+  const start =
+    mode ===
+    "daily"
+
+      ? structure.dailyStart +
+        1
+
+      : structure.weeklyStart +
+        1;
+
+
+  const end =
+    mode ===
+    "daily"
+
+      ? structure.weeklyStart
+
+      : sheet.length;
+
+
+  for (
+    let row = start;
+    row < end;
+    row++
+  ) {
+
+    if (
+      String(
+        sheet[row]?.[
+          column
+        ] ||
+        ""
+      ).trim()
+    ) {
+
+      return true;
+    }
+  }
+
+
+  return false;
 }
 
 
@@ -3953,173 +3514,69 @@ async function saveStockRecordCache(
    STOCK RECORD INIT
 ============================================================ */
 
-async function getStockRecordInit(
+async function stockRecordInit(
   env,
   branchCode,
-  wantedDate,
-  force = false
+  date
 ) {
 
-  const branch =
-    await getBartBranch(
+  const loaded =
+    await loadStockRecordStructure(
+
       env,
+
       branchCode
     );
 
 
-  if (!branch) {
+  const structure =
+    buildStockRecordData(
+      loaded.sheetData
+    );
 
-    return {
-      success:
-        false,
 
-      message:
-        "Branch not found.",
+  const draftRows =
+    await env.DB.prepare(`
+      SELECT
+        mode,
+        payload,
+        updated_at
+
+      FROM stock_drafts
+
+      WHERE
+        branch_code = ?
+        AND stock_date = ?
+    `)
+      .bind(
+        branchCode,
+        date
+      )
+      .all();
+
+
+  const drafts = {};
+
+
+  for (
+    const draft of
+    draftRows.results ||
+    []
+  ) {
+
+    drafts[
+      draft.mode
+    ] = {
+
+      values:
+        JSON.parse(
+          draft.payload
+        ),
+
+      updatedAt:
+        draft.updated_at,
     };
   }
-
-
-  const date =
-    wantedDate ||
-    getJeddahYesterdayISO();
-
-
-  const now =
-    Math.floor(
-      Date.now() /
-      1000
-    );
-
-
-  if (!force) {
-
-    const cached =
-      await getStockRecordCache(
-        env,
-        branchCode
-      );
-
-
-    if (cached) {
-
-      try {
-
-        const payload =
-          JSON.parse(
-            cached.payload
-          );
-
-
-        const age =
-          now -
-          Number(
-            cached.synced_at ||
-            0
-          );
-
-
-        if (
-          payload?.date ===
-            date &&
-          age <
-            STOCK_RECORD_CACHE_SECONDS
-        ) {
-
-          return {
-            success:
-              true,
-
-            source:
-              "D1",
-
-            googleCalled:
-              false,
-
-            cacheAgeSeconds:
-              age,
-
-            branch: {
-              code:
-                branch.code,
-
-              name:
-                branch.name,
-            },
-
-            ...payload,
-          };
-        }
-
-      } catch (error) {
-
-        console.log(
-          "Invalid stock record cache:",
-          error.message
-        );
-      }
-    }
-  }
-
-
-  const sheet =
-    await readBranchStockSheet(
-      env,
-      branch
-    );
-
-
-  const parsed =
-    parseBranchStockRows(
-      sheet.rows,
-      date
-    );
-
-
-  /*
-    Stock Record page needs the item master
-    regardless of whether the date column already exists.
-
-    Quantity is still included because it allows the UI
-    to show already-recorded values when applicable.
-  */
-
-  const payload = {
-
-    date:
-      date,
-
-    tabName:
-      sheet.tabName,
-
-    dateFound:
-      parsed.dateFound,
-
-    dateHeaderRow:
-      parsed.dateHeaderRow,
-
-    dateColumn:
-      parsed.dateColumn,
-
-    daily:
-      parsed.daily,
-
-    weekly:
-      parsed.weekly,
-
-    items:
-      parsed.all,
-
-    syncedAt:
-      new Date()
-        .toISOString(),
-  };
-
-
-  await saveStockRecordCache(
-    env,
-    branchCode,
-    payload
-  );
 
 
   return {
@@ -4128,163 +3585,117 @@ async function getStockRecordInit(
       true,
 
     source:
-      "GOOGLE->D1",
-
-    googleCalled:
-      true,
-
-    cacheAgeSeconds:
-      0,
+      loaded.source,
 
     branch: {
+
       code:
-        branch.code,
+        loaded.branch.code,
 
       name:
-        branch.name,
+        loaded.branch.name,
     },
 
-    ...payload,
+    date,
+
+    duplicate: {
+
+      daily:
+        stockAlreadySubmitted(
+          loaded.sheetData,
+          structure,
+          "daily",
+          date
+        ),
+
+      weekly:
+        stockAlreadySubmitted(
+          loaded.sheetData,
+          structure,
+          "weekly",
+          date
+        ),
+
+      bakery:
+        false,
+    },
+
+    items: {
+
+      daily:
+        structure.daily,
+
+      weekly:
+        structure.weekly,
+
+      bakery:
+        structure.bakery,
+    },
+
+    drafts,
   };
 }
 
 
 /* ============================================================
-   STOCK DRAFT KEY
+   DRAFT
 ============================================================ */
 
-function stockDraftKey(
-  branchCode,
-  stockDate,
+function makeStockDraftKey(
+  branch,
+  date,
   mode
 ) {
 
-  return [
-    branchCode,
-    stockDate,
-    String(
-      mode ||
-      "DAILY"
-    ).toUpperCase(),
-  ].join("|");
+  return (
+    `${branch}_` +
+    `${date}_` +
+    `${mode}`
+  );
 }
 
-
-/* ============================================================
-   SAVE STOCK DRAFT
-============================================================ */
 
 async function saveStockDraft(
   env,
   body
 ) {
 
-  const branchCode =
+  const branch =
     String(
       body.branchCode ||
-      body.branch ||
       ""
     )
       .trim()
       .toUpperCase();
 
 
-  const stockDate =
+  const date =
     String(
-      body.stockDate ||
       body.date ||
       ""
-    ).trim();
+    );
 
 
   const mode =
     String(
       body.mode ||
-      "DAILY"
+      ""
     )
       .trim()
-      .toUpperCase();
+      .toLowerCase();
 
 
-  const entries =
-    Array.isArray(
-      body.entries
-    )
-      ? body.entries
-      : [];
-
-
-  if (
-    !branchCode ||
-    !stockDate
-  ) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "Branch and stock date are required.",
-    };
-  }
-
-
-  if (
-    ![
-      "DAILY",
-      "WEEKLY",
-    ].includes(
-      mode
-    )
-  ) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "Invalid stock mode.",
-    };
-  }
-
-
-  const branch =
-    await getBartBranch(
-      env,
-      branchCode
-    );
-
-
-  if (!branch) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "Branch not found.",
-    };
-  }
+  const values =
+    body.values ||
+    {};
 
 
   const key =
-    stockDraftKey(
-      branchCode,
-      stockDate,
+    makeStockDraftKey(
+      branch,
+      date,
       mode
     );
-
-
-  const now =
-    Math.floor(
-      Date.now() /
-      1000
-    );
-
-
-  const payload = {
-    entries,
-  };
 
 
   await env.DB.prepare(`
@@ -4297,18 +3708,10 @@ async function saveStockDraft(
       updated_at
     )
 
-    VALUES (
-      ?,
-      ?,
-      ?,
-      ?,
-      ?,
-      ?
-    )
+    VALUES (?, ?, ?, ?, ?, ?)
 
     ON CONFLICT(draft_key)
     DO UPDATE SET
-
       payload =
         excluded.payload,
 
@@ -4316,14 +3719,17 @@ async function saveStockDraft(
         excluded.updated_at
   `)
     .bind(
+
       key,
-      branchCode,
-      stockDate,
+      branch,
+      date,
       mode,
+
       JSON.stringify(
-        payload
+        values
       ),
-      now
+
+      Date.now()
     )
     .run();
 
@@ -4332,317 +3738,41 @@ async function saveStockDraft(
 
     success:
       true,
-
-    saved:
-      entries.length,
-
-    branchCode,
-
-    stockDate,
-
-    mode,
-
-    message:
-      "Draft saved.",
   };
 }
 
-
-/* ============================================================
-   GET STOCK DRAFT
-============================================================ */
-
-async function getStockDraft(
-  env,
-  branchCode,
-  stockDate,
-  mode
-) {
-
-  const key =
-    stockDraftKey(
-      branchCode,
-      stockDate,
-      mode
-    );
-
-
-  const row =
-    await env.DB.prepare(`
-      SELECT
-        payload,
-        updated_at
-
-      FROM stock_drafts
-
-      WHERE draft_key = ?
-
-      LIMIT 1
-    `)
-      .bind(
-        key
-      )
-      .first();
-
-
-  if (!row) {
-
-    return {
-
-      success:
-        true,
-
-      exists:
-        false,
-
-      entries:
-        [],
-    };
-  }
-
-
-  let payload = {};
-
-
-  try {
-
-    payload =
-      JSON.parse(
-        row.payload
-      );
-
-  } catch {
-
-    payload = {};
-  }
-
-
-  return {
-
-    success:
-      true,
-
-    exists:
-      true,
-
-    entries:
-      Array.isArray(
-        payload.entries
-      )
-        ? payload.entries
-        : [],
-
-    updatedAt:
-      Number(
-        row.updated_at ||
-        0
-      ),
-  };
-}
-
-
-/* ============================================================
-   DELETE STOCK DRAFT
-============================================================ */
 
 async function deleteStockDraft(
   env,
-  branchCode,
-  stockDate,
+  branch,
+  date,
   mode
 ) {
-
-  const key =
-    stockDraftKey(
-      branchCode,
-      stockDate,
-      mode
-    );
-
 
   await env.DB.prepare(`
     DELETE FROM stock_drafts
     WHERE draft_key = ?
   `)
     .bind(
-      key
+      makeStockDraftKey(
+        branch,
+        date,
+        mode
+      )
     )
     .run();
 
 
   return {
+
     success:
       true,
-
-    message:
-      "Draft cleared.",
   };
 }
 
 
 /* ============================================================
-   FIND / CREATE DATE COLUMN FOR STOCK SUBMISSION
-============================================================ */
-
-async function ensureStockDateColumn(
-  env,
-  branch,
-  tabName,
-  rows,
-  stockDate
-) {
-
-  /*
-    First search existing date.
-  */
-
-  const searchLimit =
-    Math.min(
-      rows.length,
-      10
-    );
-
-
-  for (
-    let rowIndex = 0;
-    rowIndex < searchLimit;
-    rowIndex++
-  ) {
-
-    const existing =
-      findStockDateColumn(
-        rows[rowIndex],
-        stockDate
-      );
-
-
-    if (
-      existing !== -1
-    ) {
-
-      return {
-        headerRow:
-          rowIndex + 1,
-
-        column:
-          existing + 1,
-
-        created:
-          false,
-      };
-    }
-  }
-
-
-  /*
-    Date not found.
-
-    Determine the date-header row.
-
-    Most BART stock sheets use row 1.
-    If another date-like header exists in the first
-    few rows, use that row instead.
-  */
-
-  let headerRowIndex =
-    0;
-
-
-  for (
-    let rowIndex = 0;
-    rowIndex < searchLimit;
-    rowIndex++
-  ) {
-
-    const row =
-      rows[rowIndex] ||
-      [];
-
-
-    const hasDate =
-      row.some(
-        (cell) =>
-          /^\d{4}-\d{2}-\d{2}$/.test(
-            normalizeStockDate(
-              cell
-            )
-          )
-      );
-
-
-    if (hasDate) {
-
-      headerRowIndex =
-        rowIndex;
-
-      break;
-    }
-  }
-
-
-  const headerRow =
-    rows[
-      headerRowIndex
-    ] || [];
-
-
-  /*
-    Do not put stock dates inside A-D structural columns.
-
-    At minimum start at E.
-  */
-
-  let newColumn =
-    Math.max(
-      headerRow.length + 1,
-      5
-    );
-
-
-  /*
-    If there are trailing blanks in parsed Google values,
-    headerRow.length already naturally points after the last
-    populated value.
-  */
-
-  const columnLetter =
-    columnNumberToLetters(
-      newColumn
-    );
-
-
-  await batchWriteSheet(
-    env,
-    branch.sheet_id,
-    [
-      {
-        range:
-          `${tabName}!` +
-          `${columnLetter}${headerRowIndex + 1}`,
-
-        values:
-          [[stockDate]],
-      },
-    ]
-  );
-
-
-  return {
-
-    headerRow:
-      headerRowIndex + 1,
-
-    column:
-      newColumn,
-
-    created:
-      true,
-  };
-}
-
-
-/* ============================================================
-   SUBMIT STOCK RECORD
+   STOCK RECORD SUBMIT
 ============================================================ */
 
 async function submitStockRecord(
@@ -4653,84 +3783,31 @@ async function submitStockRecord(
   const branchCode =
     String(
       body.branchCode ||
-      body.branch ||
       ""
     )
       .trim()
       .toUpperCase();
 
 
-  const stockDate =
+  const date =
     String(
-      body.stockDate ||
       body.date ||
       ""
-    ).trim();
+    );
 
 
   const mode =
     String(
       body.mode ||
-      "DAILY"
+      ""
     )
       .trim()
-      .toUpperCase();
+      .toLowerCase();
 
 
-  const entries =
-    Array.isArray(
-      body.entries
-    )
-      ? body.entries
-      : [];
-
-
-  if (
-    !branchCode ||
-    !stockDate
-  ) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "Branch and stock date are required.",
-    };
-  }
-
-
-  if (
-    ![
-      "DAILY",
-      "WEEKLY",
-    ].includes(
-      mode
-    )
-  ) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "Invalid stock mode.",
-    };
-  }
-
-
-  if (
-    entries.length === 0
-  ) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "No stock entries supplied.",
-    };
-  }
+  const values =
+    body.values ||
+    {};
 
 
   const branch =
@@ -4740,342 +3817,227 @@ async function submitStockRecord(
     );
 
 
-  if (!branch) {
+  const sheet =
+    await getSheetValues(
 
-    return {
-      success:
-        false,
-
-      message:
-        "Branch not found.",
-    };
-  }
-
-
-  if (!branch.sheet_id) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "Branch Google Sheet ID is missing.",
-    };
-  }
-
-
-  const lockKey =
-    `stock_submit_${branchCode}_${stockDate}_${mode}`;
-
-
-  const locked =
-    await acquireLock(
       env,
-      lockKey,
-      30
-    );
 
-
-  if (!locked) {
-
-    return {
-      success:
-        false,
-
-      message:
-        "This stock submission is already being processed.",
-    };
-  }
-
-
-  try {
-
-    const sheet =
-      await readBranchStockSheet(
-        env,
-        branch
-      );
-
-
-    const parsed =
-      parseBranchStockRows(
-        sheet.rows,
-        stockDate
-      );
-
-
-    /*
-      Build valid row map from the actual Google Sheet.
-
-      Never trust a row number supplied by frontend without
-      confirming that the SKU belongs to the expected section.
-    */
-
-    const allowedItems =
-      mode === "DAILY"
-        ? parsed.daily
-        : parsed.weekly;
-
-
-    const bySKU =
-      new Map();
-
-
-    const byRow =
-      new Map();
-
-
-    for (
-      const item of allowedItems
-    ) {
-
-      if (item.sku) {
-
-        bySKU.set(
-          item.sku,
-          item
-        );
-      }
-
-
-      byRow.set(
-        Number(
-          item.rowNumber
-        ),
-        item
-      );
-    }
-
-
-    const dateColumn =
-      await ensureStockDateColumn(
-        env,
-        branch,
-        sheet.tabName,
-        sheet.rows,
-        stockDate
-      );
-
-
-    const columnLetter =
-      columnNumberToLetters(
-        dateColumn.column
-      );
-
-
-    const updates =
-      [];
-
-
-    const acceptedEntries =
-      [];
-
-
-    for (
-      const entry of entries
-    ) {
-
-      const sku =
-        cleanSKU(
-          entry.sku
-        );
-
-
-      const requestedRow =
-        Number(
-          entry.rowNumber ||
-          entry.row ||
-          0
-        );
-
-
-      let item =
-        null;
-
-
-      if (
-        sku &&
-        bySKU.has(
-          sku
-        )
-      ) {
-
-        item =
-          bySKU.get(
-            sku
-          );
-
-      } else if (
-        requestedRow &&
-        byRow.has(
-          requestedRow
-        )
-      ) {
-
-        item =
-          byRow.get(
-            requestedRow
-          );
-      }
-
-
-      if (!item) {
-
-        continue;
-      }
-
-
-      const quantity =
-        numericValue(
-          entry.quantity ??
-          entry.qty ??
-          entry.value
-        );
-
-
-      updates.push({
-        range:
-          `${sheet.tabName}!` +
-          `${columnLetter}${item.rowNumber}`,
-
-        values:
-          [[quantity]],
-      });
-
-
-      acceptedEntries.push({
-
-        rowNumber:
-          item.rowNumber,
-
-        sku:
-          item.sku,
-
-        item:
-          item.item,
-
-        uom:
-          item.uom,
-
-        quantity,
-      });
-    }
-
-
-    if (
-      updates.length === 0
-    ) {
-
-      return {
-        success:
-          false,
-
-        message:
-          "No valid stock rows were found for submission.",
-      };
-    }
-
-
-    /*
-      One Google batch write for the entire submission.
-    */
-
-    await batchWriteSheet(
-      env,
       branch.sheet_id,
-      updates
+
+      "Stocks!A:ZZ"
     );
 
 
-    /*
-      Clear both caches because Google is now newer than D1.
-    */
-
-    await env.DB.prepare(`
-      DELETE FROM stock_cache
-      WHERE branch_code = ?
-    `)
-      .bind(
-        branchCode
-      )
-      .run();
-
-
-    await env.DB.prepare(`
-      DELETE FROM stock_record_cache
-      WHERE branch_code = ?
-    `)
-      .bind(
-        branchCode
-      )
-      .run();
-
-
-    /*
-      Remove saved draft after successful submission.
-    */
-
-    await deleteStockDraft(
-      env,
-      branchCode,
-      stockDate,
-      mode
+  const structure =
+    buildStockRecordData(
+      sheet
     );
 
+
+  if (
+    stockAlreadySubmitted(
+      sheet,
+      structure,
+      mode,
+      date
+    )
+  ) {
 
     return {
 
       success:
+        false,
+
+      duplicate:
         true,
 
-      branch: {
-        code:
-          branch.code,
+      message:
+        "Data for this date has already been submitted.",
+    };
+  }
 
-        name:
-          branch.name,
-      },
 
-      stockDate,
+  const items =
+    structure[
+      mode
+    ];
 
-      mode,
 
-      count:
-        acceptedEntries.length,
+  const missing = [];
 
-      entries:
-        acceptedEntries,
 
-      submittedAt:
-        formatJeddahTimestamp(),
+  for (
+    const item of items
+  ) {
+
+    if (
+      !String(
+        values[
+          item.name
+        ] ??
+        ""
+      ).trim()
+    ) {
+
+      missing.push(
+        item.name
+      );
+    }
+  }
+
+
+  if (
+    missing.length
+  ) {
+
+    return {
+
+      success:
+        false,
+
+      validation:
+        true,
+
+      type:
+        "missing",
+
+      items:
+        missing,
 
       message:
-        `${mode} stock submitted successfully.`,
+        "Some quantities are empty.",
     };
-
-  } finally {
-
-    await releaseLock(
-      env,
-      lockKey
-    );
   }
-}
 
 
-/* ============================================================
-   REFRESH STOCK CACHE
-============================================================ */
+  const headers =
+    sheet[0] ||
+    [];
 
-async function refreshStockData(
-  env,
-  branchCode,
-  wantedDate
-) {
 
-  /*
-    Force Google read and rebuild both D1 views.
-  */
+  let dateIndex =
+    headers.indexOf(
+      date
+    );
+
+
+  const updates = [];
+
+
+  if (
+    dateIndex === -1
+  ) {
+
+    dateIndex =
+      headers.length;
+
+
+    const letter =
+      columnNumberToLetters(
+        dateIndex + 1
+      );
+
+
+    updates.push({
+
+      range:
+        `Stocks!${letter}1`,
+
+      values:
+        [[date]],
+    });
+  }
+
+
+  const letter =
+    columnNumberToLetters(
+      dateIndex + 1
+    );
+
+
+  const itemRows =
+    new Map();
+
+
+  sheet.forEach(
+    (
+      row,
+      index
+    ) => {
+
+      const name =
+        String(
+          row?.[0] ||
+          ""
+        ).trim();
+
+
+      if (name) {
+
+        itemRows.set(
+          name,
+          index + 1
+        );
+      }
+    }
+  );
+
+
+  for (
+    const item of items
+  ) {
+
+    const row =
+      itemRows.get(
+        item.name
+      );
+
+
+    if (!row) {
+
+      continue;
+    }
+
+
+    updates.push({
+
+      range:
+        `Stocks!${letter}${row}`,
+
+      values: [
+        [
+          String(
+            values[
+              item.name
+            ]
+          ).trim(),
+        ],
+      ],
+    });
+  }
+
+
+  await batchWriteSheet(
+
+    env,
+
+    branch.sheet_id,
+
+    updates
+  );
+
+
+  await deleteStockDraft(
+
+    env,
+
+    branchCode,
+
+    date,
+
+    mode
+  );
+
 
   await env.DB.prepare(`
     DELETE FROM stock_cache
@@ -5097,492 +4059,51 @@ async function refreshStockData(
     .run();
 
 
-  const stockView =
-    await getStockView(
-      env,
-      branchCode,
-      wantedDate,
-      true
-    );
-
-
-  const stockRecord =
-    await getStockRecordInit(
-      env,
-      branchCode,
-      wantedDate,
-      true
-    );
-
-
   return {
 
     success:
       true,
 
-    branchCode,
+    transactionId:
+      crypto
+        .randomUUID()
+        .replace(
+          /-/g,
+          ""
+        )
+        .slice(
+          0,
+          8
+        )
+        .toUpperCase(),
 
-    date:
-      wantedDate,
+    submissionTime:
+      new Date()
+        .toISOString(),
 
-    stockView,
+    mode,
 
-    stockRecord,
-
-    message:
-      "Branch stock database refreshed.",
-  };
-}
-/* ============================================================
-   STAFF SCHEDULE CONFIG
-============================================================ */
-
-const STAFF_SCHEDULE_FALLBACK_ID =
-  "1UtHUn7miqYzaP-NnrwMR_5wnSgLnaYPRQX2c4I7_9B0";
-
-const STAFF_SCHEDULE_TAB =
-  "StaffSchedule";
-
-const STAFF_SCHEDULE_CACHE_SECONDS =
-  5 * 60;
-
-const STAFF_SCHEDULE_DAYS = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
-
-const STAFF_ROLE_OPTIONS = [
-  "Team-Member",
-  "Acting_Team_Leader",
-  "Team_Leader",
-  "Acting_Supervisor",
-  "Supervisor",
-  "Branch_Manager",
-];
-
-
-/* ============================================================
-   STAFF SCHEDULE SHEET ID
-============================================================ */
-
-function getStaffScheduleSheetId(
-  env
-) {
-
-  return (
-    env.STAFF_SCHEDULE_SHEET_ID ||
-    STAFF_SCHEDULE_FALLBACK_ID
-  );
-}
-
-
-/* ============================================================
-   STAFF SCHEDULE DATE HELPERS
-============================================================ */
-
-function parseScheduleDate(
-  isoDate
-) {
-
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
-      String(
-        isoDate || ""
-      )
-    );
-
-
-  if (!match) {
-
-    throw new Error(
-      "Invalid schedule date."
-    );
-  }
-
-
-  return new Date(
-    Number(
-      match[1]
-    ),
-    Number(
-      match[2]
-    ) - 1,
-    Number(
-      match[3]
-    )
-  );
-}
-
-
-function formatScheduleISO(
-  date
-) {
-
-  return [
-    date.getFullYear(),
-
-    String(
-      date.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    ),
-
-    String(
-      date.getDate()
-    ).padStart(
-      2,
-      "0"
-    ),
-  ].join("-");
-}
-
-
-/* ============================================================
-   GET SUNDAY WEEK START
-============================================================ */
-
-function getScheduleWeekMeta(
-  selectedDate
-) {
-
-  const selected =
-    parseScheduleDate(
-      selectedDate
-    );
-
-
-  const weekStart =
-    new Date(
-      selected
-    );
-
-
-  weekStart.setDate(
-    selected.getDate() -
-    selected.getDay()
-  );
-
-
-  const dayLabels =
-    {};
-
-
-  STAFF_SCHEDULE_DAYS.forEach(
-    (
-      day,
-      index
-    ) => {
-
-      const current =
-        new Date(
-          weekStart
-        );
-
-
-      current.setDate(
-        weekStart.getDate() +
-        index
-      );
-
-
-      const shortDate =
-        current.toLocaleDateString(
-          "en-GB",
-          {
-            day:
-              "2-digit",
-
-            month:
-              "short",
-          }
-        );
-
-
-      dayLabels[
-        day
-      ] =
-        `${day} (${shortDate})`;
-    }
-  );
-
-
-  /*
-    Keep old Streamlit OT column behavior.
-  */
-
-  const comparisonDate =
-    new Date(
-      2026,
-      5,
-      1
-    );
-
-
-  const weekDiff =
-    Math.floor(
-      (
-        weekStart -
-        comparisonDate
-      ) /
-      (
-        7 *
-        24 *
-        60 *
-        60 *
-        1000
-      )
-    );
-
-
-  const otHeader =
-    weekDiff === 0
-      ? "Over-Time"
-      : `Over-Time ${weekDiff}`;
-
-
-  return {
-
-    weekStartISO:
-      formatScheduleISO(
-        weekStart
-      ),
-
-    weekStartDisplay:
-      weekStart.toLocaleDateString(
-        "en-GB",
-        {
-          day:
-            "2-digit",
-
-          month:
-            "short",
-
-          year:
-            "numeric",
-        }
-      ),
-
-    dayLabels,
-
-    otHeader,
+    date,
   };
 }
 
 
 /* ============================================================
-   EMPLOYEE ID COLUMN
+   STOCK TRANSFER INIT
 ============================================================ */
 
-function findEmployeeIdColumn(
-  headers
+function buildTransferItemsFromSheet(
+  rows
 ) {
 
-  const normalized =
-    headers.map(
-      normalizeHeader
-    );
-
-
-  const possibilities = [
-
-    "employeeid",
-
-    "staffid",
-
-    "empid",
-
-    "id",
-  ];
-
-
-  for (
-    const possibility of
-    possibilities
-  ) {
-
-    const index =
-      normalized.indexOf(
-        possibility
-      );
-
-
-    if (
-      index !== -1
-    ) {
-
-      return index;
-    }
-  }
-
-
-  return -1;
-}
-
-
-/* ============================================================
-   OVERTIME
-============================================================ */
-
-function scheduleShiftOvertime(
-  value
-) {
-
-  const match =
-    /\(OT\s+(\d+(?:\.\d+)?)\s*h\)/i.exec(
-      String(
-        value || ""
-      )
-    );
-
-
-  if (!match) {
-
-    return 0;
-  }
-
-
-  return (
-    Number(
-      match[1]
-    ) ||
-    0
-  );
-}
-
-
-function scheduleEmployeeOvertime(
-  shifts
-) {
-
-  let total =
-    0;
-
-
-  for (
-    const day of
-    STAFF_SCHEDULE_DAYS
-  ) {
-
-    total +=
-      scheduleShiftOvertime(
-        shifts?.[
-          day
-        ]
-      );
-  }
-
-
-  return total;
-}
-
-
-/* ============================================================
-   READ STAFF SCHEDULE GOOGLE SHEET
-============================================================ */
-
-async function readStaffScheduleSheet(
-  env
-) {
-
-  return await getSheetValues(
-    env,
-    getStaffScheduleSheetId(
-      env
-    ),
-    `${STAFF_SCHEDULE_TAB}!A:ZZ`
-  );
-}
-
-
-/* ============================================================
-   SCHEDULE CACHE KEY
-============================================================ */
-
-function staffScheduleCacheKey(
-  branchCode,
-  weekStartISO
-) {
-
-  return (
-    `${branchCode}|` +
-    `${weekStartISO}`
-  );
-}
-
-
-/* ============================================================
-   CLEAR SCHEDULE CACHE
-============================================================ */
-
-async function invalidateStaffScheduleCache(
-  env,
-  branchCodes = []
-) {
-
-  const uniqueCodes =
-    Array.from(
-      new Set(
-        branchCodes
-          .filter(
-            Boolean
-          )
-          .map(
-            (code) =>
-              String(
-                code
-              )
-                .trim()
-                .toUpperCase()
-          )
-      )
-    );
-
-
-  for (
-    const code of
-    uniqueCodes
-  ) {
-
-    await env.DB.prepare(`
-      DELETE FROM schedule_cache
-
-      WHERE cache_key LIKE ?
-    `)
-      .bind(
-        `${code}|%`
-      )
-      .run();
-  }
-}
-
-
-/* ============================================================
-   PARSE STAFF SCHEDULE
-============================================================ */
-
-function parseStaffScheduleRows(
-  rows,
-  branchCode,
-  selectedDate
-) {
-
-  if (
-    !Array.isArray(
+  const structure =
+    buildStockRecordData(
       rows
-    ) ||
-    rows.length === 0
-  ) {
-
-    throw new Error(
-      "StaffSchedule sheet is empty."
     );
-  }
+
+
+  const targetDate =
+    getJeddahYesterdayISO();
 
 
   const headers =
@@ -5590,385 +4111,108 @@ function parseStaffScheduleRows(
     [];
 
 
-  const normalized =
-    headers.map(
-      normalizeHeader
-    );
-
-
-  const branchIndex =
-    normalized.indexOf(
-      "branch"
-    );
-
-
-  const nameIndex =
-    normalized.indexOf(
-      "name"
-    );
-
-
-  const roleIndex =
-    normalized.indexOf(
-      "role"
-    );
-
-
-  const employeeIdIndex =
-    findEmployeeIdColumn(
-      headers
-    );
-
-
-  if (
-    branchIndex < 0 ||
-    nameIndex < 0 ||
-    roleIndex < 0
-  ) {
-
-    throw new Error(
-      "StaffSchedule must contain Branch, Name and Role columns."
-    );
-  }
-
-
-  const week =
-    getScheduleWeekMeta(
-      selectedDate
-    );
-
-
-  const dayIndexes =
-    {};
-
-
-  for (
-    const day of
-    STAFF_SCHEDULE_DAYS
-  ) {
-
-    dayIndexes[
-      day
-    ] =
-      headers.indexOf(
-        week.dayLabels[
-          day
-        ]
-      );
-  }
-
-
-  const overtimeIndex =
+  const dateIndex =
     headers.indexOf(
-      week.otHeader
+      targetDate
     );
 
 
-  const employees =
-    [];
-
-
-  let submitted =
-    false;
-
-
-  for (
-    let rowIndex = 1;
-    rowIndex < rows.length;
-    rowIndex++
+  function prepare(
+    items
   ) {
 
-    const row =
-      rows[
-        rowIndex
-      ] ||
-      [];
+    return items.map(
+      (item) => {
+
+        const raw =
+          dateIndex >= 0
+            ? rows[
+                item.row -
+                1
+              ]?.[
+                dateIndex
+              ]
+
+            : 0;
 
 
-    const rowBranch =
-      String(
-        row[
-          branchIndex
-        ] ||
-        ""
-      )
-        .trim()
-        .toUpperCase();
-
-
-    if (
-      rowBranch !==
-      branchCode
-    ) {
-
-      continue;
-    }
-
-
-    const name =
-      String(
-        row[
-          nameIndex
-        ] ||
-        ""
-      ).trim();
-
-
-    if (!name) {
-
-      continue;
-    }
-
-
-    const shifts =
-      {};
-
-
-    for (
-      const day of
-      STAFF_SCHEDULE_DAYS
-    ) {
-
-      const columnIndex =
-        dayIndexes[
-          day
-        ];
-
-
-      const shift =
-        columnIndex >= 0
-          ? String(
-              row[
-                columnIndex
-              ] ||
-              ""
+        const available =
+          Number(
+            String(
+              raw ?? ""
             )
-          : "";
+              .replace(
+                /,/g,
+                ""
+              )
+              .trim() ||
+            0
+          ) ||
+          0;
 
 
-      shifts[
-        day
-      ] =
-        shift;
+        return {
 
+          name:
+            item.name,
 
-      if (
-        shift.trim()
-      ) {
+          sku:
+            item.sku,
 
-        submitted =
-          true;
+          uom:
+            item.uom,
+
+          available,
+        };
       }
-    }
-
-
-    const overtime =
-      overtimeIndex >= 0
-        ? String(
-            row[
-              overtimeIndex
-            ] ||
-            ""
-          ).trim()
-        : `${scheduleEmployeeOvertime(
-            shifts
-          )} hrs`;
-
-
-    employees.push({
-
-      rowNumber:
-        rowIndex + 1,
-
-      employeeId:
-        employeeIdIndex >= 0
-          ? String(
-              row[
-                employeeIdIndex
-              ] ||
-              ""
-            ).trim()
-          : "",
-
-      name,
-
-      role:
-        String(
-          row[
-            roleIndex
-          ] ||
-          ""
-        ).trim(),
-
-      shifts,
-
-      overtime,
-    });
+    );
   }
 
 
   return {
 
-    headers,
+    targetDate,
 
-    branchIndex,
+    dateAvailable:
+      dateIndex !== -1,
 
-    nameIndex,
+    daily:
+      prepare(
+        structure.daily
+      ),
 
-    roleIndex,
-
-    employeeIdIndex,
-
-    week,
-
-    submitted,
-
-    employees,
+    weekly:
+      prepare(
+        structure.weekly
+      ),
   };
 }
 
 
-/* ============================================================
-   STAFF SCHEDULE INIT
-============================================================ */
-
-async function getStaffScheduleInit(
+async function stockTransferInit(
   env,
-  branchCode,
-  selectedDate,
-  force = false
+  branchCode
 ) {
 
-  const branch =
+  const origin =
     await getBartBranch(
       env,
       branchCode
     );
 
 
-  if (!branch) {
+  const loaded =
+    await loadStockRecordStructure(
 
-    return {
-      success:
-        false,
+      env,
 
-      message:
-        "Branch not found.",
-    };
-  }
-
-
-  const week =
-    getScheduleWeekMeta(
-      selectedDate
+      branchCode
     );
 
 
-  const cacheKey =
-    staffScheduleCacheKey(
-      branchCode,
-      week.weekStartISO
-    );
-
-
-  const now =
-    Math.floor(
-      Date.now() /
-      1000
-    );
-
-
-  if (!force) {
-
-    const cached =
-      await env.DB.prepare(`
-        SELECT
-          payload,
-          synced_at
-
-        FROM schedule_cache
-
-        WHERE cache_key = ?
-
-        LIMIT 1
-      `)
-        .bind(
-          cacheKey
-        )
-        .first();
-
-
-    if (cached) {
-
-      const age =
-        now -
-        Number(
-          cached.synced_at ||
-          0
-        );
-
-
-      if (
-        age <
-        STAFF_SCHEDULE_CACHE_SECONDS
-      ) {
-
-        try {
-
-          const payload =
-            JSON.parse(
-              cached.payload
-            );
-
-
-          return {
-
-            success:
-              true,
-
-            source:
-              "D1",
-
-            googleCalled:
-              false,
-
-            cacheAgeSeconds:
-              age,
-
-            branch: {
-              code:
-                branch.code,
-
-              name:
-                branch.name,
-            },
-
-            ...payload,
-          };
-
-        } catch (error) {
-
-          console.log(
-            "Schedule cache parse warning:",
-            error.message
-          );
-        }
-      }
-    }
-  }
-
-
-  const rows =
-    await readStaffScheduleSheet(
-      env
-    );
-
-
-  const parsed =
-    parseStaffScheduleRows(
-      rows,
-      branchCode,
-      selectedDate
+  const stock =
+    buildTransferItemsFromSheet(
+      loaded.sheetData
     );
 
 
@@ -5982,7 +4226,7 @@ async function getStaffScheduleInit(
 
       WHERE brand = 'bart'
 
-      ORDER BY code ASC
+      ORDER BY code
     `).all();
 
 
@@ -5991,77 +4235,27 @@ async function getStaffScheduleInit(
       branchRows.results ||
       []
     )
-      .filter(
-        (item) =>
-          item.code !==
-          branchCode
-      )
-      .map(
-        (item) => ({
 
-          code:
-            item.code,
-
-          name:
-            item.name,
-
-          label:
-            `${item.code} - ${item.name}`,
-        })
-      );
-
-
-  const payload = {
-
-    week:
-      parsed.week,
-
-    employees:
-      parsed.employees,
-
-    submitted:
-      parsed.submitted,
-
-    roles:
-      STAFF_ROLE_OPTIONS,
-
-    destinations,
-
-    syncedAt:
-      new Date()
-        .toISOString(),
-  };
-
-
-  await env.DB.prepare(`
-    INSERT INTO schedule_cache (
-      cache_key,
-      payload,
-      synced_at
+    /* don't transfer to yourself */
+    .filter(
+      (branch) =>
+        branch.code !==
+        origin.code
     )
 
-    VALUES (?, ?, ?)
+    .map(
+      (branch) => ({
 
-    ON CONFLICT(cache_key)
-    DO UPDATE SET
+        code:
+          branch.code,
 
-      payload =
-        excluded.payload,
+        name:
+          branch.name,
 
-      synced_at =
-        excluded.synced_at
-  `)
-    .bind(
-
-      cacheKey,
-
-      JSON.stringify(
-        payload
-      ),
-
-      now
-    )
-    .run();
+        label:
+          `${branch.code} - ${branch.name}`,
+      })
+    );
 
 
   return {
@@ -6070,1971 +4264,42 @@ async function getStaffScheduleInit(
       true,
 
     source:
-      "GOOGLE->D1",
+      loaded.source,
 
-    googleCalled:
-      true,
+    origin: {
 
-    cacheAgeSeconds:
-      0,
-
-    branch: {
       code:
-        branch.code,
+        origin.code,
 
       name:
-        branch.name,
+        origin.name,
+
+      label:
+        `${origin.code} - ${origin.name}`,
     },
 
-    ...payload,
-  };
-}
+    targetDate:
+      stock.targetDate,
 
+    dateAvailable:
+      stock.dateAvailable,
 
-/* ============================================================
-   ENSURE WEEK COLUMNS
-============================================================ */
+    items: {
 
-async function ensureStaffScheduleWeekHeaders(
-  env,
-  rows,
-  week
-) {
+      daily:
+        stock.daily,
 
-  const headers =
-    [
-      ...(
-        rows[0] ||
-        []
-      ),
-    ];
-
-
-  const updates =
-    [];
-
-
-  for (
-    const day of
-    STAFF_SCHEDULE_DAYS
-  ) {
-
-    const expected =
-      week.dayLabels[
-        day
-      ];
-
-
-    if (
-      headers.includes(
-        expected
-      )
-    ) {
-
-      continue;
-    }
-
-
-    const columnNumber =
-      headers.length +
-      1;
-
-
-    const columnLetter =
-      columnNumberToLetters(
-        columnNumber
-      );
-
-
-    updates.push({
-
-      range:
-        `${STAFF_SCHEDULE_TAB}!` +
-        `${columnLetter}1`,
-
-      values:
-        [[expected]],
-    });
-
-
-    headers.push(
-      expected
-    );
-  }
-
-
-  if (
-    !headers.includes(
-      week.otHeader
-    )
-  ) {
-
-    const columnNumber =
-      headers.length +
-      1;
-
-
-    const columnLetter =
-      columnNumberToLetters(
-        columnNumber
-      );
-
-
-    updates.push({
-
-      range:
-        `${STAFF_SCHEDULE_TAB}!` +
-        `${columnLetter}1`,
-
-      values:
-        [[
-          week.otHeader
-        ]],
-    });
-
-
-    headers.push(
-      week.otHeader
-    );
-  }
-
-
-  if (
-    updates.length > 0
-  ) {
-
-    await batchWriteSheet(
-      env,
-      getStaffScheduleSheetId(
-        env
-      ),
-      updates
-    );
-  }
-
-
-  return headers;
-}
-
-
-/* ============================================================
-   SUBMIT STAFF SCHEDULE
-============================================================ */
-
-async function submitStaffSchedule(
-  env,
-  body
-) {
-
-  const branchCode =
-    String(
-      body.branchCode ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const selectedDate =
-    String(
-      body.selectedDate ||
-      ""
-    ).trim();
-
-
-  const employees =
-    Array.isArray(
-      body.employees
-    )
-      ? body.employees
-      : [];
-
-
-  if (
-    !branchCode ||
-    !selectedDate
-  ) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Branch and schedule date are required.",
-    };
-  }
-
-
-  if (
-    employees.length ===
-    0
-  ) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "No employees supplied.",
-    };
-  }
-
-
-  const branch =
-    await getBartBranch(
-      env,
-      branchCode
-    );
-
-
-  if (!branch) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Branch not found.",
-    };
-  }
-
-
-  const lockKey =
-    `schedule_submit_${branchCode}_${selectedDate}`;
-
-
-  const locked =
-    await acquireLock(
-      env,
-      lockKey,
-      40
-    );
-
-
-  if (!locked) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Schedule is already being submitted.",
-    };
-  }
-
-
-  try {
-
-    const rows =
-      await readStaffScheduleSheet(
-        env
-      );
-
-
-    const existing =
-      parseStaffScheduleRows(
-        rows,
-        branchCode,
-        selectedDate
-      );
-
-
-    /*
-      Preserve old duplicate-week protection.
-    */
-
-    if (
-      existing.submitted
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        duplicate:
-          true,
-
-        message:
-          "This week's schedule has already been submitted for this branch.",
-      };
-    }
-
-
-    const week =
-      getScheduleWeekMeta(
-        selectedDate
-      );
-
-
-    const headers =
-      await ensureStaffScheduleWeekHeaders(
-        env,
-        rows,
-        week
-      );
-
-
-    const normalized =
-      headers.map(
-        normalizeHeader
-      );
-
-
-    const branchIndex =
-      normalized.indexOf(
-        "branch"
-      );
-
-
-    const nameIndex =
-      normalized.indexOf(
-        "name"
-      );
-
-
-    const roleIndex =
-      normalized.indexOf(
-        "role"
-      );
-
-
-    const employeeIdIndex =
-      findEmployeeIdColumn(
-        headers
-      );
-
-
-    if (
-      branchIndex < 0 ||
-      nameIndex < 0 ||
-      roleIndex < 0
-    ) {
-
-      throw new Error(
-        "StaffSchedule must contain Branch, Name and Role."
-      );
-    }
-
-
-    const updates =
-      [];
-
-
-    for (
-      const employee of
-      employees
-    ) {
-
-      const employeeName =
-        String(
-          employee.name ||
-          ""
-        ).trim();
-
-
-      if (!employeeName) {
-
-        continue;
-      }
-
-
-      const employeeId =
-        String(
-          employee.employeeId ||
-          ""
-        ).trim();
-
-
-      /*
-        Find the actual row in Google.
-      */
-
-      let rowNumber =
-        null;
-
-
-      for (
-        let index = 1;
-        index < rows.length;
-        index++
-      ) {
-
-        const row =
-          rows[
-            index
-          ] ||
-          [];
-
-
-        const sameBranch =
-          String(
-            row[
-              branchIndex
-            ] ||
-            ""
-          )
-            .trim()
-            .toUpperCase() ===
-          branchCode;
-
-
-        if (!sameBranch) {
-
-          continue;
-        }
-
-
-        const rowEmployeeId =
-          employeeIdIndex >= 0
-            ? String(
-                row[
-                  employeeIdIndex
-                ] ||
-                ""
-              ).trim()
-            : "";
-
-
-        const rowName =
-          String(
-            row[
-              nameIndex
-            ] ||
-            ""
-          ).trim();
-
-
-        if (
-          (
-            employeeId &&
-            rowEmployeeId ===
-              employeeId
-          ) ||
-          (
-            !employeeId &&
-            rowName.toLowerCase() ===
-              employeeName.toLowerCase()
-          )
-        ) {
-
-          rowNumber =
-            index + 1;
-
-          break;
-        }
-      }
-
-
-      /*
-        Employee isn't in sheet yet.
-        Create a new row.
-      */
-
-      if (!rowNumber) {
-
-        rowNumber =
-          rows.length +
-          1;
-
-
-        const newRow =
-          new Array(
-            headers.length
-          ).fill(
-            ""
-          );
-
-
-        newRow[
-          branchIndex
-        ] =
-          branchCode;
-
-
-        newRow[
-          nameIndex
-        ] =
-          employeeName;
-
-
-        newRow[
-          roleIndex
-        ] =
-          String(
-            employee.role ||
-            ""
-          );
-
-
-        if (
-          employeeIdIndex >=
-          0
-        ) {
-
-          newRow[
-            employeeIdIndex
-          ] =
-            employeeId;
-        }
-
-
-        await appendSheetRow(
-          env,
-          getStaffScheduleSheetId(
-            env
-          ),
-          `${STAFF_SCHEDULE_TAB}!A:ZZ`,
-          newRow
-        );
-
-
-        /*
-          Because append adds one row,
-          add placeholder locally too.
-        */
-
-        rows.push(
-          newRow
-        );
-      }
-
-
-      /*
-        Role can be updated from Edit Mode.
-      */
-
-      const roleColumn =
-        columnNumberToLetters(
-          roleIndex + 1
-        );
-
-
-      updates.push({
-
-        range:
-          `${STAFF_SCHEDULE_TAB}!` +
-          `${roleColumn}${rowNumber}`,
-
-        values:
-          [[
-            String(
-              employee.role ||
-              ""
-            ),
-          ]],
-      });
-
-
-      /*
-        Employee ID
-      */
-
-      if (
-        employeeIdIndex >= 0
-      ) {
-
-        const employeeIdColumn =
-          columnNumberToLetters(
-            employeeIdIndex +
-            1
-          );
-
-
-        updates.push({
-
-          range:
-            `${STAFF_SCHEDULE_TAB}!` +
-            `${employeeIdColumn}${rowNumber}`,
-
-          values:
-            [[employeeId]],
-        });
-      }
-
-
-      /*
-        Sunday - Saturday
-      */
-
-      for (
-        const day of
-        STAFF_SCHEDULE_DAYS
-      ) {
-
-        const header =
-          week.dayLabels[
-            day
-          ];
-
-
-        const columnIndex =
-          headers.indexOf(
-            header
-          );
-
-
-        if (
-          columnIndex < 0
-        ) {
-
-          continue;
-        }
-
-
-        const columnLetter =
-          columnNumberToLetters(
-            columnIndex + 1
-          );
-
-
-        const shift =
-          String(
-            employee.shifts?.[
-              day
-            ] ||
-            ""
-          );
-
-
-        updates.push({
-
-          range:
-            `${STAFF_SCHEDULE_TAB}!` +
-            `${columnLetter}${rowNumber}`,
-
-          values:
-            [[shift]],
-        });
-      }
-
-
-      /*
-        Weekly overtime.
-      */
-
-      const overtimeIndex =
-        headers.indexOf(
-          week.otHeader
-        );
-
-
-      if (
-        overtimeIndex >= 0
-      ) {
-
-        const totalOT =
-          scheduleEmployeeOvertime(
-            employee.shifts ||
-            {}
-          );
-
-
-        const overtimeColumn =
-          columnNumberToLetters(
-            overtimeIndex +
-            1
-          );
-
-
-        updates.push({
-
-          range:
-            `${STAFF_SCHEDULE_TAB}!` +
-            `${overtimeColumn}${rowNumber}`,
-
-          values:
-            [[
-              `${totalOT} hrs`,
-            ]],
-        });
-      }
-    }
-
-
-    if (
-      updates.length === 0
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          "No schedule updates found.",
-      };
-    }
-
-
-    /*
-      One batch update.
-    */
-
-    await batchWriteSheet(
-      env,
-      getStaffScheduleSheetId(
-        env
-      ),
-      updates
-    );
-
-
-    await invalidateStaffScheduleCache(
-      env,
-      [
-        branchCode,
-      ]
-    );
-
-
-    return {
-
-      success:
-        true,
-
-      branchCode,
-
-      weekStart:
-        week.weekStartISO,
-
-      weekStartDisplay:
-        week.weekStartDisplay,
-
-      employees:
-        employees.length,
-
-      submittedAt:
-        formatJeddahTimestamp(),
-
-      message:
-        "Schedule submitted successfully.",
-    };
-
-  } finally {
-
-    await releaseLock(
-      env,
-      lockKey
-    );
-  }
-}
-
-
-/* ============================================================
-   ENSURE EMPLOYEE ID COLUMN
-============================================================ */
-
-async function ensureEmployeeIdHeader(
-  env,
-  rows
-) {
-
-  const headers =
-    [
-      ...(
-        rows[0] ||
-        []
-      ),
-    ];
-
-
-  let index =
-    findEmployeeIdColumn(
-      headers
-    );
-
-
-  if (
-    index >= 0
-  ) {
-
-    return {
-
-      headers,
-
-      employeeIdIndex:
-        index,
-    };
-  }
-
-
-  /*
-    Add Employee ID column automatically.
-  */
-
-  index =
-    headers.length;
-
-
-  const columnLetter =
-    columnNumberToLetters(
-      index + 1
-    );
-
-
-  await batchWriteSheet(
-    env,
-    getStaffScheduleSheetId(
-      env
-    ),
-    [
-      {
-        range:
-          `${STAFF_SCHEDULE_TAB}!` +
-          `${columnLetter}1`,
-
-        values:
-          [[
-            "Employee ID",
-          ]],
-      },
-    ]
-  );
-
-
-  headers.push(
-    "Employee ID"
-  );
-
-
-  return {
-
-    headers,
-
-    employeeIdIndex:
-      index,
-  };
-}
-
-
-/* ============================================================
-   ADD NEW EMPLOYEE
-============================================================ */
-
-async function addStaffScheduleEmployee(
-  env,
-  body
-) {
-
-  const branchCode =
-    String(
-      body.branchCode ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const employeeId =
-    String(
-      body.employeeId ||
-      ""
-    ).trim();
-
-
-  const name =
-    String(
-      body.name ||
-      ""
-    ).trim();
-
-
-  const role =
-    String(
-      body.role ||
-      ""
-    ).trim();
-
-
-  if (
-    !branchCode ||
-    !name ||
-    !role
-  ) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Branch, employee name and role are required.",
-    };
-  }
-
-
-  if (
-    !STAFF_ROLE_OPTIONS.includes(
-      role
-    )
-  ) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Invalid employee role.",
-    };
-  }
-
-
-  const branch =
-    await getBartBranch(
-      env,
-      branchCode
-    );
-
-
-  if (!branch) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Branch not found.",
-    };
-  }
-
-
-  const rows =
-    await readStaffScheduleSheet(
-      env
-    );
-
-
-  const employeeIdInfo =
-    await ensureEmployeeIdHeader(
-      env,
-      rows
-    );
-
-
-  const headers =
-    employeeIdInfo.headers;
-
-
-  const employeeIdIndex =
-    employeeIdInfo.employeeIdIndex;
-
-
-  const normalized =
-    headers.map(
-      normalizeHeader
-    );
-
-
-  const branchIndex =
-    normalized.indexOf(
-      "branch"
-    );
-
-
-  const nameIndex =
-    normalized.indexOf(
-      "name"
-    );
-
-
-  const roleIndex =
-    normalized.indexOf(
-      "role"
-    );
-
-
-  if (
-    branchIndex < 0 ||
-    nameIndex < 0 ||
-    roleIndex < 0
-  ) {
-
-    throw new Error(
-      "StaffSchedule must contain Branch, Name and Role."
-    );
-  }
-
-
-  /*
-    Duplicate checks.
-  */
-
-  for (
-    let index = 1;
-    index < rows.length;
-    index++
-  ) {
-
-    const row =
-      rows[
-        index
-      ] ||
-      [];
-
-
-    const existingEmployeeId =
-      String(
-        row[
-          employeeIdIndex
-        ] ||
-        ""
-      ).trim();
-
-
-    if (
-      employeeId &&
-      existingEmployeeId &&
-      existingEmployeeId ===
-        employeeId
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          "This Employee ID already exists.",
-      };
-    }
-
-
-    const existingBranch =
-      String(
-        row[
-          branchIndex
-        ] ||
-        ""
-      )
-        .trim()
-        .toUpperCase();
-
-
-    const existingName =
-      String(
-        row[
-          nameIndex
-        ] ||
-        ""
-      )
-        .trim()
-        .toLowerCase();
-
-
-    if (
-      existingBranch ===
-        branchCode &&
-      existingName ===
-        name.toLowerCase()
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          "This employee already exists in this branch.",
-      };
-    }
-  }
-
-
-  const newRow =
-    new Array(
-      headers.length
-    ).fill(
-      ""
-    );
-
-
-  newRow[
-    branchIndex
-  ] =
-    branchCode;
-
-
-  newRow[
-    nameIndex
-  ] =
-    name;
-
-
-  newRow[
-    roleIndex
-  ] =
-    role;
-
-
-  newRow[
-    employeeIdIndex
-  ] =
-    employeeId;
-
-
-  await appendSheetRow(
-    env,
-    getStaffScheduleSheetId(
-      env
-    ),
-    `${STAFF_SCHEDULE_TAB}!A:ZZ`,
-    newRow
-  );
-
-
-  await invalidateStaffScheduleCache(
-    env,
-    [
-      branchCode,
-    ]
-  );
-
-
-  return {
-
-    success:
-      true,
-
-    employee: {
-
-      employeeId,
-
-      name,
-
-      role,
-
-      branchCode,
+      weekly:
+        stock.weekly,
     },
 
-    message:
-      `${name} added to ${branchCode}.`,
+    destinations,
   };
 }
 
 
 /* ============================================================
-   FIND EMPLOYEE ROW
-============================================================ */
-
-function findStaffScheduleEmployeeRow(
-  rows,
-  branchCode,
-  body
-) {
-
-  const headers =
-    rows[0] ||
-    [];
-
-
-  const normalized =
-    headers.map(
-      normalizeHeader
-    );
-
-
-  const branchIndex =
-    normalized.indexOf(
-      "branch"
-    );
-
-
-  const nameIndex =
-    normalized.indexOf(
-      "name"
-    );
-
-
-  const roleIndex =
-    normalized.indexOf(
-      "role"
-    );
-
-
-  const employeeIdIndex =
-    findEmployeeIdColumn(
-      headers
-    );
-
-
-  if (
-    branchIndex < 0 ||
-    nameIndex < 0 ||
-    roleIndex < 0
-  ) {
-
-    throw new Error(
-      "StaffSchedule must contain Branch, Name and Role."
-    );
-  }
-
-
-  const requestedId =
-    String(
-      body.employeeId ||
-      ""
-    ).trim();
-
-
-  const requestedName =
-    String(
-      body.name ||
-      ""
-    )
-      .trim()
-      .toLowerCase();
-
-
-  for (
-    let index = 1;
-    index < rows.length;
-    index++
-  ) {
-
-    const row =
-      rows[
-        index
-      ] ||
-      [];
-
-
-    const rowBranch =
-      String(
-        row[
-          branchIndex
-        ] ||
-        ""
-      )
-        .trim()
-        .toUpperCase();
-
-
-    if (
-      rowBranch !==
-      branchCode
-    ) {
-
-      continue;
-    }
-
-
-    const rowEmployeeId =
-      employeeIdIndex >= 0
-        ? String(
-            row[
-              employeeIdIndex
-            ] ||
-            ""
-          ).trim()
-        : "";
-
-
-    const rowName =
-      String(
-        row[
-          nameIndex
-        ] ||
-        ""
-      )
-        .trim()
-        .toLowerCase();
-
-
-    if (
-      requestedId &&
-      rowEmployeeId ===
-        requestedId
-    ) {
-
-      return {
-
-        rowNumber:
-          index + 1,
-
-        row,
-
-        headers,
-
-        branchIndex,
-
-        nameIndex,
-
-        roleIndex,
-
-        employeeIdIndex,
-      };
-    }
-
-
-    if (
-      !requestedId &&
-      requestedName &&
-      rowName ===
-        requestedName
-    ) {
-
-      return {
-
-        rowNumber:
-          index + 1,
-
-        row,
-
-        headers,
-
-        branchIndex,
-
-        nameIndex,
-
-        roleIndex,
-
-        employeeIdIndex,
-      };
-    }
-  }
-
-
-  return null;
-}
-
-
-/* ============================================================
-   EMPLOYEE REMOVE / TRANSFER
-============================================================ */
-
-async function removeStaffScheduleEmployee(
-  env,
-  body
-) {
-
-  const branchCode =
-    String(
-      body.branchCode ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const reason =
-    String(
-      body.reason ||
-      ""
-    )
-      .trim()
-      .toLowerCase();
-
-
-  const destinationBranch =
-    String(
-      body.destinationBranch ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  if (
-    ![
-      "transfer",
-      "terminated",
-      "contract_finished",
-    ].includes(
-      reason
-    )
-  ) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Invalid employee action.",
-    };
-  }
-
-
-  const rows =
-    await readStaffScheduleSheet(
-      env
-    );
-
-
-  const match =
-    findStaffScheduleEmployeeRow(
-      rows,
-      branchCode,
-      body
-    );
-
-
-  if (!match) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Employee not found in this branch.",
-    };
-  }
-
-
-  const {
-
-    rowNumber,
-
-    row,
-
-    branchIndex,
-
-    nameIndex,
-
-    employeeIdIndex,
-
-  } =
-    match;
-
-
-  const name =
-    String(
-      row[
-        nameIndex
-      ] ||
-      body.name ||
-      ""
-    ).trim();
-
-
-  /* ==========================================================
-     TRANSFER EMPLOYEE
-  ========================================================== */
-
-  if (
-    reason ===
-    "transfer"
-  ) {
-
-    if (
-      !destinationBranch
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          "Destination branch is required.",
-      };
-    }
-
-
-    if (
-      destinationBranch ===
-      branchCode
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          "Employee is already in this branch.",
-      };
-    }
-
-
-    const destination =
-      await getBartBranch(
-        env,
-        destinationBranch
-      );
-
-
-    if (!destination) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          "Destination branch not found.",
-      };
-    }
-
-
-    const branchColumn =
-      columnNumberToLetters(
-        branchIndex + 1
-      );
-
-
-    /*
-      Move the SAME row by changing Branch.
-
-      This automatically makes employee disappear
-      from current branch and appear in destination.
-    */
-
-    await batchWriteSheet(
-      env,
-      getStaffScheduleSheetId(
-        env
-      ),
-      [
-        {
-          range:
-            `${STAFF_SCHEDULE_TAB}!` +
-            `${branchColumn}${rowNumber}`,
-
-          values:
-            [[
-              destinationBranch,
-            ]],
-        },
-      ]
-    );
-
-
-    await invalidateStaffScheduleCache(
-      env,
-      [
-        branchCode,
-        destinationBranch,
-      ]
-    );
-
-
-    return {
-
-      success:
-        true,
-
-      action:
-        "transfer",
-
-      fromBranch:
-        branchCode,
-
-      destinationBranch,
-
-      employee:
-        name,
-
-      message:
-        `${name} transferred from ${branchCode} to ${destinationBranch}.`,
-    };
-  }
-
-
-  /* ==========================================================
-     TERMINATED
-  ========================================================== */
-
-  if (
-    reason ===
-    "terminated"
-  ) {
-
-    const branchColumn =
-      columnNumberToLetters(
-        branchIndex + 1
-      );
-
-
-    /*
-      Preserve historical schedule row.
-      Employee simply leaves active branch.
-    */
-
-    await batchWriteSheet(
-      env,
-      getStaffScheduleSheetId(
-        env
-      ),
-      [
-        {
-          range:
-            `${STAFF_SCHEDULE_TAB}!` +
-            `${branchColumn}${rowNumber}`,
-
-          values:
-            [[
-              "TERMINATED",
-            ]],
-        },
-      ]
-    );
-
-
-    await invalidateStaffScheduleCache(
-      env,
-      [
-        branchCode,
-      ]
-    );
-
-
-    return {
-
-      success:
-        true,
-
-      action:
-        "terminated",
-
-      employee:
-        name,
-
-      message:
-        `${name} removed from active staff as terminated.`,
-    };
-  }
-
-
-  /* ==========================================================
-     CONTRACT FINISHED
-  ========================================================== */
-
-  if (
-    reason ===
-    "contract_finished"
-  ) {
-
-    const updates =
-      [];
-
-
-    const branchColumn =
-      columnNumberToLetters(
-        branchIndex + 1
-      );
-
-
-    updates.push({
-
-      range:
-        `${STAFF_SCHEDULE_TAB}!` +
-        `${branchColumn}${rowNumber}`,
-
-      values:
-        [[
-          "CONTRACT_FINISHED",
-        ]],
-    });
-
-
-    /*
-      User specifically requested:
-      delete / clear employee ID when contract is finished.
-    */
-
-    if (
-      employeeIdIndex >=
-      0
-    ) {
-
-      const employeeIdColumn =
-        columnNumberToLetters(
-          employeeIdIndex +
-          1
-        );
-
-
-      updates.push({
-
-        range:
-          `${STAFF_SCHEDULE_TAB}!` +
-          `${employeeIdColumn}${rowNumber}`,
-
-        values:
-          [[""]],
-      });
-    }
-
-
-    await batchWriteSheet(
-      env,
-      getStaffScheduleSheetId(
-        env
-      ),
-      updates
-    );
-
-
-    await invalidateStaffScheduleCache(
-      env,
-      [
-        branchCode,
-      ]
-    );
-
-
-    return {
-
-      success:
-        true,
-
-      action:
-        "contract_finished",
-
-      employee:
-        name,
-
-      employeeIdCleared:
-        employeeIdIndex >=
-        0,
-
-      message:
-        `${name} marked contract finished and Employee ID removed.`,
-    };
-  }
-
-
-  return {
-
-    success:
-      false,
-
-    message:
-      "Unknown employee action.",
-  };
-}
-
-
-/* ============================================================
-   VACATION EMPLOYEE
-
-   Vacation does NOT delete or transfer employee.
-
-   Sunday-Saturday of the selected week is written
-   as VACATION.
-
-   This is separate from permanent removal.
-============================================================ */
-
-async function setStaffEmployeeVacation(
-  env,
-  body
-) {
-
-  const branchCode =
-    String(
-      body.branchCode ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const selectedDate =
-    String(
-      body.selectedDate ||
-      ""
-    ).trim();
-
-
-  if (
-    !branchCode ||
-    !selectedDate
-  ) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Branch and week are required.",
-    };
-  }
-
-
-  const rows =
-    await readStaffScheduleSheet(
-      env
-    );
-
-
-  const match =
-    findStaffScheduleEmployeeRow(
-      rows,
-      branchCode,
-      body
-    );
-
-
-  if (!match) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Employee not found in this branch.",
-    };
-  }
-
-
-  const week =
-    getScheduleWeekMeta(
-      selectedDate
-    );
-
-
-  const headers =
-    await ensureStaffScheduleWeekHeaders(
-      env,
-      rows,
-      week
-    );
-
-
-  const updates =
-    [];
-
-
-  for (
-    const day of
-    STAFF_SCHEDULE_DAYS
-  ) {
-
-    const header =
-      week.dayLabels[
-        day
-      ];
-
-
-    const columnIndex =
-      headers.indexOf(
-        header
-      );
-
-
-    if (
-      columnIndex < 0
-    ) {
-
-      continue;
-    }
-
-
-    const columnLetter =
-      columnNumberToLetters(
-        columnIndex +
-        1
-      );
-
-
-    updates.push({
-
-      range:
-        `${STAFF_SCHEDULE_TAB}!` +
-        `${columnLetter}${match.rowNumber}`,
-
-      values:
-        [[
-          "VACATION",
-        ]],
-    });
-  }
-
-
-  const overtimeIndex =
-    headers.indexOf(
-      week.otHeader
-    );
-
-
-  if (
-    overtimeIndex >= 0
-  ) {
-
-    const overtimeColumn =
-      columnNumberToLetters(
-        overtimeIndex +
-        1
-      );
-
-
-    updates.push({
-
-      range:
-        `${STAFF_SCHEDULE_TAB}!` +
-        `${overtimeColumn}${match.rowNumber}`,
-
-      values:
-        [[
-          "0 hrs",
-        ]],
-    });
-  }
-
-
-  await batchWriteSheet(
-    env,
-    getStaffScheduleSheetId(
-      env
-    ),
-    updates
-  );
-
-
-  await invalidateStaffScheduleCache(
-    env,
-    [
-      branchCode,
-    ]
-  );
-
-
-  const employeeName =
-    String(
-      match.row[
-        match.nameIndex
-      ] ||
-      body.name ||
-      ""
-    ).trim();
-
-
-  return {
-
-    success:
-      true,
-
-    action:
-      "vacation",
-
-    employee:
-      employeeName,
-
-    branchCode,
-
-    weekStart:
-      week.weekStartISO,
-
-    message:
-      `${employeeName} marked VACATION for the full week.`,
-  };
-}
-
-
-/* ============================================================
-   STOCK TRANSFER HELPERS
+   CART NORMALIZER
 ============================================================ */
 
 function normalizeTransferCart(
@@ -8045,95 +4310,77 @@ function normalizeTransferCart(
     new Map();
 
 
-  const cart =
+  for (
+    const raw of
     Array.isArray(
       rawCart
     )
       ? rawCart
-      : [];
-
-
-  for (
-    const rawItem of cart
+      : []
   ) {
 
     const item =
       String(
-        rawItem.item ||
-        rawItem.name ||
+        raw.item ||
         ""
       ).trim();
 
 
-    const sku =
-      cleanSKU(
-        rawItem.sku
-      );
-
-
-    const uom =
-      String(
-        rawItem.uom ||
-        ""
-      ).trim();
-
-
-    const quantity =
+    const qty =
       Math.trunc(
-        numericValue(
-          rawItem.quantity ??
-          rawItem.qty
+        Number(
+          raw.qty
         )
       );
 
 
     if (
       !item ||
-      quantity <= 0
+      !Number.isFinite(
+        qty
+      ) ||
+      qty < 1
     ) {
 
       continue;
     }
-
-
-    const key =
-      sku ||
-      item.toLowerCase();
 
 
     if (
       merged.has(
-        key
+        item
       )
     ) {
 
-      const existing =
-        merged.get(
-          key
-        );
+      merged.get(
+        item
+      ).qty +=
+        qty;
 
+    } else {
 
-      existing.quantity +=
-        quantity;
-
-
-      continue;
-    }
-
-
-    merged.set(
-      key,
-      {
-
+      merged.set(
         item,
+        {
 
-        sku,
+          item,
 
-        uom,
+          sku:
+            String(
+              raw.sku ||
+              ""
+            ),
 
-        quantity,
-      }
-    );
+          uom:
+            String(
+              raw.uom ||
+              ""
+            ),
+
+          qty,
+        }
+      );
+    }
   }
 
 
@@ -8144,7 +4391,204 @@ function normalizeTransferCart(
 
 
 /* ============================================================
-   GENERATE TRANSFER ID
+   MOVEMENT PLAN
+============================================================ */
+
+function buildStockMovementPlan(
+  rows,
+  cart,
+  mode
+) {
+
+  const targetDate =
+    getJeddahYesterdayISO();
+
+
+  const headers =
+    rows[0] ||
+    [];
+
+
+  const columnIndex =
+    headers.indexOf(
+      targetDate
+    );
+
+
+  if (
+    columnIndex === -1
+  ) {
+
+    throw new Error(
+      `Column for ${targetDate} not found.`
+    );
+  }
+
+
+  const itemRows =
+    new Map();
+
+
+  for (
+    let i = 1;
+    i < rows.length;
+    i++
+  ) {
+
+    const item =
+      String(
+        rows[i]?.[0] ||
+        ""
+      ).trim();
+
+
+    if (item) {
+
+      itemRows.set(
+        item,
+        i
+      );
+    }
+  }
+
+
+  const shortages = [];
+
+  const missing = [];
+
+  const updates = [];
+
+  const rollback = [];
+
+
+  const letter =
+    columnNumberToLetters(
+      columnIndex + 1
+    );
+
+
+  for (
+    const entry of cart
+  ) {
+
+    if (
+      !itemRows.has(
+        entry.item
+      )
+    ) {
+
+      missing.push(
+        entry.item
+      );
+
+      continue;
+    }
+
+
+    const rowIndex =
+      itemRows.get(
+        entry.item
+      );
+
+
+    const raw =
+      rows[
+        rowIndex
+      ]?.[
+        columnIndex
+      ];
+
+
+    const current =
+      Number(
+        String(
+          raw ?? ""
+        )
+          .replace(
+            /,/g,
+            ""
+          )
+          .trim() ||
+        0
+      ) ||
+      0;
+
+
+    if (
+      mode ===
+      "subtract" &&
+      current <
+      entry.qty
+    ) {
+
+      shortages.push({
+
+        item:
+          entry.item,
+
+        have:
+          current,
+
+        need:
+          entry.qty,
+      });
+
+
+      continue;
+    }
+
+
+    const next =
+      mode ===
+      "subtract"
+
+        ? current -
+          entry.qty
+
+        : current +
+          entry.qty;
+
+
+    const range =
+      `Stocks!${letter}${rowIndex + 1}`;
+
+
+    updates.push({
+
+      range,
+
+      values:
+        [[next]],
+    });
+
+
+    rollback.push({
+
+      range,
+
+      values:
+        [[current]],
+    });
+  }
+
+
+  return {
+
+    targetDate,
+
+    updates,
+
+    rollback,
+
+    shortages,
+
+    missing,
+  };
+}
+
+
+/* ============================================================
+   TRANSFER ID
 ============================================================ */
 
 function generateTransferId() {
@@ -8159,38 +4603,31 @@ function generateTransferId() {
 
     `${String(
       now.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    )}` +
+    ).padStart(2, "0")}` +
 
     `${String(
       now.getDate()
-    ).padStart(
-      2,
-      "0"
-    )}`;
+    ).padStart(2, "0")}`;
 
 
-  const characters =
+  const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 
-  let suffix =
-    "";
+  let suffix = "";
 
 
   for (
-    let index = 0;
-    index < 4;
-    index++
+    let i = 0;
+    i < 4;
+    i++
   ) {
 
     suffix +=
-      characters[
+      chars[
         Math.floor(
           Math.random() *
-          characters.length
+          chars.length
         )
       ];
   }
@@ -8203,458 +4640,7 @@ function generateTransferId() {
 
 
 /* ============================================================
-   BUILD STOCK ITEM MAP
-============================================================ */
-
-function buildStockItemMap(
-  rows,
-  targetDate
-) {
-
-  const parsed =
-    parseBranchStockRows(
-      rows,
-      targetDate
-    );
-
-
-  const bySKU =
-    new Map();
-
-
-  const byName =
-    new Map();
-
-
-  for (
-    const item of
-    parsed.all
-  ) {
-
-    if (
-      item.sku
-    ) {
-
-      bySKU.set(
-        cleanSKU(
-          item.sku
-        ),
-        item
-      );
-    }
-
-
-    if (
-      item.item
-    ) {
-
-      byName.set(
-        String(
-          item.item
-        )
-          .trim()
-          .toLowerCase(),
-        item
-      );
-    }
-  }
-
-
-  return {
-
-    parsed,
-
-    bySKU,
-
-    byName,
-  };
-}
-
-
-/* ============================================================
-   BUILD STOCK MOVEMENT
-============================================================ */
-
-function buildStockMovement(
-  stockMap,
-  cart,
-  mode
-) {
-
-  const updates =
-    [];
-
-
-  const rollback =
-    [];
-
-
-  const missing =
-    [];
-
-
-  const insufficient =
-    [];
-
-
-  const column =
-    stockMap.parsed.dateColumn;
-
-
-  if (
-    column < 1
-  ) {
-
-    throw new Error(
-      `Stock date ${stockMap.parsed.date} not found.`
-    );
-  }
-
-
-  const columnLetter =
-    columnNumberToLetters(
-      column
-    );
-
-
-  for (
-    const entry of cart
-  ) {
-
-    let item =
-      null;
-
-
-    if (
-      entry.sku &&
-      stockMap.bySKU.has(
-        cleanSKU(
-          entry.sku
-        )
-      )
-    ) {
-
-      item =
-        stockMap.bySKU.get(
-          cleanSKU(
-            entry.sku
-          )
-        );
-
-    } else if (
-      stockMap.byName.has(
-        entry.item
-          .trim()
-          .toLowerCase()
-      )
-    ) {
-
-      item =
-        stockMap.byName.get(
-          entry.item
-            .trim()
-            .toLowerCase()
-        );
-    }
-
-
-    if (!item) {
-
-      missing.push({
-        item:
-          entry.item,
-
-        sku:
-          entry.sku,
-      });
-
-
-      continue;
-    }
-
-
-    const current =
-      numericValue(
-        item.quantity
-      );
-
-
-    const quantity =
-      numericValue(
-        entry.quantity
-      );
-
-
-    if (
-      mode ===
-        "subtract" &&
-      current <
-        quantity
-    ) {
-
-      insufficient.push({
-
-        item:
-          item.item,
-
-        sku:
-          item.sku,
-
-        available:
-          current,
-
-        requested:
-          quantity,
-      });
-
-
-      continue;
-    }
-
-
-    const nextValue =
-      mode ===
-      "subtract"
-        ? current -
-          quantity
-        : current +
-          quantity;
-
-
-    const range =
-      `${columnLetter}${item.rowNumber}`;
-
-
-    updates.push({
-
-      rowNumber:
-        item.rowNumber,
-
-      item:
-        item.item,
-
-      sku:
-        item.sku,
-
-      current,
-
-      quantity,
-
-      nextValue,
-
-      range,
-    });
-
-
-    rollback.push({
-
-      rowNumber:
-        item.rowNumber,
-
-      range,
-
-      originalValue:
-        current,
-    });
-  }
-
-
-  return {
-
-    updates,
-
-    rollback,
-
-    missing,
-
-    insufficient,
-  };
-}
-
-
-/* ============================================================
-   STOCK TRANSFER INIT
-============================================================ */
-
-async function getStockTransferInit(
-  env,
-  branchCode,
-  force = false
-) {
-
-  const origin =
-    await getBartBranch(
-      env,
-      branchCode
-    );
-
-
-  if (!origin) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Origin branch not found.",
-    };
-  }
-
-
-  const targetDate =
-    getJeddahYesterdayISO();
-
-
-  const stock =
-    await getStockView(
-      env,
-      branchCode,
-      targetDate,
-      force
-    );
-
-
-  if (
-    !stock.success
-  ) {
-
-    return stock;
-  }
-
-
-  const branches =
-    await env.DB.prepare(`
-      SELECT
-        code,
-        name
-
-      FROM branches
-
-      WHERE brand = 'bart'
-
-      ORDER BY code ASC
-    `).all();
-
-
-  const destinations =
-    (
-      branches.results ||
-      []
-    )
-      .filter(
-        (item) =>
-          item.code !==
-          branchCode
-      )
-      .map(
-        (item) => ({
-
-          code:
-            item.code,
-
-          name:
-            item.name,
-
-          label:
-            `${item.code} - ${item.name}`,
-        })
-      );
-
-
-  return {
-
-    success:
-      true,
-
-    source:
-      stock.source,
-
-    googleCalled:
-      stock.googleCalled,
-
-    origin: {
-
-      code:
-        origin.code,
-
-      name:
-        origin.name,
-
-      label:
-        `${origin.code} - ${origin.name}`,
-    },
-
-    targetDate,
-
-    dateAvailable:
-      stock.dateFound,
-
-    items: {
-
-      daily:
-        stock.daily ||
-        [],
-
-      weekly:
-        stock.weekly ||
-        [],
-    },
-
-    destinations,
-  };
-}
-
-
-/* ============================================================
-   FIND TRANSFER TAB FOR APPEND
-============================================================ */
-
-async function findTransferTab(
-  env
-) {
-
-  const candidates = [
-
-    "Stock Transfer",
-
-    "StockTransfer",
-
-    "Transfers",
-  ];
-
-
-  for (
-    const tab of
-    candidates
-  ) {
-
-    try {
-
-      await getSheetValues(
-        env,
-        env.MASTER_SHEET_ID,
-        `${tab}!A1:A2`
-      );
-
-
-      return tab;
-
-    } catch {
-
-      /* try next */
-    }
-  }
-
-
-  throw new Error(
-    "No transfer tab found in master Google Sheet."
-  );
-}
-
-
-/* ============================================================
-   CREATE STOCK TRANSFER
+   CREATE TRANSFER
 ============================================================ */
 
 async function createStockTransfer(
@@ -8665,7 +4651,6 @@ async function createStockTransfer(
   const originCode =
     String(
       body.originBranch ||
-      body.branchCode ||
       ""
     )
       .trim()
@@ -8685,7 +4670,7 @@ async function createStockTransfer(
     String(
       body.reason ||
       ""
-    ).trim();
+    );
 
 
   const cart =
@@ -8726,10 +4711,7 @@ async function createStockTransfer(
   }
 
 
-  if (
-    cart.length ===
-    0
-  ) {
+  if (!cart.length) {
 
     return {
 
@@ -8757,8 +4739,8 @@ async function createStockTransfer(
 
 
   if (
-    !origin ||
-    !destination
+    !origin?.sheet_id ||
+    !destination?.sheet_id
   ) {
 
     return {
@@ -8767,14 +4749,87 @@ async function createStockTransfer(
         false,
 
       message:
-        "Origin or destination branch not found.",
+        "Origin or destination SheetID missing.",
+    };
+  }
+
+
+  /*
+    LIVE GOOGLE READS
+  */
+
+  const [
+    originRows,
+    destinationRows,
+  ] =
+    await Promise.all([
+
+      getSheetValues(
+
+        env,
+
+        origin.sheet_id,
+
+        "Stocks!A:ZZ"
+      ),
+
+      getSheetValues(
+
+        env,
+
+        destination.sheet_id,
+
+        "Stocks!A:ZZ"
+      ),
+    ]);
+
+
+  const originPlan =
+    buildStockMovementPlan(
+
+      originRows,
+
+      cart,
+
+      "subtract"
+    );
+
+
+  const destinationPlan =
+    buildStockMovementPlan(
+
+      destinationRows,
+
+      cart,
+
+      "add"
+    );
+
+
+  if (
+    originPlan.shortages.length
+  ) {
+
+    return {
+
+      success:
+        false,
+
+      insufficient:
+        true,
+
+      items:
+        originPlan.shortages,
+
+      message:
+        "Insufficient stock.",
     };
   }
 
 
   if (
-    !origin.sheet_id ||
-    !destination.sheet_id
+    originPlan.missing.length ||
+    destinationPlan.missing.length
   ) {
 
     return {
@@ -8782,39 +4837,35 @@ async function createStockTransfer(
       success:
         false,
 
+      missingItems:
+        true,
+
+      originMissing:
+        originPlan.missing,
+
+      destinationMissing:
+        destinationPlan.missing,
+
       message:
-        "Origin or destination Google Sheet ID is missing.",
+        "Some stock items are missing.",
     };
   }
 
 
-  const targetDate =
-    getJeddahYesterdayISO();
+  const transferId =
+    generateTransferId();
 
 
-  const lockKey =
-    `transfer_${originCode}_${destinationCode}`;
+  const timestamp =
+    formatJeddahTimestamp();
 
 
-  const locked =
-    await acquireLock(
-      env,
-      lockKey,
-      45
-    );
+  const originLabel =
+    `${origin.code} - ${origin.name}`;
 
 
-  if (!locked) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Another stock transfer is already being processed.",
-    };
-  }
+  const destinationLabel =
+    `${destination.code} - ${destination.name}`;
 
 
   let originWritten =
@@ -8825,201 +4876,19 @@ async function createStockTransfer(
     false;
 
 
-  let originSheet =
-    null;
-
-
-  let destinationSheet =
-    null;
-
-
-  let originMovement =
-    null;
-
-
-  let destinationMovement =
-    null;
-
-
   try {
 
-    [
-      originSheet,
-      destinationSheet,
-    ] =
-      await Promise.all([
-
-        readBranchStockSheet(
-          env,
-          origin
-        ),
-
-        readBranchStockSheet(
-          env,
-          destination
-        ),
-      ]);
-
-
-    const originMap =
-      buildStockItemMap(
-        originSheet.rows,
-        targetDate
-      );
-
-
-    const destinationMap =
-      buildStockItemMap(
-        destinationSheet.rows,
-        targetDate
-      );
-
-
-    if (
-      !originMap.parsed
-        .dateFound
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          `Origin stock date ${targetDate} not found.`,
-      };
-    }
-
-
-    if (
-      !destinationMap.parsed
-        .dateFound
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        message:
-          `Destination stock date ${targetDate} not found.`,
-      };
-    }
-
-
-    originMovement =
-      buildStockMovement(
-        originMap,
-        cart,
-        "subtract"
-      );
-
-
-    destinationMovement =
-      buildStockMovement(
-        destinationMap,
-        cart,
-        "add"
-      );
-
-
-    if (
-      originMovement
-        .missing
-        .length ||
-      destinationMovement
-        .missing
-        .length
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        missingItems:
-          true,
-
-        originMissing:
-          originMovement
-            .missing,
-
-        destinationMissing:
-          destinationMovement
-            .missing,
-
-        message:
-          "Some transfer items do not exist in one of the branch stock sheets.",
-      };
-    }
-
-
-    if (
-      originMovement
-        .insufficient
-        .length
-    ) {
-
-      return {
-
-        success:
-          false,
-
-        insufficient:
-          true,
-
-        items:
-          originMovement
-            .insufficient,
-
-        message:
-          "Insufficient stock in origin branch.",
-      };
-    }
-
-
-    const originWrites =
-      originMovement
-        .updates
-        .map(
-          (item) => ({
-
-            range:
-              `${originSheet.tabName}!${item.range}`,
-
-            values:
-              [[
-                item.nextValue,
-              ]],
-          })
-        );
-
-
-    const destinationWrites =
-      destinationMovement
-        .updates
-        .map(
-          (item) => ({
-
-            range:
-              `${destinationSheet.tabName}!${item.range}`,
-
-            values:
-              [[
-                item.nextValue,
-              ]],
-          })
-        );
-
-
     /*
-      SUBTRACT ORIGIN
+      1. SUBTRACT ORIGIN
     */
 
     await batchWriteSheet(
+
       env,
+
       origin.sheet_id,
-      originWrites
+
+      originPlan.updates
     );
 
 
@@ -9028,13 +4897,16 @@ async function createStockTransfer(
 
 
     /*
-      ADD DESTINATION
+      2. ADD DESTINATION
     */
 
     await batchWriteSheet(
+
       env,
+
       destination.sheet_id,
-      destinationWrites
+
+      destinationPlan.updates
     );
 
 
@@ -9042,32 +4914,19 @@ async function createStockTransfer(
       true;
 
 
-    const transferId =
-      generateTransferId();
-
-
-    const originLabel =
-      `${origin.code} - ${origin.name}`;
-
-
-    const destinationLabel =
-      `${destination.code} - ${destination.name}`;
-
+    /*
+      BUILD TRANSFER TEXT
+    */
 
     const itemsText =
       cart
         .map(
           (entry) =>
-
             `• [${entry.sku}] ` +
-
             `${entry.item} ` +
-
-            `(${entry.quantity} ${entry.uom})`
+            `(${entry.qty} ${entry.uom})`
         )
-        .join(
-          "\n"
-        );
+        .join("\n");
 
 
     const quantitiesText =
@@ -9075,32 +4934,24 @@ async function createStockTransfer(
         .map(
           (entry) =>
             String(
-              entry.quantity
+              entry.qty
             )
         )
-        .join(
-          "\n"
-        );
-
-
-    const timestamp =
-      formatJeddahTimestamp();
-
-
-    const transferTab =
-      await findTransferTab(
-        env
-      );
+        .join("\n");
 
 
     /*
-      Write transfer record.
+      3. APPEND TO MASTER TRANSFERS
     */
 
     await appendSheetRow(
+
       env,
+
       env.MASTER_SHEET_ID,
-      `${transferTab}!A:Z`,
+
+      "Transfers!A:H",
+
       [
 
         transferId,
@@ -9123,7 +4974,7 @@ async function createStockTransfer(
 
 
     /*
-      D1 copy.
+      4. IMMEDIATE D1 INSERT
     */
 
     await env.DB.prepare(`
@@ -9138,16 +4989,31 @@ async function createStockTransfer(
         updated_at
       )
 
-      VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+
+      ON CONFLICT(id)
+      DO UPDATE SET
+
+        origin =
+          excluded.origin,
+
+        destination =
+          excluded.destination,
+
+        items =
+          excluded.items,
+
+        quantities =
+          excluded.quantities,
+
+        reason =
+          excluded.reason,
+
+        status =
+          excluded.status,
+
+        updated_at =
+          excluded.updated_at
     `)
       .bind(
 
@@ -9171,13 +5037,22 @@ async function createStockTransfer(
       .run();
 
 
+    await setMeta(
+
+      env,
+
+      "transfers_last_sync_ms",
+
+      Date.now()
+    );
+
+
     /*
-      Invalidate both stock caches.
+      INVALIDATE STOCK CACHES
     */
 
     await env.DB.prepare(`
       DELETE FROM stock_cache
-
       WHERE branch_code IN (?, ?)
     `)
       .bind(
@@ -9189,7 +5064,6 @@ async function createStockTransfer(
 
     await env.DB.prepare(`
       DELETE FROM stock_record_cache
-
       WHERE branch_code IN (?, ?)
     `)
       .bind(
@@ -9197,20 +5071,6 @@ async function createStockTransfer(
         destinationCode
       )
       .run();
-
-
-    /*
-      Force transfer poll to refresh.
-    */
-
-    transferMemoryCache = {
-
-      loadedAt:
-        0,
-
-      transfers:
-        [],
-    };
 
 
     return {
@@ -9226,54 +5086,43 @@ async function createStockTransfer(
       destination:
         destinationLabel,
 
-      targetDate,
+      timestamp,
+
+      targetDate:
+        originPlan.targetDate,
 
       items:
         cart,
 
-      timestamp,
-
       message:
-        "Stock transfer completed successfully.",
+        "Transfer completed successfully.",
     };
 
   } catch (error) {
 
     console.error(
-      "STOCK TRANSFER FAILURE:",
+      "TRANSFER FAILURE:",
       error
     );
 
 
     /*
-      DESTINATION ROLLBACK
+      ROLLBACK DESTINATION
     */
 
     if (
-      destinationWritten &&
-      destinationMovement
+      destinationWritten
     ) {
 
       try {
 
         await batchWriteSheet(
+
           env,
+
           destination.sheet_id,
 
-          destinationMovement
-            .rollback
-            .map(
-              (item) => ({
-
-                range:
-                  `${destinationSheet.tabName}!${item.range}`,
-
-                values:
-                  [[
-                    item.originalValue,
-                  ]],
-              })
-            )
+          destinationPlan.rollback
         );
 
       } catch (
@@ -9289,34 +5138,22 @@ async function createStockTransfer(
 
 
     /*
-      ORIGIN ROLLBACK
+      ROLLBACK ORIGIN
     */
 
     if (
-      originWritten &&
-      originMovement
+      originWritten
     ) {
 
       try {
 
         await batchWriteSheet(
+
           env,
+
           origin.sheet_id,
 
-          originMovement
-            .rollback
-            .map(
-              (item) => ({
-
-                range:
-                  `${originSheet.tabName}!${item.range}`,
-
-                values:
-                  [[
-                    item.originalValue,
-                  ]],
-              })
-            )
+          originPlan.rollback
         );
 
       } catch (
@@ -9342,13 +5179,6 @@ async function createStockTransfer(
           "Unknown error"
         }`,
     };
-
-  } finally {
-
-    await releaseLock(
-      env,
-      lockKey
-    );
   }
 }
 
@@ -9364,6 +5194,11 @@ async function getTransferHistory(
   offset = 0
 ) {
 
+  await ensureTransfersFresh(
+    env
+  );
+
+
   const branch =
     await getBartBranch(
       env,
@@ -9371,24 +5206,11 @@ async function getTransferHistory(
     );
 
 
-  if (!branch) {
-
-    return {
-
-      success:
-        false,
-
-      message:
-        "Branch not found.",
-    };
-  }
-
-
   const label =
     `${branch.code} - ${branch.name}`;
 
 
-  const countRow =
+  const count =
     await env.DB.prepare(`
       SELECT
         COUNT(*) AS total
@@ -9427,17 +5249,12 @@ async function getTransferHistory(
       ORDER BY updated_at DESC
 
       LIMIT ?
-
       OFFSET ?
     `)
       .bind(
-
         label,
-
         label,
-
         limit,
-
         offset
       )
       .all();
@@ -9450,7 +5267,7 @@ async function getTransferHistory(
 
     total:
       Number(
-        countRow?.total ||
+        count?.total ||
         0
       ),
 
@@ -9462,7 +5279,78 @@ async function getTransferHistory(
 
 
 /* ============================================================
-   FINAL WORKER
+   DATABASE STATUS
+============================================================ */
+
+async function databaseStatus(
+  env
+) {
+
+  const branches =
+    await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM branches
+      WHERE brand = 'bart'
+    `)
+      .first();
+
+
+  const transfers =
+    await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM transfers
+    `)
+      .first();
+
+
+  const drafts =
+    await env.DB.prepare(`
+      SELECT COUNT(*) AS total
+      FROM stock_drafts
+    `)
+      .first();
+
+
+  return jsonResponse({
+
+    success:
+      true,
+
+    database:
+      "D1",
+
+    bartBranches:
+      Number(
+        branches?.total ||
+        0
+      ),
+
+    transfers:
+      Number(
+        transfers?.total ||
+        0
+      ),
+
+    stockDrafts:
+      Number(
+        drafts?.total ||
+        0
+      ),
+
+    lastSync:
+      await getMeta(
+        env,
+        "bart_last_sync"
+      ),
+
+    googleCalled:
+      false,
+  });
+}
+
+
+/* ============================================================
+   WORKER
 ============================================================ */
 
 export default {
@@ -9478,10 +5366,6 @@ export default {
       );
 
 
-    /* ========================================================
-       CORS
-    ======================================================== */
-
     if (
       request.method ===
       "OPTIONS"
@@ -9490,6 +5374,7 @@ export default {
       return new Response(
         null,
         {
+
           status:
             204,
 
@@ -9522,7 +5407,7 @@ export default {
             true,
 
           version:
-            "BART-STAFF-SCHEDULE-V8",
+            "BART-STOCK-TRANSFER-V7",
 
           message:
             "DAM BART Worker active",
@@ -9545,15 +5430,6 @@ export default {
               true,
 
             stockTransfer:
-              true,
-
-            staffSchedule:
-              true,
-
-            employeeMovement:
-              true,
-
-            employeeVacation:
               true,
           },
 
@@ -9584,12 +5460,6 @@ export default {
                 env.MASTER_SHEET_ID
               ),
 
-            STAFF_SCHEDULE_SHEET_ID:
-              Boolean(
-                env.STAFF_SCHEDULE_SHEET_ID ||
-                STAFF_SCHEDULE_FALLBACK_ID
-              ),
-
             ADMIN_SYNC_KEY:
               Boolean(
                 env.ADMIN_SYNC_KEY
@@ -9610,9 +5480,9 @@ export default {
 
       if (
         url.pathname ===
-          "/api/admin/database-status" &&
+        "/api/admin/database-status" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         return await databaseStatus(
@@ -9622,14 +5492,14 @@ export default {
 
 
       /* ======================================================
-         MANUAL DATABASE REFRESH
+         MANUAL DATABASE SYNC
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/admin/sync-bart" &&
+        "/api/admin/sync-bart" &&
         request.method ===
-          "POST"
+        "POST"
       ) {
 
         return await syncBartDatabase(
@@ -9640,14 +5510,14 @@ export default {
 
 
       /* ======================================================
-         BART BRANCHES
+         BRANCH LIST
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/branches" &&
+        "/api/staff/bart/branches" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         const rows =
@@ -9660,7 +5530,7 @@ export default {
 
             WHERE brand = 'bart'
 
-            ORDER BY code ASC
+            ORDER BY code
           `).all();
 
 
@@ -9687,14 +5557,14 @@ export default {
 
 
       /* ======================================================
-         BART LOGIN
+         LOGIN
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/login" &&
+        "/api/staff/bart/login" &&
         request.method ===
-          "POST"
+        "POST"
       ) {
 
         return await bartLogin(
@@ -9705,14 +5575,14 @@ export default {
 
 
       /* ======================================================
-         LIVE PENDING TRANSFERS
+         PENDING TRANSFERS
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/pending-transfers" &&
+        "/api/staff/bart/pending-transfers" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         const branch =
@@ -9751,14 +5621,14 @@ export default {
 
 
       /* ======================================================
-         TRANSFER ACCEPT / REJECT
+         TRANSFER RESPONSE
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/transfer/respond" &&
+        "/api/staff/bart/transfer/respond" &&
         request.method ===
-          "POST"
+        "POST"
       ) {
 
         return await respondTransfer(
@@ -9774,9 +5644,9 @@ export default {
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-view" &&
+        "/api/staff/bart/stock-view" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         const branch =
@@ -9788,15 +5658,6 @@ export default {
           )
             .trim()
             .toUpperCase();
-
-
-        const date =
-          String(
-            url.searchParams.get(
-              "date"
-            ) ||
-            getJeddahYesterdayISO()
-          ).trim();
 
 
         const force =
@@ -9810,58 +5671,26 @@ export default {
           await getStockView(
             env,
             branch,
-            date,
             force
           );
 
 
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 400
-        );
-      }
+        return jsonResponse({
 
+          success:
+            true,
 
-      /* ======================================================
-         FORCE STOCK REFRESH
-      ====================================================== */
+          branch,
 
-      if (
-        url.pathname ===
-          "/api/staff/bart/stock-refresh" &&
-        request.method ===
-          "GET"
-      ) {
+          source:
+            result.source,
 
-        const branch =
-          String(
-            url.searchParams.get(
-              "branch"
-            ) ||
-            ""
-          )
-            .trim()
-            .toUpperCase();
+          syncedAt:
+            result.syncedAt,
 
-
-        const date =
-          String(
-            url.searchParams.get(
-              "date"
-            ) ||
-            getJeddahYesterdayISO()
-          ).trim();
-
-
-        return jsonResponse(
-          await refreshStockData(
-            env,
-            branch,
-            date
-          )
-        );
+          stock:
+            result.data,
+        });
       }
 
 
@@ -9871,9 +5700,9 @@ export default {
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-record/init" &&
+        "/api/staff/bart/stock-record/init" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         const branch =
@@ -9892,177 +5721,92 @@ export default {
             url.searchParams.get(
               "date"
             ) ||
-            getJeddahYesterdayISO()
-          ).trim();
-
-
-        const force =
-          url.searchParams.get(
-            "refresh"
-          ) ===
-          "1";
-
-
-        const result =
-          await getStockRecordInit(
-            env,
-            branch,
-            date,
-            force
+            ""
           );
 
 
         return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 400
-        );
-      }
-
-
-      /* ======================================================
-         GET STOCK DRAFT
-      ====================================================== */
-
-      if (
-        url.pathname ===
-          "/api/staff/bart/stock-record/draft" &&
-        request.method ===
-          "GET"
-      ) {
-
-        const branch =
-          String(
-            url.searchParams.get(
-              "branch"
-            ) ||
-            ""
-          )
-            .trim()
-            .toUpperCase();
-
-
-        const date =
-          String(
-            url.searchParams.get(
-              "date"
-            ) ||
-            ""
-          ).trim();
-
-
-        const mode =
-          String(
-            url.searchParams.get(
-              "mode"
-            ) ||
-            "DAILY"
-          )
-            .trim()
-            .toUpperCase();
-
-
-        return jsonResponse(
-          await getStockDraft(
+          await stockRecordInit(
             env,
             branch,
-            date,
-            mode
+            date
           )
         );
       }
 
 
       /* ======================================================
-         SAVE STOCK DRAFT
+         SAVE DRAFT
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-record/draft" &&
+        "/api/staff/bart/stock-record/draft" &&
         request.method ===
-          "POST"
+        "POST"
       ) {
 
-        const result =
+        return jsonResponse(
           await saveStockDraft(
             env,
             await request.json()
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 400
+          )
         );
       }
 
 
       /* ======================================================
-         DELETE STOCK DRAFT
+         DELETE DRAFT
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-record/draft" &&
+        "/api/staff/bart/stock-record/draft" &&
         request.method ===
-          "DELETE"
+        "DELETE"
       ) {
 
         const body =
           await request.json();
 
 
-        const branch =
-          String(
-            body.branchCode ||
-            body.branch ||
-            ""
-          )
-            .trim()
-            .toUpperCase();
-
-
-        const date =
-          String(
-            body.stockDate ||
-            body.date ||
-            ""
-          ).trim();
-
-
-        const mode =
-          String(
-            body.mode ||
-            "DAILY"
-          )
-            .trim()
-            .toUpperCase();
-
-
         return jsonResponse(
           await deleteStockDraft(
+
             env,
-            branch,
-            date,
-            mode
+
+            String(
+              body.branchCode ||
+              ""
+            )
+              .trim()
+              .toUpperCase(),
+
+            String(
+              body.date ||
+              ""
+            ),
+
+            String(
+              body.mode ||
+              ""
+            )
+              .trim()
+              .toLowerCase()
           )
         );
       }
 
 
       /* ======================================================
-         SUBMIT STOCK RECORD
+         STOCK RECORD SUBMIT
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-record/submit" &&
+        "/api/staff/bart/stock-record/submit" &&
         request.method ===
-          "POST"
+        "POST"
       ) {
 
         const result =
@@ -10073,7 +5817,9 @@ export default {
 
 
         return jsonResponse(
+
           result,
+
           result.success
             ? 200
             : 409
@@ -10087,9 +5833,9 @@ export default {
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-transfer/init" &&
+        "/api/staff/bart/stock-transfer/init" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         const branch =
@@ -10103,53 +5849,11 @@ export default {
             .toUpperCase();
 
 
-        const force =
-          url.searchParams.get(
-            "refresh"
-          ) ===
-          "1";
-
-
-        const result =
-          await getStockTransferInit(
-            env,
-            branch,
-            force
-          );
-
-
         return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 400
-        );
-      }
-
-
-      /* ======================================================
-         CREATE STOCK TRANSFER
-      ====================================================== */
-
-      if (
-        url.pathname ===
-          "/api/staff/bart/stock-transfer/create" &&
-        request.method ===
-          "POST"
-      ) {
-
-        const result =
-          await createStockTransfer(
+          await stockTransferInit(
             env,
-            await request.json()
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 409
+            branch
+          )
         );
       }
 
@@ -10160,9 +5864,9 @@ export default {
 
       if (
         url.pathname ===
-          "/api/staff/bart/stock-transfer/history" &&
+        "/api/staff/bart/stock-transfer/history" &&
         request.method ===
-          "GET"
+        "GET"
       ) {
 
         const branch =
@@ -10203,100 +5907,43 @@ export default {
           );
 
 
-        const result =
+        return jsonResponse(
           await getTransferHistory(
+
             env,
+
             branch,
+
             limit,
+
             offset
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 400
-        );
-      }
-
-
-      /* ======================================================
-         STAFF SCHEDULE INIT
-      ====================================================== */
-
-      if (
-        url.pathname ===
-          "/api/staff/bart/schedule/init" &&
-        request.method ===
-          "GET"
-      ) {
-
-        const branch =
-          String(
-            url.searchParams.get(
-              "branch"
-            ) ||
-            ""
           )
-            .trim()
-            .toUpperCase();
-
-
-        const date =
-          String(
-            url.searchParams.get(
-              "date"
-            ) ||
-            getJeddahYesterdayISO()
-          ).trim();
-
-
-        const force =
-          url.searchParams.get(
-            "refresh"
-          ) ===
-          "1";
-
-
-        const result =
-          await getStaffScheduleInit(
-            env,
-            branch,
-            date,
-            force
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 400
         );
       }
 
 
       /* ======================================================
-         STAFF SCHEDULE SUBMIT
+         CREATE STOCK TRANSFER
       ====================================================== */
 
       if (
         url.pathname ===
-          "/api/staff/bart/schedule/submit" &&
+        "/api/staff/bart/stock-transfer/create" &&
         request.method ===
-          "POST"
+        "POST"
       ) {
 
         const result =
-          await submitStaffSchedule(
+          await createStockTransfer(
             env,
             await request.json()
           );
 
 
         return jsonResponse(
+
           result,
+
           result.success
             ? 200
             : 409
@@ -10305,88 +5952,7 @@ export default {
 
 
       /* ======================================================
-         STAFF ADD EMPLOYEE
-      ====================================================== */
-
-      if (
-        url.pathname ===
-          "/api/staff/bart/schedule/employee/add" &&
-        request.method ===
-          "POST"
-      ) {
-
-        const result =
-          await addStaffScheduleEmployee(
-            env,
-            await request.json()
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 409
-        );
-      }
-
-
-      /* ======================================================
-         STAFF REMOVE / TRANSFER EMPLOYEE
-      ====================================================== */
-
-      if (
-        url.pathname ===
-          "/api/staff/bart/schedule/employee/remove" &&
-        request.method ===
-          "POST"
-      ) {
-
-        const result =
-          await removeStaffScheduleEmployee(
-            env,
-            await request.json()
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 409
-        );
-      }
-
-
-      /* ======================================================
-         STAFF VACATION
-      ====================================================== */
-
-      if (
-        url.pathname ===
-          "/api/staff/bart/schedule/employee/vacation" &&
-        request.method ===
-          "POST"
-      ) {
-
-        const result =
-          await setStaffEmployeeVacation(
-            env,
-            await request.json()
-          );
-
-
-        return jsonResponse(
-          result,
-          result.success
-            ? 200
-            : 409
-        );
-      }
-
-
-      /* ======================================================
-         FRONTEND ASSETS
+         FRONTEND
       ====================================================== */
 
       if (
@@ -10408,9 +5974,9 @@ export default {
           message:
             "Route not found.",
         },
+
         404
       );
-
 
     } catch (error) {
 
@@ -10430,6 +5996,7 @@ export default {
             error?.message ||
             "Internal server error.",
         },
+
         500
       );
     }
