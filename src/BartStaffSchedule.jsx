@@ -1120,6 +1120,7 @@ export default function BartStaffSchedule({
     URL.revokeObjectURL(href);
   }
 
+  
   if (loading && !data) {
     return (
       <div className="bss-page">
