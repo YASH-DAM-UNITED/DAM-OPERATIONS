@@ -5568,19 +5568,42 @@ function parseStaffScheduleRows(
     const row =
       rows[index] || [];
 
-    const rowBranch =
-      String(
-        row[branchIndex] || ""
-      )
-        .trim()
-        .toUpperCase();
+const rowBranch =
+  String(
+    row[branchIndex] || ""
+  )
+    .trim()
+    .toUpperCase();
 
-    if (
-      rowBranch !==
-      branchCode
-    ) {
-      continue;
-    }
+const cleanBranchCode =
+  String(
+    branchCode || ""
+  )
+    .trim()
+    .toUpperCase();
+
+/*
+  Accept:
+  B001
+  B001 - MOHAMMADIYAH
+  B001 MOHAMMADIYAH
+  B001-MOHAMMADIYAH
+*/
+const branchMatches =
+  rowBranch === cleanBranchCode ||
+  rowBranch.startsWith(
+    `${cleanBranchCode} `
+  ) ||
+  rowBranch.startsWith(
+    `${cleanBranchCode}-`
+  ) ||
+  rowBranch.startsWith(
+    `${cleanBranchCode} -`
+  );
+
+if (!branchMatches) {
+  continue;
+}
 
     const name =
       String(
