@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import {
@@ -899,6 +899,8 @@ function BranchScreen({
   const [selected, setSelected] =
     useState(null);
 
+  const readyToEnterRef = useRef(null);
+
   async function loadBranches() {
     setLoading(true);
     setError("");
@@ -1252,8 +1254,14 @@ function BranchScreen({
                           onClick={() =>
                             setSelected(
                               branch
-                            )
-                          }
+                            );
+                            setTimeout(() => {
+                              readyToEnterRef.current?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center",
+                                });
+                              }, 150);
+                          }}
                           initial={{
                             opacity: 0,
                             x: -15,
@@ -1333,6 +1341,7 @@ function BranchScreen({
                 <AnimatePresence>
                   {selected && (
                     <motion.div
+                      ref={readyToEnterRef}
                       className="branch-selection-footer"
                       initial={{
                         opacity: 0,
