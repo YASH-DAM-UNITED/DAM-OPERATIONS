@@ -55,9 +55,12 @@ const SESSION_TIMEOUT_MS =
 const TRANSFER_POLL_MS =
   15000;
 
+const MODULE_TRANSITION_MS =
+  550;
+
 
 /* ============================================================
-   DASHBOARD MODULES
+   MODULES
 ============================================================ */
 
 const modules = [
@@ -70,7 +73,6 @@ const modules = [
     description:
       "Record daily, weekly and bakery stock with review and submission controls.",
   },
-
   {
     id: "schedule",
     icon: CalendarDays,
@@ -80,7 +82,6 @@ const modules = [
     description:
       "View branch staffing, shift assignments and operational schedules.",
   },
-
   {
     id: "stock-view",
     icon: Boxes,
@@ -90,7 +91,6 @@ const modules = [
     description:
       "Review current Daily and Weekly stock data for this branch.",
   },
-
   {
     id: "transfer",
     icon: ArrowLeftRight,
@@ -101,6 +101,38 @@ const modules = [
       "Send and receive stock between DAM branches with transfer tracking.",
   },
 ];
+
+
+/* ============================================================
+   SCROLL
+============================================================ */
+
+function smoothTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
+}
+
+
+function scrollToElement(
+  ref,
+  block = "start"
+) {
+  window.requestAnimationFrame(
+    () => {
+      window.setTimeout(
+        () => {
+          ref?.current?.scrollIntoView({
+            behavior: "smooth",
+            block,
+          });
+        },
+        100
+      );
+    }
+  );
+}
 
 
 /* ============================================================
@@ -134,13 +166,12 @@ function normalizeTransferItems(
 
   const quantities =
     String(
-      transfer?.quantities ||
-      ""
+      transfer?.quantities || ""
     )
       .split("\n")
       .map(
-        (quantity) =>
-          quantity.trim()
+        (qty) =>
+          qty.trim()
       )
       .filter(Boolean);
 
@@ -151,13 +182,8 @@ function normalizeTransferItems(
     );
 
   return Array.from(
-    {
-      length,
-    },
-    (
-      _,
-      index
-    ) => ({
+    { length },
+    (_, index) => ({
       item:
         items[index] ||
         "Item",
@@ -166,6 +192,113 @@ function normalizeTransferItems(
         quantities[index] ||
         "-",
     })
+  );
+}
+
+
+/* ============================================================
+   MODULE TRANSITION
+============================================================ */
+
+function ModuleTransition({
+  module,
+}) {
+  if (!module) {
+    return null;
+  }
+
+  const Icon =
+    module.icon;
+
+  return (
+    <motion.div
+      className="dam-module-transition"
+      initial={{
+        opacity: 0,
+      }}
+      animate={{
+        opacity: 1,
+      }}
+      exit={{
+        opacity: 0,
+      }}
+    >
+      <motion.div
+        className="dam-module-transition-card"
+        initial={{
+          opacity: 0,
+          scale: 0.92,
+          y: 20,
+        }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+        }}
+        exit={{
+          opacity: 0,
+          scale: 1.04,
+        }}
+        transition={{
+          type: "spring",
+          stiffness: 240,
+          damping: 24,
+        }}
+      >
+        <motion.div
+          className="dam-module-transition-icon"
+          animate={{
+            rotate: [
+              0,
+              -5,
+              5,
+              0,
+            ],
+            scale: [
+              1,
+              1.07,
+              1,
+            ],
+          }}
+          transition={{
+            duration: 1.1,
+            repeat: Infinity,
+          }}
+        >
+          <Icon
+            size={30}
+          />
+        </motion.div>
+
+        <span>
+          BART OPERATIONS
+        </span>
+
+        <h2>
+          Opening {module.title}
+        </h2>
+
+        <p>
+          Preparing {module.subtitle.toLowerCase()}...
+        </p>
+
+        <div className="dam-module-transition-line">
+          <motion.div
+            initial={{
+              x: "-100%",
+            }}
+            animate={{
+              x: "250%",
+            }}
+            transition={{
+              repeat: Infinity,
+              duration: 1,
+              ease: "easeInOut",
+            }}
+          />
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -187,9 +320,7 @@ function TransferPopup({
         normalizeTransferItems(
           transfer
         ),
-      [
-        transfer,
-      ]
+      [transfer]
     );
 
   if (!transfer) {
@@ -228,14 +359,9 @@ function TransferPopup({
             y: 18,
           }}
           transition={{
-            type:
-              "spring",
-
-            stiffness:
-              270,
-
-            damping:
-              23,
+            type: "spring",
+            stiffness: 270,
+            damping: 23,
           }}
         >
           <button
@@ -244,15 +370,11 @@ function TransferPopup({
             disabled={busy}
             onClick={onClose}
           >
-            <X
-              size={18}
-            />
+            <X size={18} />
           </button>
 
           <div className="dam-transfer-logo">
-            <Truck
-              size={25}
-            />
+            <Truck size={25} />
           </div>
 
           <span className="dam-transfer-label">
@@ -301,9 +423,7 @@ function TransferPopup({
               ) => (
                 <div
                   className="dam-transfer-item"
-                  key={
-                    `${entry.item}-${index}`
-                  }
+                  key={`${entry.item}-${index}`}
                 >
                   <span>
                     {entry.item}
@@ -400,9 +520,7 @@ function StockTable({
   ) {
     return (
       <div className="dam-stock-empty">
-        No{" "}
-        {title.toLowerCase()}{" "}
-        found.
+        No {title.toLowerCase()} found.
       </div>
     );
   }
@@ -437,9 +555,7 @@ function StockTable({
               {columns.map(
                 (column) => (
                   <th
-                    key={
-                      column
-                    }
+                    key={column}
                   >
                     {column}
                   </th>
@@ -455,24 +571,16 @@ function StockTable({
                 index
               ) => (
                 <tr
-                  key={
-                    index
-                  }
+                  key={index}
                 >
                   {columns.map(
                     (
                       column
                     ) => (
                       <td
-                        key={
-                          column
-                        }
+                        key={column}
                       >
-                        {
-                          row[
-                            column
-                          ]
-                        }
+                        {row[column]}
                       </td>
                     )
                   )}
@@ -498,159 +606,112 @@ export default function BartStaffDashboard({
   onRefresh,
   on,
 }) {
-  /* ==========================================================
-     ACTIVE MODULE
-  ========================================================== */
-
   const [
     active,
     setActive,
   ] =
-    useState(
-      null
-    );
+    useState(null);
 
-
-  /* ==========================================================
-     TRANSFERS
-  ========================================================== */
+  const [
+    openingModule,
+    setOpeningModule,
+  ] =
+    useState(null);
 
   const [
     pendingTransfers,
     setPendingTransfers,
   ] =
-    useState(
-      []
-    );
+    useState([]);
 
   const [
     transfersLoading,
     setTransfersLoading,
   ] =
-    useState(
-      true
-    );
+    useState(true);
 
   const [
     activeTransfer,
     setActiveTransfer,
   ] =
-    useState(
-      null
-    );
+    useState(null);
 
   const [
     transferBusy,
     setTransferBusy,
   ] =
-    useState(
-      false
-    );
+    useState(false);
 
   const [
     transferMessage,
     setTransferMessage,
   ] =
-    useState(
-      null
-    );
-
-
-  /* ==========================================================
-     STOCK VIEW
-  ========================================================== */
+    useState(null);
 
   const [
     showStockView,
     setShowStockView,
   ] =
-    useState(
-      false
-    );
+    useState(false);
 
   const [
     stockLoading,
     setStockLoading,
   ] =
-    useState(
-      false
-    );
+    useState(false);
 
   const [
     stockData,
     setStockData,
   ] =
-    useState(
-      null
-    );
+    useState(null);
 
   const [
     stockError,
     setStockError,
   ] =
-    useState(
-      ""
-    );
+    useState("");
 
   const [
     stockSource,
     setStockSource,
   ] =
-    useState(
-      ""
-    );
+    useState("");
 
   const [
     stockSyncedAt,
     setStockSyncedAt,
   ] =
-    useState(
-      null
-    );
-
-
-  /* ==========================================================
-     DATABASE
-  ========================================================== */
+    useState(null);
 
   const [
     databaseRefreshing,
     setDatabaseRefreshing,
   ] =
-    useState(
-      false
-    );
+    useState(false);
 
   const [
     databaseStatus,
     setDatabaseStatus,
   ] =
     useState({
-      branches:
-        0,
-
-      transfers:
-        0,
-
-      drafts:
-        0,
-
-      lastSync:
-        null,
+      branches: 0,
+      transfers: 0,
+      drafts: 0,
+      lastSync: null,
     });
 
   const [
     databaseMessage,
     setDatabaseMessage,
   ] =
-    useState(
-      null
-    );
+    useState(null);
 
+  const stockViewRef =
+    useRef(null);
 
-  /* ==========================================================
-     SESSION
-  ========================================================== */
+  const operationMessageRef =
+    useRef(null);
 
   const lastActivityRef =
     useRef(
@@ -658,9 +719,7 @@ export default function BartStaffDashboard({
     );
 
   const logoutTriggeredRef =
-    useRef(
-      false
-    );
+    useRef(false);
 
 
   const touchSession =
@@ -673,89 +732,117 @@ export default function BartStaffDashboard({
     );
 
 
+  /* ==========================================================
+     AUTO POSITIONING
+  ========================================================== */
+
   useEffect(
     () => {
-      const events = [
-        "mousedown",
-        "keydown",
-        "touchstart",
-        "scroll",
-      ];
+      if (
+        showStockView
+      ) {
+        scrollToElement(
+          stockViewRef
+        );
+      }
+    },
+    [
+      showStockView,
+    ]
+  );
 
-      const activityHandler =
+
+  useEffect(
+    () => {
+      if (
+        transferMessage ||
+        databaseMessage
+      ) {
+        scrollToElement(
+          operationMessageRef,
+          "center"
+        );
+      }
+    },
+    [
+      transferMessage,
+      databaseMessage,
+    ]
+  );
+
+
+  /* ==========================================================
+     SESSION
+  ========================================================== */
+
+  useEffect(() => {
+    const events = [
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ];
+
+    const activityHandler =
+      () => {
+        touchSession();
+      };
+
+    events.forEach(
+      (eventName) => {
+        window.addEventListener(
+          eventName,
+          activityHandler,
+          {
+            passive: true,
+          }
+        );
+      }
+    );
+
+    const timer =
+      window.setInterval(
         () => {
-          touchSession();
-        };
+          const inactive =
+            Date.now() -
+            lastActivityRef.current;
 
+          if (
+            inactive >=
+              SESSION_TIMEOUT_MS &&
+            !logoutTriggeredRef.current
+          ) {
+            logoutTriggeredRef.current =
+              true;
+
+            alert(
+              "Session expired due to 30 minutes of inactivity."
+            );
+
+            onLogout?.();
+          }
+        },
+        15000
+      );
+
+    return () => {
+      window.clearInterval(
+        timer
+      );
 
       events.forEach(
-        (
-          eventName
-        ) => {
-          window.addEventListener(
+        (eventName) => {
+          window.removeEventListener(
             eventName,
-            activityHandler,
-            {
-              passive:
-                true,
-            }
+            activityHandler
           );
         }
       );
-
-
-      const timer =
-        window.setInterval(
-          () => {
-            const inactive =
-              Date.now() -
-              lastActivityRef.current;
-
-
-            if (
-              inactive >=
-                SESSION_TIMEOUT_MS &&
-              !logoutTriggeredRef.current
-            ) {
-              logoutTriggeredRef.current =
-                true;
-
-
-              window.alert(
-                "Session expired due to 30 minutes of inactivity."
-              );
-
-
-              onLogout?.();
-            }
-          },
-          15000
-        );
-
-
-      return () => {
-        window.clearInterval(
-          timer
-        );
-
-
-        events.forEach(
-          (
-            eventName
-          ) => {
-            window.removeEventListener(
-              eventName,
-              activityHandler
-            );
-          }
-        );
-      };
-    },
-    [
-      onLogout,
-      touchSession,
-    ]
-  );
+    };
+  }, [
+    onLogout,
+    touchSession,
+  ]);
 
 
   /* ==========================================================
@@ -775,10 +862,8 @@ export default function BartStaffDashboard({
               }
             );
 
-
           const data =
             await response.json();
-
 
           if (
             !response.ok ||
@@ -786,7 +871,6 @@ export default function BartStaffDashboard({
           ) {
             return;
           }
-
 
           setDatabaseStatus({
             branches:
@@ -825,7 +909,7 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     LOAD PENDING TRANSFERS
+     LIVE TRANSFERS
   ========================================================== */
 
   const loadPendingTransfers =
@@ -840,12 +924,10 @@ export default function BartStaffDashboard({
           return;
         }
 
-
         try {
           setTransfersLoading(
             true
           );
-
 
           const response =
             await fetch(
@@ -858,10 +940,8 @@ export default function BartStaffDashboard({
               }
             );
 
-
           const data =
             await response.json();
-
 
           if (
             !response.ok ||
@@ -873,7 +953,6 @@ export default function BartStaffDashboard({
             );
           }
 
-
           const transfers =
             Array.isArray(
               data.transfers
@@ -881,11 +960,9 @@ export default function BartStaffDashboard({
               ? data.transfers
               : [];
 
-
           setPendingTransfers(
             transfers
           );
-
 
           if (
             openPopup &&
@@ -915,64 +992,51 @@ export default function BartStaffDashboard({
     );
 
 
-  /* ==========================================================
-     MAIN DASHBOARD POLLING
+  useEffect(() => {
+    if (
+      active !== null ||
+      openingModule
+    ) {
+      return undefined;
+    }
 
-     Stops automatically when another module opens.
-  ========================================================== */
+    touchSession();
 
-  useEffect(
-    () => {
-      if (
-        active !==
-        null
-      ) {
-        return undefined;
-      }
+    loadDatabaseStatus();
 
+    loadPendingTransfers({
+      openPopup:
+        true,
+    });
 
-      touchSession();
+    const interval =
+      window.setInterval(
+        () => {
+          loadPendingTransfers({
+            openPopup:
+              false,
+          });
+        },
+        TRANSFER_POLL_MS
+      );
 
-
-      loadDatabaseStatus();
-
-
-      loadPendingTransfers({
-        openPopup:
-          true,
-      });
-
-
-      const interval =
-        window.setInterval(
-          () => {
-            loadPendingTransfers({
-              openPopup:
-                false,
-            });
-          },
-          TRANSFER_POLL_MS
-        );
-
-
-      return () => {
-        window.clearInterval(
-          interval
-        );
-      };
-    },
-    [
-      active,
-      branch?.code,
-      loadDatabaseStatus,
-      loadPendingTransfers,
-      touchSession,
-    ]
-  );
+    return () => {
+      window.clearInterval(
+        interval
+      );
+    };
+  }, [
+    active,
+    openingModule,
+    branch?.code,
+    loadDatabaseStatus,
+    loadPendingTransfers,
+    touchSession,
+  ]);
 
 
   /* ==========================================================
-     TRANSFER ACCEPT / REJECT
+     TRANSFER RESPONSE
   ========================================================== */
 
   async function respondToTransfer(
@@ -985,7 +1049,6 @@ export default function BartStaffDashboard({
       return;
     }
 
-
     if (
       action ===
       "reject"
@@ -995,7 +1058,6 @@ export default function BartStaffDashboard({
           "Reject this transfer?\n\nStock will be returned to the origin branch and removed from this destination branch."
         );
 
-
       if (
         !confirmed
       ) {
@@ -1003,20 +1065,16 @@ export default function BartStaffDashboard({
       }
     }
 
-
     try {
       touchSession();
-
 
       setTransferBusy(
         true
       );
 
-
       setTransferMessage(
         null
       );
-
 
       const response =
         await fetch(
@@ -1040,10 +1098,8 @@ export default function BartStaffDashboard({
           }
         );
 
-
       const data =
         await response.json();
-
 
       if (
         !response.ok ||
@@ -1054,7 +1110,6 @@ export default function BartStaffDashboard({
           "Transfer operation failed."
         );
       }
-
 
       setTransferMessage({
         type:
@@ -1070,11 +1125,9 @@ export default function BartStaffDashboard({
           ),
       });
 
-
       setActiveTransfer(
         null
       );
-
 
       if (
         action ===
@@ -1085,12 +1138,10 @@ export default function BartStaffDashboard({
         );
       }
 
-
       await loadPendingTransfers({
         openPopup:
           false,
       });
-
 
       await loadDatabaseStatus();
     } catch (
@@ -1126,20 +1177,16 @@ export default function BartStaffDashboard({
       return;
     }
 
-
     try {
       touchSession();
-
 
       setStockLoading(
         true
       );
 
-
       setStockError(
         ""
       );
-
 
       const url =
         `/api/staff/bart/stock-view?branch=${encodeURIComponent(
@@ -1150,7 +1197,6 @@ export default function BartStaffDashboard({
             : ""
         }`;
 
-
       const response =
         await fetch(
           url,
@@ -1160,10 +1206,8 @@ export default function BartStaffDashboard({
           }
         );
 
-
       const data =
         await response.json();
-
 
       if (
         !response.ok ||
@@ -1175,17 +1219,14 @@ export default function BartStaffDashboard({
         );
       }
 
-
       setStockData(
         data.stock
       );
-
 
       setStockSource(
         data.source ||
         ""
       );
-
 
       setStockSyncedAt(
         data.syncedAt ||
@@ -1202,6 +1243,10 @@ export default function BartStaffDashboard({
       setStockLoading(
         false
       );
+
+      scrollToElement(
+        stockViewRef
+      );
     }
   }
 
@@ -1209,18 +1254,32 @@ export default function BartStaffDashboard({
   async function toggleStockView() {
     touchSession();
 
+    if (
+      showStockView
+    ) {
+      setShowStockView(
+        false
+      );
 
-    const next =
-      !showStockView;
+      return;
+    }
 
+    /*
+      Show it FIRST.
+
+      Staff immediately sees the screen move instead
+      of waiting for the API before anything happens.
+    */
 
     setShowStockView(
-      next
+      true
     );
 
+    scrollToElement(
+      stockViewRef
+    );
 
     if (
-      next &&
       !stockData
     ) {
       await loadStockView(
@@ -1231,7 +1290,7 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     MANUAL DATABASE REFRESH
+     DATABASE REFRESH
   ========================================================== */
 
   async function refreshDatabase() {
@@ -1240,22 +1299,18 @@ export default function BartStaffDashboard({
         "Enter database refresh password:"
       );
 
-
     if (
       !password
     ) {
       return;
     }
 
-
     try {
       touchSession();
-
 
       setDatabaseRefreshing(
         true
       );
-
 
       setDatabaseMessage({
         type:
@@ -1265,6 +1320,10 @@ export default function BartStaffDashboard({
           "Refreshing master database from Google Sheets...",
       });
 
+      scrollToElement(
+        operationMessageRef,
+        "center"
+      );
 
       const response =
         await fetch(
@@ -1280,10 +1339,8 @@ export default function BartStaffDashboard({
           }
         );
 
-
       const data =
         await response.json();
-
 
       if (
         !response.ok ||
@@ -1295,7 +1352,6 @@ export default function BartStaffDashboard({
         );
       }
 
-
       setDatabaseMessage({
         type:
           "success",
@@ -1304,15 +1360,12 @@ export default function BartStaffDashboard({
           `Database refreshed: ${data.branches} branches and ${data.transfers} transfers.`,
       });
 
-
       await loadDatabaseStatus();
-
 
       await loadPendingTransfers({
         openPopup:
           false,
       });
-
 
       onRefresh?.();
     } catch (
@@ -1334,13 +1387,8 @@ export default function BartStaffDashboard({
   }
 
 
-  /* ==========================================================
-     DASHBOARD REFRESH
-  ========================================================== */
-
   async function refreshDashboard() {
     touchSession();
-
 
     await Promise.all([
       loadDatabaseStatus(),
@@ -1351,7 +1399,6 @@ export default function BartStaffDashboard({
       }),
     ]);
 
-
     if (
       showStockView
     ) {
@@ -1360,68 +1407,90 @@ export default function BartStaffDashboard({
       );
     }
 
-
     onRefresh?.();
   }
 
 
   /* ==========================================================
-     MODULE ROUTING
-
-     THIS IS THE IMPORTANT FIX.
+     OPEN FULL PAGE MODULE
   ========================================================== */
+
+  function openFullModule(
+    moduleId
+  ) {
+    if (
+      openingModule
+    ) {
+      return;
+    }
+
+    const module =
+      modules.find(
+        (
+          item
+        ) =>
+          item.id ===
+          moduleId
+      );
+
+    if (
+      !module
+    ) {
+      return;
+    }
+
+    touchSession();
+
+    setOpeningModule(
+      module
+    );
+
+    smoothTop();
+
+    window.setTimeout(
+      () => {
+        if (
+          moduleId ===
+          "schedule"
+        ) {
+          setActive(
+            "staff-schedule"
+          );
+        } else if (
+          moduleId ===
+          "stock-record"
+        ) {
+          setActive(
+            "stock-record"
+          );
+        } else {
+          setActive(
+            "stock-transfer"
+          );
+        }
+
+        setOpeningModule(
+          null
+        );
+
+        window.scrollTo({
+          top: 0,
+          behavior: "auto",
+        });
+      },
+      MODULE_TRANSITION_MS
+    );
+  }
+
 
   async function openModule(
     moduleId
   ) {
-    touchSession();
-
-
-    /* STOCK RECORD */
-
     if (
-      moduleId ===
-      "stock-record"
+      openingModule
     ) {
-      setActive(
-        "stock-record"
-      );
-
       return;
     }
-
-
-    /* STAFF SCHEDULE */
-
-    if (
-      moduleId ===
-      "schedule"
-    ) {
-      setActive(
-        "staff-schedule"
-      );
-
-      return;
-    }
-
-
-    /* STOCK TRANSFER */
-
-    if (
-      moduleId ===
-        "stock-transfer" ||
-      moduleId ===
-        "transfer"
-    ) {
-      setActive(
-        "stock-transfer"
-      );
-
-      return;
-    }
-
-
-    /* STOCK VIEW */
 
     if (
       moduleId ===
@@ -1432,11 +1501,40 @@ export default function BartStaffDashboard({
       return;
     }
 
+    if (
+      moduleId ===
+      "stock-record"
+    ) {
+      openFullModule(
+        "stock-record"
+      );
 
-    /*
-      Only unknown modules reach parent.
-      "schedule" will NEVER reach here now.
-    */
+      return;
+    }
+
+    if (
+      moduleId ===
+      "schedule"
+    ) {
+      openFullModule(
+        "schedule"
+      );
+
+      return;
+    }
+
+    if (
+      moduleId ===
+        "transfer" ||
+      moduleId ===
+        "stock-transfer"
+    ) {
+      openFullModule(
+        "transfer"
+      );
+
+      return;
+    }
 
     on?.(
       moduleId
@@ -1444,28 +1542,47 @@ export default function BartStaffDashboard({
   }
 
 
-  /* ==========================================================
-     TIME FORMAT
-  ========================================================== */
+  function returnToDashboard({
+    clearStock =
+      false,
+  } = {}) {
+    if (
+      clearStock
+    ) {
+      setStockData(
+        null
+      );
+    }
+
+    setActive(
+      null
+    );
+
+    window.requestAnimationFrame(
+      () => {
+        window.scrollTo({
+          top: 0,
+          behavior:
+            "smooth",
+        });
+      }
+    );
+  }
+
 
   function formatTime(
     value
   ) {
-    if (
-      !value
-    ) {
+    if (!value) {
       return "Not synced";
     }
-
 
     try {
       const actual =
         typeof value ===
         "number"
-          ? value *
-            1000
+          ? value * 1000
           : value;
-
 
       return new Date(
         actual
@@ -1479,7 +1596,7 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     STOCK RECORD PAGE
+     CHILD PAGES
   ========================================================== */
 
   if (
@@ -1489,25 +1606,16 @@ export default function BartStaffDashboard({
     return (
       <BartStockRecord
         branch={branch}
-        onBack={() => {
-          setStockData(
-            null
-          );
-
-          setActive(
-            null
-          );
-        }}
+        onBack={() =>
+          returnToDashboard({
+            clearStock:
+              true,
+          })
+        }
       />
     );
   }
 
-
-  /* ==========================================================
-     STAFF SCHEDULE PAGE
-
-     THIS IS THE SECOND IMPORTANT FIX.
-  ========================================================== */
 
   if (
     active ===
@@ -1516,19 +1624,13 @@ export default function BartStaffDashboard({
     return (
       <BartStaffSchedule
         branch={branch}
-        onBack={() => {
-          setActive(
-            null
-          );
-        }}
+        onBack={() =>
+          returnToDashboard()
+        }
       />
     );
   }
 
-
-  /* ==========================================================
-     STOCK TRANSFER PAGE
-  ========================================================== */
 
   if (
     active ===
@@ -1537,55 +1639,50 @@ export default function BartStaffDashboard({
     return (
       <BartStockTransfer
         branch={branch}
-        onBack={() => {
-          setStockData(
-            null
-          );
-
-          setActive(
-            null
-          );
-        }}
+        onBack={() =>
+          returnToDashboard({
+            clearStock:
+              true,
+          })
+        }
       />
     );
   }
 
 
   /* ==========================================================
-     MAIN DASHBOARD
+     DASHBOARD
   ========================================================== */
 
   return (
     <div className="bart-dashboard">
 
+      <AnimatePresence>
+        {openingModule && (
+          <ModuleTransition
+            module={
+              openingModule
+            }
+          />
+        )}
+      </AnimatePresence>
+
       <div className="bart-dashboard-grid" />
 
       <div className="bart-dashboard-glow glow-one" />
-
       <div className="bart-dashboard-glow glow-two" />
 
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
       <header className="bart-dashboard-nav">
-
         <motion.div
           className="bart-dash-brand"
           initial={{
-            opacity:
-              0,
-
-            x:
-              -15,
+            opacity: 0,
+            x: -15,
           }}
           animate={{
-            opacity:
-              1,
-
-            x:
-              0,
+            opacity: 1,
+            x: 0,
           }}
         >
           <div className="bart-dash-logo">
@@ -1609,18 +1706,12 @@ export default function BartStaffDashboard({
         <motion.div
           className="bart-nav-actions"
           initial={{
-            opacity:
-              0,
-
-            x:
-              15,
+            opacity: 0,
+            x: 15,
           }}
           animate={{
-            opacity:
-              1,
-
-            x:
-              0,
+            opacity: 1,
+            x: 0,
           }}
         >
           <div className="bart-session-status">
@@ -1628,7 +1719,6 @@ export default function BartStaffDashboard({
 
             LIVE SESSION
           </div>
-
 
           <button
             type="button"
@@ -1653,7 +1743,6 @@ export default function BartStaffDashboard({
             )}
           </button>
 
-
           <button
             type="button"
             className="bart-icon-button"
@@ -1666,7 +1755,6 @@ export default function BartStaffDashboard({
               size={17}
             />
           </button>
-
 
           <button
             type="button"
@@ -1686,10 +1774,6 @@ export default function BartStaffDashboard({
       </header>
 
 
-      {/* ======================================================
-          MAIN
-      ====================================================== */}
-
       <main className="bart-dashboard-main">
 
         <motion.button
@@ -1698,21 +1782,17 @@ export default function BartStaffDashboard({
           onClick={() => {
             touchSession();
 
+            smoothTop();
+
             onBack?.();
           }}
           initial={{
-            opacity:
-              0,
-
-            x:
-              -10,
+            opacity: 0,
+            x: -10,
           }}
           animate={{
-            opacity:
-              1,
-
-            x:
-              0,
+            opacity: 1,
+            x: 0,
           }}
         >
           <ArrowLeft
@@ -1723,27 +1803,17 @@ export default function BartStaffDashboard({
         </motion.button>
 
 
-        {/* ====================================================
-            HERO
-        ==================================================== */}
-
         <section className="bart-dashboard-hero">
 
           <motion.div
             className="bart-hero-copy"
             initial={{
-              opacity:
-                0,
-
-              y:
-                25,
+              opacity: 0,
+              y: 25,
             }}
             animate={{
-              opacity:
-                1,
-
-              y:
-                0,
+              opacity: 1,
+              y: 0,
             }}
           >
             <div className="bart-mini-label">
@@ -1772,24 +1842,14 @@ export default function BartStaffDashboard({
           <motion.div
             className="bart-branch-card"
             initial={{
-              opacity:
-                0,
-
-              y:
-                25,
-
-              scale:
-                0.97,
+              opacity: 0,
+              y: 25,
+              scale: 0.97,
             }}
             animate={{
-              opacity:
-                1,
-
-              y:
-                0,
-
-              scale:
-                1,
+              opacity: 1,
+              y: 0,
+              scale: 1,
             }}
           >
             <div className="bart-branch-top">
@@ -1839,10 +1899,6 @@ export default function BartStaffDashboard({
         </section>
 
 
-        {/* ====================================================
-            LIVE TRANSFER CENTER
-        ==================================================== */}
-
         <motion.section
           className={
             `bart-notification-strip ${
@@ -1853,18 +1909,12 @@ export default function BartStaffDashboard({
             }`
           }
           initial={{
-            opacity:
-              0,
-
-            y:
-              15,
+            opacity: 0,
+            y: 15,
           }}
           animate={{
-            opacity:
-              1,
-
-            y:
-              0,
+            opacity: 1,
+            y: 0,
           }}
         >
           <div className="bart-notification-icon">
@@ -1879,19 +1929,17 @@ export default function BartStaffDashboard({
             </small>
 
             <strong>
-              {
-                transfersLoading
-                  ? "Checking latest transfers..."
-                  : pendingTransfers.length >
+              {transfersLoading
+                ? "Checking latest transfers..."
+                : pendingTransfers.length >
                     0
-                  ? `${pendingTransfers.length} pending transfer${
-                      pendingTransfers.length >
-                      1
-                        ? "s"
-                        : ""
-                    }`
-                  : "No pending transfers right now"
-              }
+                ? `${pendingTransfers.length} pending transfer${
+                    pendingTransfers.length >
+                    1
+                      ? "s"
+                      : ""
+                  }`
+                : "No pending transfers right now"}
             </strong>
           </div>
 
@@ -1915,12 +1963,10 @@ export default function BartStaffDashboard({
               }
             }}
           >
-            {
-              pendingTransfers.length >
-              0
-                ? "Review Transfer"
-                : "No Transfers"
-            }
+            {pendingTransfers.length >
+            0
+              ? "Review Transfer"
+              : "No Transfers"}
 
             <ArrowRight
               size={15}
@@ -1929,92 +1975,127 @@ export default function BartStaffDashboard({
         </motion.section>
 
 
-        {/* ====================================================
-            TRANSFER MESSAGE
-        ==================================================== */}
-
-        <AnimatePresence>
-          {transferMessage && (
-            <motion.div
-              className={
-                `bart-operation-message ${transferMessage.type}`
-              }
-              initial={{
-                opacity:
-                  0,
-
-                y:
-                  -8,
-              }}
-              animate={{
-                opacity:
-                  1,
-
-                y:
-                  0,
-              }}
-              exit={{
-                opacity:
-                  0,
-              }}
-            >
-              {
-                transferMessage.type ===
-                "success"
-                  ? (
-                    <CheckCircle2
-                      size={16}
-                    />
-                  )
-                  : (
-                    <XCircle
-                      size={16}
-                    />
-                  )
-              }
-
-              <span>
-                {
-                  transferMessage.text
+        <div
+          ref={
+            operationMessageRef
+          }
+        >
+          <AnimatePresence>
+            {transferMessage && (
+              <motion.div
+                className={
+                  `bart-operation-message ${transferMessage.type}`
                 }
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setTransferMessage(
-                    null
-                  )
-                }
+                initial={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                }}
               >
-                <X
-                  size={14}
-                />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {transferMessage.type ===
+                "success" ? (
+                  <CheckCircle2
+                    size={16}
+                  />
+                ) : (
+                  <XCircle
+                    size={16}
+                  />
+                )}
+
+                <span>
+                  {transferMessage.text}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setTransferMessage(
+                      null
+                    )
+                  }
+                >
+                  <X
+                    size={14}
+                  />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
 
-        {/* ====================================================
-            DATABASE STATUS
-        ==================================================== */}
+          <AnimatePresence>
+            {databaseMessage && (
+              <motion.div
+                className={
+                  `bart-operation-message ${databaseMessage.type}`
+                }
+                initial={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                }}
+              >
+                {databaseMessage.type ===
+                "success" ? (
+                  <CheckCircle2
+                    size={16}
+                  />
+                ) : databaseMessage.type ===
+                  "error" ? (
+                  <XCircle
+                    size={16}
+                  />
+                ) : (
+                  <LoaderCircle
+                    size={16}
+                    className="dam-spin"
+                  />
+                )}
+
+                <span>
+                  {databaseMessage.text}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDatabaseMessage(
+                      null
+                    )
+                  }
+                >
+                  <X
+                    size={14}
+                  />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
 
         <motion.section
           className="bart-database-status-card"
           initial={{
-            opacity:
-              0,
-
-            y:
-              15,
+            opacity: 0,
+            y: 15,
           }}
           animate={{
-            opacity:
-              1,
-
-            y:
-              0,
+            opacity: 1,
+            y: 0,
           }}
         >
           <div className="bart-db-status-left">
@@ -2041,9 +2122,7 @@ export default function BartStaffDashboard({
             </small>
 
             <strong>
-              {
-                databaseStatus.branches
-              }
+              {databaseStatus.branches}
             </strong>
           </div>
 
@@ -2053,9 +2132,7 @@ export default function BartStaffDashboard({
             </small>
 
             <strong>
-              {
-                databaseStatus.transfers
-              }
+              {databaseStatus.transfers}
             </strong>
           </div>
 
@@ -2065,9 +2142,7 @@ export default function BartStaffDashboard({
             </small>
 
             <strong>
-              {
-                databaseStatus.drafts
-              }
+              {databaseStatus.drafts}
             </strong>
           </div>
 
@@ -2077,11 +2152,9 @@ export default function BartStaffDashboard({
             </small>
 
             <strong>
-              {
-                formatTime(
-                  databaseStatus.lastSync
-                )
-              }
+              {formatTime(
+                databaseStatus.lastSync
+              )}
             </strong>
           </div>
 
@@ -2106,93 +2179,12 @@ export default function BartStaffDashboard({
               />
             )}
 
-            {
-              databaseRefreshing
-                ? "SYNCING"
-                : "REFRESH DATABASE"
-            }
+            {databaseRefreshing
+              ? "SYNCING"
+              : "REFRESH DATABASE"}
           </button>
         </motion.section>
 
-
-        {/* ====================================================
-            DATABASE MESSAGE
-        ==================================================== */}
-
-        <AnimatePresence>
-          {databaseMessage && (
-            <motion.div
-              className={
-                `bart-operation-message ${databaseMessage.type}`
-              }
-              initial={{
-                opacity:
-                  0,
-
-                y:
-                  -8,
-              }}
-              animate={{
-                opacity:
-                  1,
-
-                y:
-                  0,
-              }}
-              exit={{
-                opacity:
-                  0,
-              }}
-            >
-              {
-                databaseMessage.type ===
-                "success"
-                  ? (
-                    <CheckCircle2
-                      size={16}
-                    />
-                  )
-                  : databaseMessage.type ===
-                    "error"
-                  ? (
-                    <XCircle
-                      size={16}
-                    />
-                  )
-                  : (
-                    <LoaderCircle
-                      size={16}
-                      className="dam-spin"
-                    />
-                  )
-              }
-
-              <span>
-                {
-                  databaseMessage.text
-                }
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setDatabaseMessage(
-                    null
-                  )
-                }
-              >
-                <X
-                  size={14}
-                />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-
-        {/* ====================================================
-            MODULE TITLE
-        ==================================================== */}
 
         <section className="bart--header">
           <div>
@@ -2211,12 +2203,7 @@ export default function BartStaffDashboard({
         </section>
 
 
-        {/* ====================================================
-            MODULE CARDS
-        ==================================================== */}
-
         <section className="bart--grid">
-
           {modules.map(
             (
               module,
@@ -2225,12 +2212,14 @@ export default function BartStaffDashboard({
               const Icon =
                 module.icon;
 
-
               const isStockViewOpen =
                 module.id ===
                   "stock-view" &&
                 showStockView;
 
+              const currentlyOpening =
+                openingModule?.id ===
+                module.id;
 
               return (
                 <motion.button
@@ -2238,10 +2227,19 @@ export default function BartStaffDashboard({
                   key={
                     module.id
                   }
+                  disabled={
+                    Boolean(
+                      openingModule
+                    )
+                  }
                   className={
                     `bart--card ${
                       isStockViewOpen
                         ? "dam--active"
+                        : ""
+                    } ${
+                      currentlyOpening
+                        ? "dam--opening"
                         : ""
                     }`
                   }
@@ -2251,81 +2249,85 @@ export default function BartStaffDashboard({
                     )
                   }
                   initial={{
-                    opacity:
-                      0,
-
-                    y:
-                      28,
+                    opacity: 0,
+                    y: 28,
                   }}
                   animate={{
-                    opacity:
-                      1,
-
-                    y:
-                      0,
+                    opacity: 1,
+                    y: 0,
                   }}
                   transition={{
                     delay:
                       0.12 +
                       index *
-                      0.07,
+                        0.07,
                   }}
-                  whileHover={{
-                    y:
-                      -7,
-                  }}
-                  whileTap={{
-                    scale:
-                      0.985,
-                  }}
+                  whileHover={
+                    openingModule
+                      ? undefined
+                      : {
+                          y:
+                            -7,
+                        }
+                  }
+                  whileTap={
+                    openingModule
+                      ? undefined
+                      : {
+                          scale:
+                            0.985,
+                        }
+                  }
                 >
                   <div className="bart-card-light" />
 
                   <div className="bart--top">
-
                     <div className="bart--icon">
-                      <Icon
-                        size={22}
-                      />
+                      {currentlyOpening ? (
+                        <LoaderCircle
+                          size={22}
+                          className="dam-spin"
+                        />
+                      ) : (
+                        <Icon
+                          size={22}
+                        />
+                      )}
                     </div>
 
                     <span className="bart--number">
-                      {
-                        module.number
-                      }
+                      {module.number}
                     </span>
                   </div>
 
                   <div className="bart--subtitle">
-                    {
-                      module.subtitle
-                    }
+                    {module.subtitle}
                   </div>
 
                   <h3>
-                    {
-                      module.title
-                    }
+                    {module.title}
                   </h3>
 
                   <p>
-                    {
-                      module.description
-                    }
+                    {module.description}
                   </p>
 
                   <div className="bart--open">
-
                     <span>
-                      {
-                        isStockViewOpen
-                          ? "CLOSE VIEW"
-                          : "OPEN MODULE"
-                      }
+                      {currentlyOpening
+                        ? "OPENING..."
+                        : isStockViewOpen
+                        ? "CLOSE VIEW"
+                        : "OPEN MODULE"}
                     </span>
 
                     <div>
-                      {isStockViewOpen ? (
+                      {currentlyOpening ? (
+                        <LoaderCircle
+                          size={16}
+                          className="dam-spin"
+                        />
+                      ) : isStockViewOpen ? (
                         <Eye
                           size={16}
                         />
@@ -2340,55 +2342,42 @@ export default function BartStaffDashboard({
               );
             }
           )}
-
         </section>
 
 
-        {/* ====================================================
-            STOCK VIEW
-        ==================================================== */}
-
         <AnimatePresence>
-
           {showStockView && (
-
             <motion.section
+              ref={
+                stockViewRef
+              }
               className="dam-stock-view"
               initial={{
-                opacity:
-                  0,
-
-                y:
-                  25,
+                opacity: 0,
+                y: 30,
+                scale: 0.99,
               }}
               animate={{
-                opacity:
-                  1,
-
-                y:
-                  0,
+                opacity: 1,
+                y: 0,
+                scale: 1,
               }}
               exit={{
-                opacity:
-                  0,
-
-                y:
-                  15,
+                opacity: 0,
+                y: 15,
+              }}
+              transition={{
+                duration: 0.35,
               }}
             >
               <div className="dam-stock-view-header">
-
                 <div>
                   <span>
-                    {
-                      branch?.code
-                    } / STOCK VIEW
+                    {branch?.code} / STOCK VIEW
                   </span>
 
                   <h2>
-                    {
-                      branch?.name
-                    } Inventory
+                    {branch?.name} Inventory
                   </h2>
 
                   <p>
@@ -2396,28 +2385,20 @@ export default function BartStaffDashboard({
                   </p>
                 </div>
 
-
                 <div className="dam-stock-actions">
-
                   {stockSource && (
                     <span className="dam-stock-source">
-                      {
-                        stockSource
-                      }
+                      {stockSource}
                     </span>
                   )}
-
 
                   {stockSyncedAt && (
                     <span className="dam-stock-source">
-                      {
-                        formatTime(
-                          stockSyncedAt
-                        )
-                      }
+                      {formatTime(
+                        stockSyncedAt
+                      )}
                     </span>
                   )}
-
 
                   <button
                     type="button"
@@ -2441,96 +2422,84 @@ export default function BartStaffDashboard({
                       />
                     )}
 
-                    REFRESH STOCK
+                    {stockLoading
+                      ? "REFRESHING..."
+                      : "REFRESH STOCK"}
                   </button>
-
 
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
                       setShowStockView(
                         false
-                      )
-                    }
+                      );
+                    }}
                   >
                     <X
                       size={15}
                     />
                   </button>
-
                 </div>
               </div>
 
+              {stockLoading &&
+              !stockData ? (
+                <motion.div
+                  className="dam-stock-loading"
+                  initial={{
+                    opacity: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                  }}
+                >
+                  <LoaderCircle
+                    size={25}
+                    className="dam-spin"
+                  />
 
-              {
-                stockLoading &&
-                !stockData
-                  ? (
-                    <div className="dam-stock-loading">
-                      <LoaderCircle
-                        size={25}
-                        className="dam-spin"
-                      />
+                  Loading branch stock...
+                </motion.div>
+              ) : stockError ? (
+                <div className="dam-stock-error">
+                  <XCircle
+                    size={18}
+                  />
 
-                      Loading branch stock...
-                    </div>
-                  )
-                  : stockError
-                  ? (
-                    <div className="dam-stock-error">
-                      <XCircle
-                        size={18}
-                      />
+                  {stockError}
+                </div>
+              ) : stockData ? (
+                <>
+                  <StockTable
+                    title="Daily Items Stock"
+                    rows={
+                      stockData.daily
+                    }
+                  />
 
-                      {
-                        stockError
-                      }
-                    </div>
-                  )
-                  : stockData
-                  ? (
-                    <>
-                      <StockTable
-                        title="Daily Items Stock"
-                        rows={
-                          stockData.daily
-                        }
-                      />
-
-                      <StockTable
-                        title="Weekly Items Stock"
-                        rows={
-                          stockData.weekly
-                        }
-                      />
-                    </>
-                  )
-                  : null
-              }
-
+                  <StockTable
+                    title="Weekly Items Stock"
+                    rows={
+                      stockData.weekly
+                    }
+                  />
+                </>
+              ) : null}
             </motion.section>
           )}
-
         </AnimatePresence>
 
-
-        {/* ====================================================
-            BOTTOM STATUS
-        ==================================================== */}
 
         <motion.section
           className="bart-bottom-status"
           initial={{
-            opacity:
-              0,
+            opacity: 0,
           }}
           animate={{
-            opacity:
-              1,
+            opacity: 1,
           }}
           transition={{
-            delay:
-              0.4,
+            delay: 0.4,
           }}
         >
           <div>
@@ -2549,9 +2518,7 @@ export default function BartStaffDashboard({
             </span>
           </div>
 
-
           <div className="bart-status-line" />
-
 
           <div>
             <ShieldCheck
@@ -2569,9 +2536,7 @@ export default function BartStaffDashboard({
             </span>
           </div>
 
-
           <div className="bart-status-line" />
-
 
           <div>
             <Bell
@@ -2588,15 +2553,9 @@ export default function BartStaffDashboard({
               </small>
             </span>
           </div>
-
         </motion.section>
-
       </main>
 
-
-      {/* ======================================================
-          TRANSFER POPUP
-      ====================================================== */}
 
       <TransferPopup
         transfer={
@@ -2621,7 +2580,6 @@ export default function BartStaffDashboard({
           )
         }
       />
-
     </div>
   );
 }
