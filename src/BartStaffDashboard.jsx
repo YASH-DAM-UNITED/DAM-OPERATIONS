@@ -6,6 +6,9 @@ import {
   useState,
 } from "react";
 
+
+import BartStaffSchedule from "./BartStaffSchedule";
+
 import {
   AnimatePresence,
   motion,
@@ -59,7 +62,7 @@ const TRANSFER_POLL_MS =
    MODULES
 ============================================================ */
 
-const modules = [
+const s = [
   {
     id: "stock-record",
     icon: ClipboardList,
@@ -464,15 +467,15 @@ export default function BartStaffDashboard({
   onBack,
   onLogout,
   onRefresh,
-  onModule,
+  on,
 }) {
   /* ==========================================================
-     ACTIVE MODULE
+     ACTIVE
   ========================================================== */
 
   const [
-    activeModule,
-    setActiveModule,
+    active,
+    setActive,
   ] =
     useState(null);
 
@@ -819,13 +822,12 @@ export default function BartStaffDashboard({
 
      IMPORTANT:
      Polling runs ONLY while the main dashboard is active.
-     When Stock Record / Stock Transfer opens, this effect
-     clears the interval and makes zero 15-second dashboard polls.
+     When another page opens, polling stops automatically.
   ========================================================== */
 
   useEffect(() => {
     if (
-      activeModule !== null
+      active !== null
     ) {
       return undefined;
     }
@@ -854,7 +856,7 @@ export default function BartStaffDashboard({
       );
     };
   }, [
-    activeModule,
+    active,
     branch?.code,
     loadDatabaseStatus,
     loadPendingTransfers,
@@ -1203,19 +1205,19 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     MODULE ROUTING
+     ROUTING
   ========================================================== */
 
-  async function openModule(
-    moduleId
+  async function open(
+    Id
   ) {
     touchSession();
 
     if (
-      moduleId ===
+      Id ===
       "stock-record"
     ) {
-      setActiveModule(
+      setActive(
         "stock-record"
       );
 
@@ -1223,12 +1225,12 @@ export default function BartStaffDashboard({
     }
 
     if (
-      moduleId ===
+      Id ===
         "stock-transfer" ||
-      moduleId ===
+      Id ===
         "transfer"
     ) {
-      setActiveModule(
+      setActive(
         "stock-transfer"
       );
 
@@ -1236,7 +1238,18 @@ export default function BartStaffDashboard({
     }
 
     if (
-      moduleId ===
+      Id ===
+      "schedule"
+    ) {
+      setActive(
+        "staff-schedule"
+      );
+
+      return;
+    }
+
+    if (
+      Id ===
       "stock-view"
     ) {
       await toggleStockView();
@@ -1244,13 +1257,8 @@ export default function BartStaffDashboard({
       return;
     }
 
-    /*
-      Staff Schedule remains connected to the parent flow
-      until its React module is converted.
-    */
-
-    onModule?.(
-      moduleId
+    on?.(
+      Id
     );
   }
 
@@ -1285,25 +1293,20 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     STOCK RECORD MODULE
+     STOCK RECORD
   ========================================================== */
 
   if (
-    activeModule ===
+    active ===
     "stock-record"
   ) {
     return (
       <BartStockRecord
         branch={branch}
         onBack={() => {
-          setActiveModule(
+          setActive(
             null
           );
-
-          /*
-            A Stock Record submission can change stock.
-            Do not keep old local Stock View data.
-          */
 
           setStockData(
             null
@@ -1315,32 +1318,43 @@ export default function BartStaffDashboard({
 
 
   /* ==========================================================
-     STOCK TRANSFER MODULE
+     STAFF SCHEDULE
   ========================================================== */
 
   if (
-    activeModule ===
+    active ===
+    "staff-schedule"
+  ) {
+    return (
+      <BartStaffSchedule
+        branch={branch}
+        onBack={() => {
+          setActive(
+            null
+          );
+        }}
+      />
+    );
+  }
+
+
+  /* ==========================================================
+     STOCK TRANSFER
+  ========================================================== */
+
+  if (
+    active ===
     "stock-transfer"
   ) {
     return (
       <BartStockTransfer
         branch={branch}
         onBack={() => {
-          /*
-            Transfer can change both origin and destination stock.
-            Discard this branch's local Stock View cache.
-          */
-
           setStockData(
             null
           );
 
-          /*
-            Return to main Dashboard.
-            The dashboard polling effect starts again automatically.
-          */
-
-          setActiveModule(
+          setActive(
             null
           );
         }}
@@ -1901,10 +1915,10 @@ export default function BartStaffDashboard({
 
 
         {/* ====================================================
-            MODULE TITLE
+             TITLE
         ==================================================== */}
 
-        <section className="bart-module-header">
+        <section className="bart--header">
           <div>
             <span>
               OPERATIONS
@@ -1915,44 +1929,44 @@ export default function BartStaffDashboard({
             </h2>
           </div>
 
-          <div className="bart-module-count">
-            04 MODULES
+          <div className="bart--count">
+            04 S
           </div>
         </section>
 
 
         {/* ====================================================
-            MODULE CARDS
+             CARDS
         ==================================================== */}
 
-        <section className="bart-module-grid">
-          {modules.map(
+        <section className="bart--grid">
+          {s.map(
             (
-              module,
+              item,
               index
             ) => {
               const Icon =
-                module.icon;
+                item.icon;
 
-              const active =
-                module.id ===
+              const isActive =
+                item.id ===
                   "stock-view" &&
                 showStockView;
 
               return (
                 <motion.button
                   type="button"
-                  key={module.id}
+                  key={item.id}
                   className={
-                    `bart-module-card ${
-                      active
-                        ? "dam-module-active"
+                    `bart--card ${
+                      isActive
+                        ? "dam--active"
                         : ""
                     }`
                   }
                   onClick={() =>
-                    openModule(
-                      module.id
+                    open(
+                      item.id
                     )
                   }
                   initial={{
@@ -1978,39 +1992,39 @@ export default function BartStaffDashboard({
                 >
                   <div className="bart-card-light" />
 
-                  <div className="bart-module-top">
-                    <div className="bart-module-icon">
+                  <div className="bart--top">
+                    <div className="bart--icon">
                       <Icon
                         size={22}
                       />
                     </div>
 
-                    <span className="bart-module-number">
-                      {module.number}
+                    <span className="bart--number">
+                      {item.number}
                     </span>
                   </div>
 
-                  <div className="bart-module-subtitle">
-                    {module.subtitle}
+                  <div className="bart--subtitle">
+                    {item.subtitle}
                   </div>
 
                   <h3>
-                    {module.title}
+                    {item.title}
                   </h3>
 
                   <p>
-                    {module.description}
+                    {item.description}
                   </p>
 
-                  <div className="bart-module-open">
+                  <div className="bart--open">
                     <span>
-                      {active
+                      {isActive
                         ? "CLOSE VIEW"
-                        : "OPEN MODULE"}
+                        : "OPEN "}
                     </span>
 
                     <div>
-                      {active ? (
+                      {isActive ? (
                         <Eye
                           size={16}
                         />
