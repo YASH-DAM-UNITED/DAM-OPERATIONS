@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -10,14 +11,13 @@ import {
 } from "framer-motion";
 
 import {
-  AlertTriangle,
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Boxes,
   Check,
   CheckCircle2,
-  ChevronDown,
-  CircleAlert,
+  ChevronRight,
   Clock3,
   Coffee,
   History,
@@ -26,19 +26,81 @@ import {
   Minus,
   Package,
   Plus,
+  RefreshCcw,
   Search,
   Send,
   ShoppingCart,
-  Sparkles,
   Trash2,
   Truck,
   X,
+  XCircle,
 } from "lucide-react";
+
+
+/* ============================================================
+   API
+============================================================ */
+
+const API = {
+  init:
+    "/api/staff/bart/stock-transfer/init",
+
+  create:
+    "/api/staff/bart/stock-transfer/create",
+
+  history:
+    "/api/staff/bart/stock-transfer/history",
+};
 
 
 /* ============================================================
    HELPERS
 ============================================================ */
+
+function scrollToRef(
+  ref,
+  block = "start"
+) {
+  window.requestAnimationFrame(
+    () => {
+      window.setTimeout(
+        () => {
+          ref?.current?.scrollIntoView({
+            behavior:
+              "smooth",
+
+            block,
+          });
+        },
+        80
+      );
+    }
+  );
+}
+
+
+function normalizeNumber(
+  value
+) {
+  const number =
+    Number(
+      String(
+        value ?? 0
+      )
+        .replace(
+          /,/g,
+          ""
+        )
+        .trim()
+    );
+
+  return Number.isFinite(
+    number
+  )
+    ? number
+    : 0;
+}
+
 
 function statusClass(
   status
@@ -52,7 +114,360 @@ function statusClass(
 
 
 /* ============================================================
-   STOCK TRANSFER
+   LOADING SCREEN
+============================================================ */
+
+function LoadingScreen({
+  branch,
+}) {
+  return (
+    <div className="bst-page bst-loading-page">
+
+      <div className="bst-grid-bg" />
+
+      <div className="bst-orb bst-orb-one" />
+
+      <div className="bst-orb bst-orb-two" />
+
+
+      <motion.div
+        className="bst-cinematic-loader"
+        initial={{
+          opacity: 0,
+          scale: 0.94,
+        }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+        }}
+      >
+        <motion.div
+          className="bst-loader-icon"
+          animate={{
+            rotate: [
+              0,
+              -7,
+              7,
+              0,
+            ],
+
+            scale: [
+              1,
+              1.08,
+              1,
+            ],
+          }}
+          transition={{
+            duration: 1.3,
+            repeat: Infinity,
+          }}
+        >
+          <Truck
+            size={29}
+          />
+        </motion.div>
+
+        <span>
+          BART INTERNAL MOVEMENT
+        </span>
+
+        <h2>
+          Preparing Stock Transfer
+        </h2>
+
+        <p>
+          Loading live inventory for{" "}
+          <strong>
+            {branch?.name ||
+              branch?.code ||
+              "your branch"}
+          </strong>
+        </p>
+
+        <div className="bst-loader-line">
+          <motion.div
+            initial={{
+              x: "-120%",
+            }}
+            animate={{
+              x: "300%",
+            }}
+            transition={{
+              duration: 1.1,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+
+/* ============================================================
+   SUCCESS MODAL
+============================================================ */
+
+function SuccessModal({
+  transfer,
+  onClose,
+}) {
+  if (!transfer) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      className="bst-modal-overlay"
+      initial={{
+        opacity: 0,
+      }}
+      animate={{
+        opacity: 1,
+      }}
+      exit={{
+        opacity: 0,
+      }}
+    >
+      <motion.div
+        className="bst-success-modal"
+        initial={{
+          opacity: 0,
+          y: 30,
+          scale: 0.92,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+          scale: 1,
+        }}
+        exit={{
+          opacity: 0,
+          scale: 0.95,
+        }}
+      >
+        <motion.div
+          className="bst-success-icon"
+          initial={{
+            scale: 0,
+          }}
+          animate={{
+            scale: 1,
+          }}
+          transition={{
+            type: "spring",
+            stiffness: 230,
+            damping: 16,
+          }}
+        >
+          <Check
+            size={40}
+          />
+        </motion.div>
+
+        <span>
+          TRANSFER CREATED
+        </span>
+
+        <h2>
+          Stock is on the move.
+        </h2>
+
+        <p>
+          The inventory movement was completed and the transfer is now waiting for destination confirmation.
+        </p>
+
+        <div className="bst-success-id">
+          <small>
+            TRANSFER ID
+          </small>
+
+          <strong>
+            {transfer.transferId}
+          </strong>
+        </div>
+
+        <div className="bst-success-route">
+          <div>
+            <small>
+              FROM
+            </small>
+
+            <strong>
+              {transfer.origin}
+            </strong>
+          </div>
+
+          <ArrowRight
+            size={17}
+          />
+
+          <div>
+            <small>
+              TO
+            </small>
+
+            <strong>
+              {transfer.destination}
+            </strong>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+        >
+          RETURN TO TRANSFER CENTER
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+
+/* ============================================================
+   HISTORY
+============================================================ */
+
+function HistoryPanel({
+  rows,
+  loading,
+  onRefresh,
+}) {
+  return (
+    <motion.section
+      className="bst-history-panel"
+      initial={{
+        opacity: 0,
+        y: 20,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+    >
+      <div className="bst-history-head">
+        <div>
+          <span>
+            MOVEMENT LOG
+          </span>
+
+          <h2>
+            Transfer History
+          </h2>
+        </div>
+
+        <button
+          type="button"
+          className="bst-refresh"
+          disabled={loading}
+          onClick={
+            onRefresh
+          }
+        >
+          {loading ? (
+            <LoaderCircle
+              size={15}
+              className="dam-spin"
+            />
+          ) : (
+            <RefreshCcw
+              size={15}
+            />
+          )}
+
+          REFRESH
+        </button>
+      </div>
+
+      {loading &&
+      rows.length === 0 ? (
+        <div className="bst-history-loading">
+          <LoaderCircle
+            size={22}
+            className="dam-spin"
+          />
+
+          Loading transfer history...
+        </div>
+      ) : rows.length ===
+        0 ? (
+        <div className="bst-empty">
+          No transfers found for this branch.
+        </div>
+      ) : (
+        <div className="bst-history-list">
+          {rows.map(
+            (
+              transfer,
+              index
+            ) => (
+              <motion.div
+                className="bst-history-card"
+                key={
+                  transfer.id ||
+                  index
+                }
+                initial={{
+                  opacity: 0,
+                  y: 8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                transition={{
+                  delay:
+                    index *
+                    0.04,
+                }}
+              >
+                <div>
+                  <strong>
+                    {transfer.id ||
+                      "TRANSFER"}
+                  </strong>
+
+                  <small>
+                    {transfer.origin}
+                  </small>
+
+                  <small>
+                    →
+                    {" "}
+                    {transfer.destination}
+                  </small>
+
+                  {transfer.reason && (
+                    <small>
+                      {transfer.reason}
+                    </small>
+                  )}
+                </div>
+
+                <span
+                  className={
+                    `bst-status ${statusClass(
+                      transfer.status
+                    )}`
+                  }
+                >
+                  {transfer.status ||
+                    "Pending"}
+                </span>
+              </motion.div>
+            )
+          )}
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
+
+/* ============================================================
+   MAIN
 ============================================================ */
 
 export default function BartStockTransfer({
@@ -65,78 +480,11 @@ export default function BartStockTransfer({
   ] =
     useState(true);
 
-
   const [
-    error,
-    setError,
-  ] =
-    useState("");
-
-
-  const [
-    data,
-    setData,
-  ] =
-    useState(null);
-
-
-  const [
-    category,
-    setCategory,
-  ] =
-    useState(
-      "daily"
-    );
-
-
-  const [
-    search,
-    setSearch,
-  ] =
-    useState("");
-
-
-  const [
-    selectedItem,
-    setSelectedItem,
-  ] =
-    useState(null);
-
-
-  const [
-    quantity,
-    setQuantity,
-  ] =
-    useState(1);
-
-
-  const [
-    cart,
-    setCart,
-  ] =
-    useState([]);
-
-
-  const [
-    destination,
-    setDestination,
-  ] =
-    useState("");
-
-
-  const [
-    reason,
-    setReason,
-  ] =
-    useState("");
-
-
-  const [
-    reviewOpen,
-    setReviewOpen,
+    refreshing,
+    setRefreshing,
   ] =
     useState(false);
-
 
   const [
     submitting,
@@ -144,13 +492,65 @@ export default function BartStockTransfer({
   ] =
     useState(false);
 
+  const [
+    historyLoading,
+    setHistoryLoading,
+  ] =
+    useState(false);
 
   const [
-    validation,
-    setValidation,
+    data,
+    setData,
   ] =
     useState(null);
 
+  const [
+    category,
+    setCategory,
+  ] =
+    useState("daily");
+
+  const [
+    search,
+    setSearch,
+  ] =
+    useState("");
+
+  const [
+    cart,
+    setCart,
+  ] =
+    useState([]);
+
+  const [
+    destination,
+    setDestination,
+  ] =
+    useState("");
+
+  const [
+    reason,
+    setReason,
+  ] =
+    useState("");
+
+  const [
+    message,
+    setMessage,
+  ] =
+    useState(null);
+
+  const [
+    history,
+    setHistory,
+  ] =
+    useState([]);
+
+  const [
+    showHistory,
+    setShowHistory,
+  ] =
+    useState(false);
 
   const [
     success,
@@ -159,71 +559,79 @@ export default function BartStockTransfer({
     useState(null);
 
 
-  const [
-    historyOpen,
-    setHistoryOpen,
-  ] =
-    useState(false);
+  const inventoryRef =
+    useRef(null);
 
+  const cartRef =
+    useRef(null);
 
-  const [
-    history,
-    setHistory,
-  ] =
-    useState([]);
-
-
-  const [
-    historyTotal,
-    setHistoryTotal,
-  ] =
-    useState(0);
-
-
-  const [
-    historyLoading,
-    setHistoryLoading,
-  ] =
-    useState(false);
+  const messageRef =
+    useRef(null);
 
 
   /* ==========================================================
-     INIT
+     ENTER PAGE AT TOP
   ========================================================== */
 
-  async function loadTransferSystem() {
+  useEffect(
+    () => {
+      window.scrollTo({
+        top: 0,
+        behavior: "auto",
+      });
+    },
+    []
+  );
+
+
+  /* ==========================================================
+     LOAD INIT
+  ========================================================== */
+
+  async function loadTransferData(
+    force =
+      false
+  ) {
     if (
       !branch?.code
     ) {
       return;
     }
 
-
     try {
-      setLoading(
-        true
-      );
+      if (
+        force
+      ) {
+        setRefreshing(
+          true
+        );
+      } else {
+        setLoading(
+          true
+        );
+      }
 
-      setError(
-        ""
+      setMessage(
+        null
       );
-
 
       const response =
         await fetch(
-          `/api/staff/bart/stock-transfer/init?branch=${encodeURIComponent(
+          `${API.init}?branch=${encodeURIComponent(
             branch.code
-          )}`,
+          )}${
+            force
+              ? "&refresh=1"
+              : ""
+          }`,
           {
             cache:
               "no-store",
           }
         );
 
-
       const result =
         await response.json();
-
 
       if (
         !response.ok ||
@@ -231,47 +639,155 @@ export default function BartStockTransfer({
       ) {
         throw new Error(
           result.message ||
-            "Unable to load Stock Transfer."
+          "Unable to load stock transfer."
         );
       }
-
 
       setData(
         result
       );
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          "error",
 
+        text:
+          error.message ||
+          "Unable to load transfer system.",
+      });
 
-    } catch (err) {
-      setError(
-        err.message ||
-          "Unable to load Stock Transfer."
+      scrollToRef(
+        messageRef,
+        "center"
       );
-
     } finally {
       setLoading(
+        false
+      );
+
+      setRefreshing(
         false
       );
     }
   }
 
 
-  useEffect(() => {
-    loadTransferSystem();
-  }, [
-    branch?.code,
-  ]);
+  useEffect(
+    () => {
+      loadTransferData(
+        false
+      );
+    },
+    [
+      branch?.code,
+    ]
+  );
 
 
   /* ==========================================================
-     ITEMS
+     HISTORY
   ========================================================== */
 
-  const items =
+  async function loadHistory() {
+    if (
+      !branch?.code
+    ) {
+      return;
+    }
+
+    try {
+      setHistoryLoading(
+        true
+      );
+
+      const response =
+        await fetch(
+          `${API.history}?branch=${encodeURIComponent(
+            branch.code
+          )}&limit=10`,
+          {
+            cache:
+              "no-store",
+          }
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+          "Unable to load history."
+        );
+      }
+
+      setHistory(
+        result.transfers ||
+        result.history ||
+        []
+      );
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          error.message ||
+          "Unable to load transfer history.",
+      });
+    } finally {
+      setHistoryLoading(
+        false
+      );
+    }
+  }
+
+
+  async function toggleHistory() {
+    const next =
+      !showHistory;
+
+    setShowHistory(
+      next
+    );
+
+    if (
+      next &&
+      history.length ===
+        0
+    ) {
+      await loadHistory();
+    }
+  }
+
+
+  /* ==========================================================
+     INVENTORY
+  ========================================================== */
+
+  const allItems =
     useMemo(
-      () =>
-        data?.items?.[
-          category
-        ] || [],
+      () => {
+        if (
+          !data?.items
+        ) {
+          return [];
+        }
+
+        return category ===
+          "weekly"
+          ? data.items.weekly ||
+              []
+          : data.items.daily ||
+              [];
+      },
       [
         data,
         category,
@@ -282,180 +798,149 @@ export default function BartStockTransfer({
   const visibleItems =
     useMemo(
       () => {
-        const q =
+        const query =
           search
             .trim()
             .toLowerCase();
 
-
-        if (!q) {
-          return items;
+        if (!query) {
+          return allItems;
         }
 
-
-        return items.filter(
+        return allItems.filter(
           (item) =>
-            String(
-              item.name || ""
-            )
+            `${item.name || ""} ${item.sku || ""} ${item.uom || ""}`
               .toLowerCase()
-              .includes(q) ||
-
-            String(
-              item.sku || ""
-            )
-              .toLowerCase()
-              .includes(q) ||
-
-            String(
-              item.uom || ""
-            )
-              .toLowerCase()
-              .includes(q)
+              .includes(
+                query
+              )
         );
       },
       [
-        items,
+        allItems,
         search,
       ]
     );
 
 
   /* ==========================================================
-     ADD CART
-
-     If same item is added twice,
-     merge quantities safely.
+     CART
   ========================================================== */
 
-  function addToCart() {
-    if (!selectedItem) {
-      setValidation({
-        title:
-          "Select an Item",
-
-        message:
-          "Choose an inventory item before adding it.",
-      });
-
-      return;
-    }
+  function cartEntryFor(
+    item
+  ) {
+    return cart.find(
+      (entry) =>
+        entry.item ===
+        item.name
+    );
+  }
 
 
-    if (
-      !Number.isFinite(
-        Number(quantity)
-      ) ||
-      Number(quantity) <
-        1
-    ) {
-      setValidation({
-        title:
-          "Invalid Quantity",
-
-        message:
-          "Quantity must be at least 1.",
-      });
-
-      return;
-    }
-
-
-    const qty =
-      Math.trunc(
-        Number(
-          quantity
-        )
+  function addItem(
+    item
+  ) {
+    const available =
+      normalizeNumber(
+        item.available
       );
 
+    if (
+      available <= 0
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          `${item.name} has no available stock.`,
+      });
+
+      scrollToRef(
+        messageRef,
+        "center"
+      );
+
+      return;
+    }
+
+    setMessage(
+      null
+    );
 
     setCart(
-      (current) => {
+      (
+        current
+      ) => {
         const existing =
           current.find(
             (entry) =>
               entry.item ===
-              selectedItem.name
+              item.name
           );
 
-
-        if (existing) {
+        if (
+          existing
+        ) {
           return current.map(
             (entry) =>
               entry.item ===
-              selectedItem.name
+              item.name
                 ? {
                     ...entry,
 
                     qty:
-                      entry.qty +
-                      qty,
+                      Math.min(
+                        entry.qty +
+                          1,
+
+                        available
+                      ),
                   }
                 : entry
           );
         }
 
-
         return [
           ...current,
+
           {
             item:
-              selectedItem.name,
+              item.name,
 
             sku:
-              selectedItem.sku,
+              item.sku ||
+              "",
 
             uom:
-              selectedItem.uom,
+              item.uom ||
+              "",
 
-            qty,
+            qty:
+              1,
 
-            available:
-              selectedItem.available,
+            available,
           },
         ];
       }
     );
 
-
-    setSelectedItem(
-      null
-    );
-
-    setQuantity(
-      1
+    scrollToRef(
+      cartRef,
+      "center"
     );
   }
 
 
-  /* ==========================================================
-     CART REMOVE
-  ========================================================== */
-
-  function removeCartItem(
-    itemName
-  ) {
-    setCart(
-      (current) =>
-        current.filter(
-          (entry) =>
-            entry.item !==
-            itemName
-        )
-    );
-  }
-
-
-  /* ==========================================================
-     CART QUANTITY
-  ========================================================== */
-
-  function changeCartQty(
+  function changeQty(
     itemName,
-    delta
+    nextQty
   ) {
     setCart(
-      (current) =>
+      (
+        current
+      ) =>
         current
           .map(
             (entry) => {
@@ -466,65 +951,84 @@ export default function BartStockTransfer({
                 return entry;
               }
 
+              const qty =
+                Math.max(
+                  0,
+
+                  Math.min(
+                    Number(
+                      nextQty
+                    ) ||
+                      0,
+
+                    entry.available
+                  )
+                );
 
               return {
                 ...entry,
-
-                qty:
-                  Math.max(
-                    1,
-                    entry.qty +
-                      delta
-                  ),
+                qty,
               };
             }
+          )
+          .filter(
+            (entry) =>
+              entry.qty >
+              0
           )
     );
   }
 
 
-  /* ==========================================================
-     REVIEW
-  ========================================================== */
+  function removeItem(
+    itemName
+  ) {
+    setCart(
+      (
+        current
+      ) =>
+        current.filter(
+          (entry) =>
+            entry.item !==
+            itemName
+        )
+    );
+  }
 
-  function openReview() {
+
+  function clearCart() {
     if (
       cart.length ===
       0
     ) {
-      setValidation({
-        title:
-          "Transfer Cart Empty",
-
-        message:
-          "Add at least one item before continuing.",
-      });
-
       return;
     }
 
+    const confirmed =
+      window.confirm(
+        "Clear all items from this transfer?"
+      );
 
-    if (!destination) {
-      setValidation({
-        title:
-          "Destination Required",
-
-        message:
-          "Choose the branch receiving this transfer.",
-      });
-
+    if (!confirmed) {
       return;
     }
 
+    setCart(
+      []
+    );
 
-    setReviewOpen(
-      true
+    setDestination(
+      ""
+    );
+
+    setReason(
+      ""
     );
   }
 
 
   /* ==========================================================
-     SUBMIT
+     CREATE TRANSFER
   ========================================================== */
 
   async function submitTransfer() {
@@ -534,16 +1038,108 @@ export default function BartStockTransfer({
       return;
     }
 
+    if (
+      cart.length ===
+      0
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          "Add at least one stock item before continuing.",
+      });
+
+      scrollToRef(
+        inventoryRef
+      );
+
+      return;
+    }
+
+    if (
+      !destination
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          "Select the destination branch.",
+      });
+
+      scrollToRef(
+        cartRef,
+        "center"
+      );
+
+      return;
+    }
+
+    if (
+      !reason.trim()
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          "Enter the reason/reference for this transfer.",
+      });
+
+      scrollToRef(
+        cartRef,
+        "center"
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Send ${cart.length} stock item${
+          cart.length ===
+          1
+            ? ""
+            : "s"
+        } from ${
+          data?.origin?.name ||
+          branch?.name
+        } to ${
+          data?.destinations?.find(
+            (item) =>
+              item.code ===
+              destination
+          )?.name ||
+          destination
+        }?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setSubmitting(
         true
       );
 
+      setMessage({
+        type:
+          "info",
+
+        text:
+          "Verifying live stock and creating transfer...",
+      });
+
+      scrollToRef(
+        messageRef,
+        "center"
+      );
 
       const response =
         await fetch(
-          "/api/staff/bart/stock-transfer/create",
+          API.create,
           {
             method:
               "POST",
@@ -561,115 +1157,81 @@ export default function BartStockTransfer({
                 destinationBranch:
                   destination,
 
-                reason,
+                reason:
+                  reason.trim(),
 
                 cart:
                   cart.map(
-                    (entry) => ({
+                    (
+                      entry
+                    ) => ({
                       item:
                         entry.item,
 
                       sku:
                         entry.sku,
 
-                      qty:
-                        entry.qty,
-
                       uom:
                         entry.uom,
+
+                      qty:
+                        Number(
+                          entry.qty
+                        ),
                     })
                   ),
               }),
           }
         );
 
-
       const result =
         await response.json();
-
 
       if (
         !response.ok ||
         !result.success
       ) {
         if (
-          result.insufficient
+          result.insufficient &&
+          Array.isArray(
+            result.items
+          )
         ) {
-          setValidation({
-            title:
-              "Insufficient Stock",
-
-            message:
-              "The origin branch does not have enough stock for some items.",
-
-            items:
-              result.items?.map(
-                (item) =>
-                  `${item.item}: have ${item.have}, need ${item.need}`
-              ),
-          });
-
-
-          setReviewOpen(
-            false
+          throw new Error(
+            `Insufficient stock: ${result.items
+              .map(
+                (
+                  entry
+                ) =>
+                  `${entry.item} (${entry.have} available / ${entry.need} requested)`
+              )
+              .join(
+                ", "
+              )}`
           );
-
-          return;
         }
-
 
         if (
           result.missingItems
         ) {
-          setValidation({
-            title:
-              "Item Mapping Error",
-
-            message:
-              "Some items are missing from one of the Stocks sheets.",
-
-            items: [
-              ...(
-                result.originMissing ||
-                []
-              ).map(
-                (item) =>
-                  `Origin: ${item}`
-              ),
-
-              ...(
-                result.destinationMissing ||
-                []
-              ).map(
-                (item) =>
-                  `Destination: ${item}`
-              ),
-            ],
-          });
-
-
-          setReviewOpen(
-            false
+          throw new Error(
+            result.message ||
+            "Some items are missing in one of the branch stock sheets."
           );
-
-          return;
         }
-
 
         throw new Error(
           result.message ||
-            "Transfer failed."
+          "Transfer could not be created."
         );
       }
 
+      setMessage(
+        null
+      );
 
       setSuccess(
         result
-      );
-
-
-      setReviewOpen(
-        false
       );
 
       setCart(
@@ -684,155 +1246,46 @@ export default function BartStockTransfer({
         ""
       );
 
+      setSearch(
+        ""
+      );
 
-    } catch (err) {
-      setValidation({
-        title:
-          "Transfer Failed",
+      await loadTransferData(
+        true
+      );
 
-        message:
-          err.message ||
-          "Unable to complete transfer.",
+      if (
+        showHistory
+      ) {
+        await loadHistory();
+      }
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          "error",
+
+        text:
+          error.message ||
+          "Transfer failed.",
       });
 
+      scrollToRef(
+        messageRef,
+        "center"
+      );
     } finally {
       setSubmitting(
         false
       );
     }
   }
-
-
-  /* ==========================================================
-     HISTORY
-  ========================================================== */
-
-  async function loadHistory(
-    reset = false
-  ) {
-    if (
-      historyLoading
-    ) {
-      return;
-    }
-
-
-    const offset =
-      reset
-        ? 0
-        : history.length;
-
-
-    try {
-      setHistoryLoading(
-        true
-      );
-
-
-      const response =
-        await fetch(
-          `/api/staff/bart/stock-transfer/history?branch=${encodeURIComponent(
-            branch.code
-          )}&limit=3&offset=${offset}`,
-          {
-            cache:
-              "no-store",
-          }
-        );
-
-
-      const result =
-        await response.json();
-
-
-      if (
-        !response.ok ||
-        !result.success
-      ) {
-        throw new Error(
-          result.message ||
-            "Unable to load transfer history."
-        );
-      }
-
-
-      setHistoryTotal(
-        result.total ||
-        0
-      );
-
-
-      setHistory(
-        (current) =>
-          reset
-            ? result.transfers ||
-              []
-            : [
-                ...current,
-                ...(
-                  result.transfers ||
-                  []
-                ),
-              ]
-      );
-
-
-    } catch (err) {
-      setValidation({
-        title:
-          "History Error",
-
-        message:
-          err.message,
-      });
-
-    } finally {
-      setHistoryLoading(
-        false
-      );
-    }
-  }
-
-
-  async function openHistory() {
-    setHistoryOpen(
-      true
-    );
-
-    await loadHistory(
-      true
-    );
-  }
-
-
-  /* ==========================================================
-     SUCCESS RETURN
-  ========================================================== */
-
-  useEffect(() => {
-    if (!success) {
-      return;
-    }
-
-
-    const timer =
-      window.setTimeout(
-        () => {
-          onBack?.();
-        },
-        5000
-      );
-
-
-    return () =>
-      window.clearTimeout(
-        timer
-      );
-
-  }, [
-    success,
-    onBack,
-  ]);
 
 
   /* ==========================================================
@@ -844,43 +1297,16 @@ export default function BartStockTransfer({
     !data
   ) {
     return (
-      <div className="bst-page">
-        <div className="bst-loading">
-
-          <motion.div
-            animate={{
-              y: [
-                0,
-                -10,
-                0,
-              ],
-            }}
-            transition={{
-              duration:
-                1.2,
-
-              repeat:
-                Infinity,
-            }}
-          >
-            <Truck
-              size={44}
-            />
-          </motion.div>
-
-          <h2>
-            Preparing Transfer Network
-          </h2>
-
-          <p>
-            Loading branches and inventory…
-          </p>
-
-        </div>
-      </div>
+      <LoadingScreen
+        branch={branch}
+      />
     );
   }
 
+
+  /* ==========================================================
+     PAGE
+  ========================================================== */
 
   return (
     <div className="bst-page">
@@ -892,21 +1318,27 @@ export default function BartStockTransfer({
       <div className="bst-orb bst-orb-two" />
 
 
-      {/* =====================================================
+      {/* ======================================================
           HEADER
-      ===================================================== */}
+      ====================================================== */}
 
       <header className="bst-header">
 
         <button
           type="button"
           className="bst-back"
-          onClick={
-            onBack
-          }
+          onClick={() => {
+            window.scrollTo({
+              top: 0,
+              behavior:
+                "smooth",
+            });
+
+            onBack?.();
+          }}
         >
           <ArrowLeft
-            size={16}
+            size={15}
           />
 
           STAFF DASHBOARD
@@ -914,9 +1346,8 @@ export default function BartStockTransfer({
 
 
         <div className="bst-brand">
-
           <div>
-            <Truck
+            <Coffee
               size={17}
             />
           </div>
@@ -928,15 +1359,20 @@ export default function BartStockTransfer({
 
             STOCK TRANSFER
           </span>
-
         </div>
 
 
         <button
           type="button"
-          className="bst-history-button"
+          className={
+            `bst-history-button ${
+              showHistory
+                ? "active"
+                : ""
+            }`
+          }
           onClick={
-            openHistory
+            toggleHistory
           }
         >
           <History
@@ -951,38 +1387,29 @@ export default function BartStockTransfer({
 
       <main className="bst-main">
 
-        {/* ===================================================
+        {/* ====================================================
             HERO
-        =================================================== */}
+        ==================================================== */}
 
-        <motion.section
-          className="bst-hero"
-          initial={{
-            opacity:
-              0,
+        <section className="bst-hero">
 
-            y:
-              25,
-          }}
-          animate={{
-            opacity:
-              1,
-
-            y:
-              0,
-          }}
-        >
-
-          <div>
-
-            <div className="bst-eyebrow">
-              <Sparkles
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 24,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+          >
+            <div className="bst-kicker">
+              <Truck
                 size={12}
               />
 
               INTERNAL MOVEMENT NETWORK
             </div>
-
 
             <h1>
               Move stock,
@@ -993,40 +1420,48 @@ export default function BartStockTransfer({
               </span>
             </h1>
 
-
             <p>
-              Build a transfer, verify stock and transmit inventory securely through the BART network.
+              Build a transfer, verify live stock and transmit inventory securely through the BART branch network.
             </p>
+          </motion.div>
 
-          </div>
 
-
-          <div className="bst-origin-card">
-
+          <motion.div
+            className="bst-branch-card"
+            initial={{
+              opacity: 0,
+              y: 24,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              delay:
+                0.08,
+            }}
+          >
             <small>
               ORIGIN BRANCH
             </small>
 
-
-            <div className="bst-origin-icon">
+            <div className="bst-origin-pin">
               <MapPin
-                size={17}
+                size={15}
               />
             </div>
 
-
             <h2>
-              {branch?.name}
+              {data?.origin?.name ||
+                branch?.name}
             </h2>
 
-
             <strong>
-              {branch?.code}
+              {data?.origin?.code ||
+                branch?.code}
             </strong>
 
-
-            <div className="bst-date-chip">
-
+            <div className="bst-stock-date">
               <Clock3
                 size={13}
               />
@@ -1034,101 +1469,220 @@ export default function BartStockTransfer({
               STOCK DATE
 
               <b>
-                {
-                  data?.targetDate
-                }
+                {data?.targetDate ||
+                  "-"}
               </b>
+            </div>
+          </motion.div>
+        </section>
+
+
+        {/* ====================================================
+            ERROR / STATUS
+        ==================================================== */}
+
+        <div
+          ref={
+            messageRef
+          }
+        >
+          <AnimatePresence>
+            {message && (
+              <motion.div
+                className={
+                  `bst-message ${message.type}`
+                }
+                initial={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                }}
+              >
+                {message.type ===
+                "error" ? (
+                  <XCircle
+                    size={17}
+                  />
+                ) : message.type ===
+                  "success" ? (
+                  <CheckCircle2
+                    size={17}
+                  />
+                ) : (
+                  <LoaderCircle
+                    size={17}
+                    className="dam-spin"
+                  />
+                )}
+
+                <span>
+                  {message.text}
+                </span>
+
+                {message.type !==
+                  "info" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMessage(
+                        null
+                      )
+                    }
+                  >
+                    <X
+                      size={14}
+                    />
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+
+        {/* ====================================================
+            HISTORY
+        ==================================================== */}
+
+        <AnimatePresence>
+          {showHistory && (
+            <HistoryPanel
+              rows={
+                history
+              }
+              loading={
+                historyLoading
+              }
+              onRefresh={
+                loadHistory
+              }
+            />
+          )}
+        </AnimatePresence>
+
+
+        {/* ====================================================
+            INVENTORY
+        ==================================================== */}
+
+        <motion.section
+          ref={
+            inventoryRef
+          }
+          className="bst-inventory-section"
+          initial={{
+            opacity: 0,
+            y: 20,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            delay:
+              0.12,
+          }}
+        >
+          <div className="bst-inventory-toolbar">
+
+            <div className="bst-category-tabs">
+
+              <button
+                type="button"
+                className={
+                  category ===
+                  "daily"
+                    ? "active"
+                    : ""
+                }
+                onClick={() => {
+                  setCategory(
+                    "daily"
+                  );
+
+                  setSearch(
+                    ""
+                  );
+
+                  scrollToRef(
+                    inventoryRef
+                  );
+                }}
+              >
+                DAILY ITEMS
+
+                <span>
+                  {data?.items?.daily?.length ||
+                    0}
+                </span>
+              </button>
+
+
+              <button
+                type="button"
+                className={
+                  category ===
+                  "weekly"
+                    ? "active"
+                    : ""
+                }
+                onClick={() => {
+                  setCategory(
+                    "weekly"
+                  );
+
+                  setSearch(
+                    ""
+                  );
+
+                  scrollToRef(
+                    inventoryRef
+                  );
+                }}
+              >
+                WEEKLY ITEMS
+
+                <span>
+                  {data?.items?.weekly?.length ||
+                    0}
+                </span>
+              </button>
 
             </div>
 
-          </div>
-
-        </motion.section>
-
-
-        {!data?.dateAvailable && (
-
-          <div className="bst-warning">
-
-            <AlertTriangle
-              size={18}
-            />
-
-            Yesterday's stock column ({data?.targetDate}) was not found. A transfer cannot be completed until that stock date exists.
-
-          </div>
-
-        )}
-
-
-        {error && (
-
-          <div className="bst-warning">
-
-            <CircleAlert
-              size={18}
-            />
-
-            {error}
-
-          </div>
-
-        )}
-
-
-        {/* ===================================================
-            CATEGORY / SEARCH
-        =================================================== */}
-
-        <section className="bst-toolbar">
-
-          <div className="bst-category-switch">
 
             <button
               type="button"
-              className={
-                category ===
-                "daily"
-                  ? "active"
-                  : ""
+              className="bst-live-refresh"
+              disabled={
+                refreshing
               }
-              onClick={() => {
-
-                setCategory(
-                  "daily"
-                );
-
-                setSelectedItem(
-                  null
-                );
-
-              }}
-            >
-              DAILY ITEMS
-            </button>
-
-
-            <button
-              type="button"
-              className={
-                category ===
-                "weekly"
-                  ? "active"
-                  : ""
+              onClick={() =>
+                loadTransferData(
+                  true
+                )
               }
-              onClick={() => {
-
-                setCategory(
-                  "weekly"
-                );
-
-                setSelectedItem(
-                  null
-                );
-
-              }}
             >
-              WEEKLY ITEMS
+              {refreshing ? (
+                <LoaderCircle
+                  size={15}
+                  className="dam-spin"
+                />
+              ) : (
+                <RefreshCcw
+                  size={15}
+                />
+              )}
+
+              {refreshing
+                ? "REFRESHING"
+                : "LIVE STOCK"}
             </button>
 
           </div>
@@ -1137,7 +1691,7 @@ export default function BartStockTransfer({
           <div className="bst-search">
 
             <Search
-              size={15}
+              size={17}
             />
 
             <input
@@ -1150,14 +1704,12 @@ export default function BartStockTransfer({
                 event
               ) =>
                 setSearch(
-                  event.target
-                    .value
+                  event.target.value
                 )
               }
             />
 
             {search && (
-
               <button
                 type="button"
                 onClick={() =>
@@ -1167,24 +1719,15 @@ export default function BartStockTransfer({
                 }
               >
                 <X
-                  size={14}
+                  size={15}
                 />
               </button>
-
             )}
 
           </div>
 
-        </section>
 
-
-        {/* ===================================================
-            INVENTORY
-        =================================================== */}
-
-        <section className="bst-section">
-
-          <div className="bst-section-title">
+          <div className="bst-inventory-heading">
 
             <div>
               <span>
@@ -1196,108 +1739,119 @@ export default function BartStockTransfer({
               </h2>
             </div>
 
-
             <strong>
-              {visibleItems.length} ITEMS
+              {visibleItems.length}
+              {" "}
+              ITEMS
             </strong>
 
           </div>
 
 
-          <div className="bst-items-grid">
-
-            <AnimatePresence>
+          {visibleItems.length ===
+          0 ? (
+            <div className="bst-empty bst-inventory-empty">
+              No matching inventory items found.
+            </div>
+          ) : (
+            <div className="bst-inventory-grid">
 
               {visibleItems.map(
                 (
                   item,
                   index
                 ) => {
+                  const available =
+                    normalizeNumber(
+                      item.available
+                    );
+
+                  const cartEntry =
+                    cartEntryFor(
+                      item
+                    );
 
                   const selected =
-                    selectedItem
-                      ?.name ===
-                    item.name;
-
+                    Boolean(
+                      cartEntry
+                    );
 
                   return (
-
                     <motion.button
                       type="button"
                       key={
-                        item.name
+                        `${category}-${item.sku}-${item.name}`
                       }
                       className={
-                        `bst-item ${
+                        `bst-stock-card ${
                           selected
                             ? "selected"
                             : ""
+                        } ${
+                          available <=
+                          0
+                            ? "out-of-stock"
+                            : ""
                         }`
                       }
-                      onClick={() => {
-
-                        setSelectedItem(
+                      disabled={
+                        available <=
+                        0
+                      }
+                      onClick={() =>
+                        addItem(
                           item
-                        );
-
-                        setQuantity(
-                          1
-                        );
-
-                      }}
+                        )
+                      }
                       initial={{
-                        opacity:
-                          0,
-
-                        y:
-                          14,
+                        opacity: 0,
+                        y: 14,
                       }}
                       animate={{
-                        opacity:
-                          1,
-
-                        y:
-                          0,
-                      }}
-                      exit={{
-                        opacity:
-                          0,
+                        opacity: 1,
+                        y: 0,
                       }}
                       transition={{
                         delay:
                           Math.min(
                             index *
-                              0.012,
+                              0.015,
+
                             0.25
                           ),
                       }}
+                      whileHover={
+                        available >
+                        0
+                          ? {
+                              y:
+                                -5,
+                            }
+                          : undefined
+                      }
+                      whileTap={
+                        available >
+                        0
+                          ? {
+                              scale:
+                                0.985,
+                            }
+                          : undefined
+                      }
                     >
-
-                      <div className="bst-item-top">
+                      <div className="bst-stock-card-top">
 
                         <span>
                           {item.sku ||
-                            "ITEM"}
+                            "NO SKU"}
                         </span>
 
-
                         {selected && (
-
-                          <motion.div
-                            initial={{
-                              scale:
-                                0,
-                            }}
-                            animate={{
-                              scale:
-                                1,
-                            }}
-                          >
+                          <div>
                             <Check
                               size={13}
                             />
-                          </motion.div>
-
+                          </div>
                         )}
 
                       </div>
@@ -1308,209 +1862,66 @@ export default function BartStockTransfer({
                       </h3>
 
 
-                      <div className="bst-item-bottom">
+                      <div className="bst-stock-card-bottom">
 
                         <span>
                           {item.uom ||
-                            "UNITS"}
+                            "UNIT"}
                         </span>
 
-
                         <strong>
-                          {
-                            item.available
-                          }
-
-                          <small>
-                            AVAILABLE
-                          </small>
+                          {available}
                         </strong>
+
+                        <small>
+                          AVAILABLE
+                        </small>
 
                       </div>
 
-                    </motion.button>
 
+                      {selected && (
+                        <div className="bst-card-cart-count">
+                          {cartEntry.qty}
+                        </div>
+                      )}
+
+                    </motion.button>
                   );
                 }
               )}
 
-            </AnimatePresence>
-
-          </div>
-
-        </section>
-
-
-        {/* ===================================================
-            ADD ITEM
-        =================================================== */}
-
-        <AnimatePresence>
-
-          {selectedItem && (
-
-            <motion.section
-              className="bst-add-panel"
-              initial={{
-                opacity:
-                  0,
-
-                y:
-                  18,
-
-                scale:
-                  0.985,
-              }}
-              animate={{
-                opacity:
-                  1,
-
-                y:
-                  0,
-
-                scale:
-                  1,
-              }}
-              exit={{
-                opacity:
-                  0,
-
-                y:
-                  10,
-              }}
-            >
-
-              <div className="bst-add-selected">
-
-                <small>
-                  SELECTED ITEM
-                </small>
-
-                <strong>
-                  {
-                    selectedItem.name
-                  }
-                </strong>
-
-                <span>
-                  {selectedItem.sku} ·{" "}
-                  {selectedItem.uom}
-                </span>
-
-              </div>
-
-
-              <div className="bst-quantity-control">
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setQuantity(
-                      (value) =>
-                        Math.max(
-                          1,
-                          Number(
-                            value
-                          ) - 1
-                        )
-                    )
-                  }
-                >
-                  <Minus
-                    size={16}
-                  />
-                </button>
-
-
-                <input
-                  inputMode="numeric"
-                  value={
-                    quantity
-                  }
-                  onChange={(
-                    event
-                  ) => {
-
-                    const value =
-                      event.target.value
-                        .replace(
-                          /[^0-9]/g,
-                          ""
-                        );
-
-
-                    setQuantity(
-                      value
-                        ? Number(
-                            value
-                          )
-                        : 1
-                    );
-
-                  }}
-                />
-
-
-                <span>
-                  {
-                    selectedItem.uom
-                  }
-                </span>
-
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setQuantity(
-                      (value) =>
-                        Number(
-                          value
-                        ) + 1
-                    )
-                  }
-                >
-                  <Plus
-                    size={16}
-                  />
-                </button>
-
-              </div>
-
-
-              <motion.button
-                type="button"
-                className="bst-add-cart"
-                whileTap={{
-                  scale:
-                    0.98,
-                }}
-                onClick={
-                  addToCart
-                }
-              >
-
-                <ShoppingCart
-                  size={16}
-                />
-
-                ADD TO TRANSFER
-
-              </motion.button>
-
-            </motion.section>
-
+            </div>
           )}
+        </motion.section>
 
-        </AnimatePresence>
 
-
-        {/* ===================================================
+        {/* ====================================================
             CART
-        =================================================== */}
+        ==================================================== */}
 
-        <section className="bst-section">
-
-          <div className="bst-section-title">
+        <motion.section
+          ref={
+            cartRef
+          }
+          className={
+            `bst-cart-section ${
+              cart.length >
+              0
+                ? "has-items"
+                : ""
+            }`
+          }
+          initial={{
+            opacity: 0,
+            y: 20,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+        >
+          <div className="bst-cart-head">
 
             <div>
               <span>
@@ -1518,178 +1929,221 @@ export default function BartStockTransfer({
               </span>
 
               <h2>
-                Current Transfer List
+                Build movement
               </h2>
             </div>
 
+            <div className="bst-cart-counter">
+              <ShoppingCart
+                size={16}
+              />
 
-            <strong>
-              {cart.length} ITEMS
-            </strong>
+              {cart.length}
+              {" "}
+              ITEMS
+            </div>
 
           </div>
 
 
           {cart.length ===
           0 ? (
+            <div className="bst-cart-empty">
 
-            <div className="bst-empty-cart">
-
-              <ShoppingCart
-                size={24}
+              <Package
+                size={29}
               />
 
               <strong>
                 Your transfer is empty
               </strong>
 
-              <span>
-                Select stock items above to begin.
-              </span>
+              <p>
+                Select an inventory item above to begin building the stock movement.
+              </p>
 
             </div>
-
           ) : (
+            <>
+              <div className="bst-cart-list">
 
-            <div className="bst-cart">
-
-              {cart.map(
-                (entry) => (
-
-                  <motion.div
-                    className="bst-cart-row"
-                    key={
-                      entry.item
-                    }
-                    layout
-                  >
-
-                    <div className="bst-cart-product">
-
-                      <div>
-                        <Package
-                          size={16}
-                        />
+                {cart.map(
+                  (
+                    entry,
+                    index
+                  ) => (
+                    <motion.div
+                      className="bst-cart-row"
+                      key={
+                        entry.item
+                      }
+                      initial={{
+                        opacity: 0,
+                        x: -10,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        x: 0,
+                      }}
+                    >
+                      <div className="bst-cart-number">
+                        {String(
+                          index +
+                            1
+                        ).padStart(
+                          2,
+                          "0"
+                        )}
                       </div>
 
 
-                      <span>
+                      <div className="bst-cart-product">
 
                         <small>
-                          {
-                            entry.sku
-                          }
+                          {entry.sku ||
+                            "NO SKU"}
                         </small>
 
                         <strong>
-                          {
-                            entry.item
-                          }
+                          {entry.item}
                         </strong>
 
+                        <span>
+                          {entry.available}
+                          {" "}
+                          {entry.uom}
+                          {" "}
+                          AVAILABLE
+                        </span>
+
+                      </div>
+
+
+                      <div className="bst-qty-control">
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            changeQty(
+                              entry.item,
+
+                              entry.qty -
+                                1
+                            )
+                          }
+                        >
+                          <Minus
+                            size={14}
+                          />
+                        </button>
+
+
+                        <input
+                          type="number"
+                          min="1"
+                          max={
+                            entry.available
+                          }
+                          value={
+                            entry.qty
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            changeQty(
+                              entry.item,
+
+                              event.target.value
+                            )
+                          }
+                        />
+
+
+                        <button
+                          type="button"
+                          disabled={
+                            entry.qty >=
+                            entry.available
+                          }
+                          onClick={() =>
+                            changeQty(
+                              entry.item,
+
+                              entry.qty +
+                                1
+                            )
+                          }
+                        >
+                          <Plus
+                            size={14}
+                          />
+                        </button>
+
+                      </div>
+
+
+                      <span className="bst-cart-uom">
+                        {entry.uom}
                       </span>
 
-                    </div>
-
-
-                    <div className="bst-cart-quantity">
 
                       <button
                         type="button"
+                        className="bst-cart-remove"
                         onClick={() =>
-                          changeCartQty(
-                            entry.item,
-                            -1
+                          removeItem(
+                            entry.item
                           )
                         }
                       >
-                        <Minus
-                          size={13}
+                        <Trash2
+                          size={15}
                         />
                       </button>
 
+                    </motion.div>
+                  )
+                )}
 
-                      <strong>
-                        {
-                          entry.qty
-                        }
-
-                        <small>
-                          {
-                            entry.uom
-                          }
-                        </small>
-                      </strong>
+              </div>
 
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          changeCartQty(
-                            entry.item,
-                            1
-                          )
-                        }
-                      >
-                        <Plus
-                          size={13}
-                        />
-                      </button>
+              <button
+                type="button"
+                className="bst-clear-cart"
+                onClick={
+                  clearCart
+                }
+              >
+                <Trash2
+                  size={14}
+                />
 
-                    </div>
-
-
-                    <div className="bst-cart-available">
-
-                      <small>
-                        AVAILABLE
-                      </small>
-
-                      <strong>
-                        {
-                          entry.available
-                        }
-                      </strong>
-
-                    </div>
-
-
-                    <button
-                      type="button"
-                      className="bst-cart-delete"
-                      onClick={() =>
-                        removeCartItem(
-                          entry.item
-                        )
-                      }
-                    >
-                      <Trash2
-                        size={15}
-                      />
-                    </button>
-
-                  </motion.div>
-
-                )
-              )}
-
-            </div>
-
+                CLEAR TRANSFER
+              </button>
+            </>
           )}
+        </motion.section>
 
-        </section>
 
-
-        {/* ===================================================
+        {/* ====================================================
             DESTINATION
-        =================================================== */}
+        ==================================================== */}
 
         {cart.length >
           0 && (
-
-          <section className="bst-finalize">
-
-            <div className="bst-section-title">
+          <motion.section
+            className="bst-finalize-section"
+            initial={{
+              opacity: 0,
+              y: 18,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+          >
+            <div className="bst-finalize-head">
 
               <div>
                 <span>
@@ -1697,885 +2151,202 @@ export default function BartStockTransfer({
                 </span>
 
                 <h2>
-                  Finalize Transfer
+                  Where is it going?
                 </h2>
               </div>
+
+              <Boxes
+                size={22}
+              />
 
             </div>
 
 
-            <div className="bst-route-panel">
+            <div className="bst-finalize-grid">
 
-              <div className="bst-route-node">
+              <label className="bst-final-field">
+                <span>
+                  DESTINATION BRANCH
+                </span>
 
+                <select
+                  value={
+                    destination
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setDestination(
+                      event.target.value
+                    )
+                  }
+                >
+                  <option value="">
+                    Select destination branch
+                  </option>
+
+                  {(data?.destinations ||
+                    []).map(
+                    (
+                      destinationBranch
+                    ) => (
+                      <option
+                        key={
+                          destinationBranch.code
+                        }
+                        value={
+                          destinationBranch.code
+                        }
+                      >
+                        {destinationBranch.code}
+                        {" - "}
+                        {destinationBranch.name}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+
+              <label className="bst-final-field full">
+                <span>
+                  REASON / REFERENCE
+                </span>
+
+                <textarea
+                  value={
+                    reason
+                  }
+                  placeholder="Example: Stock support for weekend operation - 29 Aug 2026"
+                  onChange={(
+                    event
+                  ) =>
+                    setReason(
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+            </div>
+
+
+            <div className="bst-send-summary">
+
+              <div>
                 <small>
-                  ORIGIN
+                  ITEMS
                 </small>
 
                 <strong>
-                  {
-                    data?.origin
-                      ?.name
-                  }
+                  {cart.length}
                 </strong>
-
-                <span>
-                  {
-                    data?.origin
-                      ?.code
-                  }
-                </span>
-
               </div>
 
 
-              <div className="bst-route-motion">
+              <div>
+                <small>
+                  TOTAL QTY
+                </small>
 
-                <motion.div
-                  animate={{
-                    x: [
-                      -8,
-                      8,
-                      -8,
-                    ],
-                  }}
-                  transition={{
-                    repeat:
-                      Infinity,
+                <strong>
+                  {cart.reduce(
+                    (
+                      total,
+                      entry
+                    ) =>
+                      total +
+                      Number(
+                        entry.qty ||
+                        0
+                      ),
 
-                    duration:
-                      2.2,
-                  }}
-                >
-                  <ArrowRight
-                    size={22}
-                  />
-                </motion.div>
-
+                    0
+                  )}
+                </strong>
               </div>
 
 
-              <div className="bst-route-node destination">
-
+              <div>
                 <small>
                   DESTINATION
                 </small>
 
-
-                <div className="bst-select-wrap">
-
-                  <select
-                    value={
-                      destination
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setDestination(
-                        event.target
-                          .value
-                      )
-                    }
-                  >
-
-                    <option value="">
-                      Choose a branch...
-                    </option>
-
-
-                    {data?.destinations
-                      ?.map(
-                        (target) => (
-
-                          <option
-                            value={
-                              target.code
-                            }
-                            key={
-                              target.code
-                            }
-                          >
-                            {
-                              target.label
-                            }
-                          </option>
-
-                        )
-                      )}
-
-                  </select>
-
-
-                  <ChevronDown
-                    size={15}
-                  />
-
-                </div>
-
+                <strong>
+                  {destination ||
+                    "NOT SELECTED"}
+                </strong>
               </div>
 
-            </div>
-
-
-            <div className="bst-reason">
-
-              <label>
-                REASON / TRANSFER REFERENCE
-              </label>
-
-
-              <textarea
-                value={
-                  reason
-                }
-                placeholder="Example: 11 Aug 2026 Time: 02:52:00"
-                onChange={(
-                  event
-                ) =>
-                  setReason(
-                    event.target
-                      .value
-                  )
-                }
-              />
-
-            </div>
-
-
-            <motion.button
-              type="button"
-              className="bst-review-button"
-              disabled={
-                !data
-                  ?.dateAvailable
-              }
-              onClick={
-                openReview
-              }
-              whileTap={{
-                scale:
-                  0.99,
-              }}
-            >
-
-              REVIEW TRANSFER
-
-              <ArrowRight
-                size={17}
-              />
-
-            </motion.button>
-
-          </section>
-
-        )}
-
-      </main>
-
-
-      {/* =====================================================
-          REVIEW MODAL
-      ===================================================== */}
-
-      <AnimatePresence>
-
-        {reviewOpen && (
-
-          <motion.div
-            className="bst-modal-overlay"
-            initial={{
-              opacity:
-                0,
-            }}
-            animate={{
-              opacity:
-                1,
-            }}
-            exit={{
-              opacity:
-                0,
-            }}
-          >
-
-            <motion.div
-              className="bst-review-modal"
-              initial={{
-                opacity:
-                  0,
-
-                scale:
-                  0.92,
-
-                y:
-                  30,
-              }}
-              animate={{
-                opacity:
-                  1,
-
-                scale:
-                  1,
-
-                y:
-                  0,
-              }}
-            >
 
               <button
                 type="button"
-                className="bst-modal-x"
+                className="bst-send-button"
                 disabled={
-                  submitting
+                  submitting ||
+                  !destination ||
+                  !reason.trim()
                 }
-                onClick={() =>
-                  setReviewOpen(
-                    false
-                  )
+                onClick={
+                  submitTransfer
                 }
               >
-                <X
-                  size={18}
-                />
-              </button>
-
-
-              <div className="bst-modal-icon">
-
-                <Send
-                  size={24}
-                />
-
-              </div>
-
-
-              <span className="bst-modal-label">
-                FINAL AUTHORIZATION
-              </span>
-
-
-              <h2>
-                Review Transfer
-              </h2>
-
-
-              <div className="bst-review-route">
-
-                <div>
-                  <small>
-                    FROM
-                  </small>
-
-                  <strong>
-                    {
-                      data?.origin
-                        ?.label
-                    }
-                  </strong>
-                </div>
-
-
-                <ArrowRight
-                  size={18}
-                />
-
-
-                <div>
-                  <small>
-                    TO
-                  </small>
-
-                  <strong>
-                    {
-                      data?.destinations
-                        ?.find(
-                          (item) =>
-                            item.code ===
-                            destination
-                        )
-                        ?.label
-                    }
-                  </strong>
-                </div>
-
-              </div>
-
-
-              <div className="bst-review-items">
-
-                {cart.map(
-                  (entry) => (
-
-                    <div
-                      key={
-                        entry.item
-                      }
-                    >
-
-                      <span>
-                        {
-                          entry.item
-                        }
-                      </span>
-
-                      <strong>
-                        {
-                          entry.qty
-                        }{" "}
-                        {
-                          entry.uom
-                        }
-                      </strong>
-
-                    </div>
-
-                  )
-                )}
-
-              </div>
-
-
-              <div className="bst-review-reason">
-
-                <small>
-                  REASON
-                </small>
-
-                <strong>
-                  {
-                    reason ||
-                    "No reason entered"
-                  }
-                </strong>
-
-              </div>
-
-
-              <div className="bst-review-note">
-
-                <AlertTriangle
-                  size={15}
-                />
-
-                The backend will verify live Google stock again before any inventory is moved.
-
-              </div>
-
-
-              <div className="bst-review-actions">
-
-                <button
-                  type="button"
-                  disabled={
-                    submitting
-                  }
-                  onClick={() =>
-                    setReviewOpen(
-                      false
-                    )
-                  }
-                >
-                  EDIT
-                </button>
-
-
-                <button
-                  type="button"
-                  className="confirm"
-                  disabled={
-                    submitting
-                  }
-                  onClick={
-                    submitTransfer
-                  }
-                >
-
-                  {submitting ? (
-
+                {submitting ? (
+                  <>
                     <LoaderCircle
                       size={17}
                       className="dam-spin"
                     />
 
-                  ) : (
+                    VERIFYING STOCK...
+                  </>
+                ) : (
+                  <>
+                    SEND TRANSFER
 
                     <Send
-                      size={17}
+                      size={16}
                     />
-
-                  )}
-
-
-                  {submitting
-                    ? "TRANSMITTING..."
-                    : "CONFIRM & SEND"}
-
-                </button>
-
-              </div>
-
-            </motion.div>
-
-          </motion.div>
-
-        )}
-
-      </AnimatePresence>
-
-
-      {/* =====================================================
-          VALIDATION
-      ===================================================== */}
-
-      <AnimatePresence>
-
-        {validation && (
-
-          <motion.div
-            className="bst-modal-overlay"
-            initial={{
-              opacity:
-                0,
-            }}
-            animate={{
-              opacity:
-                1,
-            }}
-          >
-
-            <motion.div
-              className="bst-validation-modal"
-              initial={{
-                scale:
-                  0.92,
-
-                opacity:
-                  0,
-              }}
-              animate={{
-                scale:
-                  1,
-
-                opacity:
-                  1,
-              }}
-            >
-
-              <div className="bst-validation-icon">
-
-                <CircleAlert
-                  size={26}
-                />
-
-              </div>
-
-
-              <h2>
-                {
-                  validation.title
-                }
-              </h2>
-
-
-              <p>
-                {
-                  validation.message
-                }
-              </p>
-
-
-              {validation.items
-                ?.length >
-                0 && (
-
-                <div className="bst-validation-items">
-
-                  {validation.items.map(
-                    (
-                      item,
-                      index
-                    ) => (
-
-                      <span
-                        key={
-                          index
-                        }
-                      >
-                        {item}
-                      </span>
-
-                    )
-                  )}
-
-                </div>
-
-              )}
-
-
-              <button
-                type="button"
-                onClick={() =>
-                  setValidation(
-                    null
-                  )
-                }
-              >
-                CLOSE
-              </button>
-
-            </motion.div>
-
-          </motion.div>
-
-        )}
-
-      </AnimatePresence>
-
-
-      {/* =====================================================
-          HISTORY
-      ===================================================== */}
-
-      <AnimatePresence>
-
-        {historyOpen && (
-
-          <motion.div
-            className="bst-history-panel"
-            initial={{
-              x:
-                "100%",
-            }}
-            animate={{
-              x:
-                0,
-            }}
-            exit={{
-              x:
-                "100%",
-            }}
-            transition={{
-              type:
-                "spring",
-
-              stiffness:
-                240,
-
-              damping:
-                28,
-            }}
-          >
-
-            <div className="bst-history-header">
-
-              <div>
-                <span>
-                  TRANSFER NETWORK
-                </span>
-
-                <h2>
-                  Transfer History
-                </h2>
-              </div>
-
-
-              <button
-                type="button"
-                onClick={() =>
-                  setHistoryOpen(
-                    false
-                  )
-                }
-              >
-                <X
-                  size={18}
-                />
+                  </>
+                )}
               </button>
 
             </div>
 
-
-            {history.length ===
-              0 &&
-            !historyLoading ? (
-
-              <div className="bst-history-empty">
-                No transfer records found.
-              </div>
-
-            ) : (
-
-              <div className="bst-history-list">
-
-                {history.map(
-                  (transfer) => (
-
-                    <div
-                      className="bst-history-card"
-                      key={
-                        transfer.id
-                      }
-                    >
-
-                      <div className="bst-history-card-top">
-
-                        <strong>
-                          {
-                            transfer.id
-                          }
-                        </strong>
-
-
-                        <span
-                          className={
-                            `bst-status ${statusClass(
-                              transfer.status
-                            )}`
-                          }
-                        >
-                          {
-                            transfer.status
-                          }
-                        </span>
-
-                      </div>
-
-
-                      <div className="bst-history-route">
-
-                        <span>
-                          {
-                            transfer.origin
-                          }
-                        </span>
-
-                        <ArrowRight
-                          size={13}
-                        />
-
-                        <span>
-                          {
-                            transfer.destination
-                          }
-                        </span>
-
-                      </div>
-
-
-                      <p>
-                        {
-                          String(
-                            transfer.items ||
-                            ""
-                          )
-                            .replace(
-                              /â€¢/g,
-                              "•"
-                            )
-                        }
-                      </p>
-
-
-                      <small>
-                        {
-                          transfer.updated_at
-                        }
-                      </small>
-
-                    </div>
-
-                  )
-                )}
-
-              </div>
-
-            )}
-
-
-            {history.length <
-              historyTotal && (
-
-              <button
-                type="button"
-                className="bst-load-more"
-                disabled={
-                  historyLoading
-                }
-                onClick={() =>
-                  loadHistory(
-                    false
-                  )
-                }
-              >
-
-                {historyLoading ? (
-
-                  <LoaderCircle
-                    size={15}
-                    className="dam-spin"
-                  />
-
-                ) : (
-
-                  <Plus
-                    size={15}
-                  />
-
-                )}
-
-                LOAD MORE
-
-              </button>
-
-            )}
-
-          </motion.div>
-
+          </motion.section>
         )}
 
-      </AnimatePresence>
 
+        <div className="bst-security-note">
+          <CheckCircle2
+            size={15}
+          />
 
-      {/* =====================================================
-          SUCCESS
-      ===================================================== */}
+          Transfer quantities are verified against live Google Sheet stock before movement.
+        </div>
+
+      </main>
+
 
       <AnimatePresence>
-
         {success && (
+          <SuccessModal
+            transfer={
+              success
+            }
+            onClose={() => {
+              setSuccess(
+                null
+              );
 
-          <motion.div
-            className="bst-success-overlay"
-            initial={{
-              opacity:
-                0,
+              window.scrollTo({
+                top: 0,
+                behavior:
+                  "smooth",
+              });
             }}
-            animate={{
-              opacity:
-                1,
-            }}
-          >
-
-            <motion.div
-              className="bst-success-card"
-              initial={{
-                opacity:
-                  0,
-
-                scale:
-                  0.75,
-
-                y:
-                  45,
-              }}
-              animate={{
-                opacity:
-                  1,
-
-                scale:
-                  1,
-
-                y:
-                  0,
-              }}
-              transition={{
-                type:
-                  "spring",
-
-                stiffness:
-                  210,
-
-                damping:
-                  18,
-              }}
-            >
-
-              <motion.div
-                className="bst-success-icon"
-                initial={{
-                  scale:
-                    0,
-                }}
-                animate={{
-                  scale:
-                    1,
-                }}
-                transition={{
-                  delay:
-                    0.15,
-
-                  type:
-                    "spring",
-                }}
-              >
-
-                <CheckCircle2
-                  size={54}
-                />
-
-              </motion.div>
-
-
-              <span>
-                TRANSFER TRANSMITTED
-              </span>
-
-
-              <h1>
-                Transfer Successful
-              </h1>
-
-
-              <p>
-                Stock movement completed and the receiving branch has been notified.
-              </p>
-
-
-              <div className="bst-success-id">
-
-                <small>
-                  TRANSFER ID
-                </small>
-
-                <strong>
-                  {
-                    success.transferId
-                  }
-                </strong>
-
-              </div>
-
-
-              <div className="bst-success-route">
-
-                <span>
-                  {
-                    success.origin
-                  }
-                </span>
-
-                <ArrowRight
-                  size={16}
-                />
-
-                <span>
-                  {
-                    success.destination
-                  }
-                </span>
-
-              </div>
-
-
-              <small className="bst-success-return">
-                Returning to Staff Dashboard…
-              </small>
-
-            </motion.div>
-
-          </motion.div>
-
+          />
         )}
-
       </AnimatePresence>
 
     </div>
