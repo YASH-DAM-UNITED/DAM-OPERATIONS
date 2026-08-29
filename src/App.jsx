@@ -899,7 +899,8 @@ function BranchScreen({
   const [selected, setSelected] =
     useState(null);
 
-  const readyToEnterRef = useRef(null);
+  const readyToEnterRef =
+    useRef(null);
 
   async function loadBranches() {
     setLoading(true);
@@ -1251,14 +1252,28 @@ function BranchScreen({
                               ? "selected"
                               : ""
                           }`}
-                          onClick={() =>
-                            setSelected(branch);
-                            setTimeout(() => {
-                              readyToEnterRef.current?.scrollIntoView({
-                                behavior: "smooth",
-                                block: "center",
-                                });
-                              }, 150);
+                          onClick={() => {
+                            setSelected(
+                              branch
+                            );
+
+                            window.requestAnimationFrame(
+                              () => {
+                                window.setTimeout(
+                                  () => {
+                                    readyToEnterRef.current?.scrollIntoView(
+                                      {
+                                        behavior:
+                                          "smooth",
+                                        block:
+                                          "center",
+                                      }
+                                    );
+                                  },
+                                  150
+                                );
+                              }
+                            );
                           }}
                           initial={{
                             opacity: 0,
