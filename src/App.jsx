@@ -1252,9 +1252,7 @@ function BranchScreen({
                               : ""
                           }`}
                           onClick={() =>
-                            setSelected(
-                              branch
-                            );
+                            setSelected(branch);
                             setTimeout(() => {
                               readyToEnterRef.current?.scrollIntoView({
                                 behavior: "smooth",
