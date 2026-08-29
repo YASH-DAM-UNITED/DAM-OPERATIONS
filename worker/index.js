@@ -3,7 +3,7 @@
    BART STAFF BACKEND
 
    VERSION:
-   BART-STOCK-TRANSFER-V7
+   BART-STAFF-SCHEDULE-V8dfg
 ============================================================ */
 
 
@@ -173,6 +173,15 @@ async function ensureDatabase(env) {
     CREATE INDEX IF NOT EXISTS
     idx_stock_drafts_branch_date
     ON stock_drafts(branch_code, stock_date)
+  `).run();
+
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS schedule_cache (
+      cache_key TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      synced_at INTEGER NOT NULL
+    )
   `).run();
 
 
@@ -5279,6 +5288,1404 @@ async function getTransferHistory(
 
 
 /* ============================================================
+   BART STAFF SCHEDULE MODULE V8
+   Add these functions ABOVE export default in worker/index.js
+============================================================ */
+
+const STAFF_SCHEDULE_FALLBACK_ID =
+  "1UtHUn7miqYzaP-NnrwMR_5wnSgLnaYPRQX2c4I7_9B0";
+
+const STAFF_SCHEDULE_TAB =
+  "StaffSchedule";
+
+const STAFF_SCHEDULE_CACHE_SECONDS =
+  300;
+
+const STAFF_SCHEDULE_DAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+const STAFF_ROLE_OPTIONS = [
+  "Team-Member",
+  "Acting_Team_Leader",
+  "Team_Leader",
+  "Acting_Supervisor",
+  "Supervisor",
+  "Branch_Manager",
+];
+
+function getStaffScheduleSheetId(env) {
+  return (
+    env.STAFF_SCHEDULE_SHEET_ID ||
+    STAFF_SCHEDULE_FALLBACK_ID
+  );
+}
+
+function parseScheduleDate(isoDate) {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+      String(isoDate || "")
+    );
+
+  if (!match) {
+    throw new Error(
+      "Invalid date. Expected YYYY-MM-DD."
+    );
+  }
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3])
+  );
+}
+
+function formatScheduleISO(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function scheduleWeekMeta(isoDate) {
+  const selected =
+    parseScheduleDate(isoDate);
+
+  const weekStart =
+    new Date(selected);
+
+  weekStart.setDate(
+    selected.getDate() -
+    selected.getDay()
+  );
+
+  const dayLabels = {};
+
+  STAFF_SCHEDULE_DAYS.forEach((day, index) => {
+    const date = new Date(weekStart);
+    date.setDate(
+      weekStart.getDate() + index
+    );
+
+    dayLabels[day] =
+      `${day} (${date.toLocaleDateString(
+        "en-GB",
+        {
+          day: "2-digit",
+          month: "short",
+        }
+      )})`;
+  });
+
+  const comparison =
+    new Date(2026, 5, 1);
+
+  const weekDiff =
+    Math.floor(
+      (weekStart - comparison) /
+      (7 * 24 * 60 * 60 * 1000)
+    );
+
+  return {
+    weekStartISO:
+      formatScheduleISO(weekStart),
+
+    weekStartDisplay:
+      weekStart.toLocaleDateString(
+        "en-GB",
+        {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }
+      ),
+
+    dayLabels,
+
+    otHeader:
+      weekDiff === 0
+        ? "Over-Time"
+        : `Over-Time ${weekDiff}`,
+  };
+}
+
+function findEmployeeIdColumn(headers) {
+  const normalized =
+    headers.map(normalizeHeader);
+
+  const candidates = [
+    "employeeid",
+    "staffid",
+    "empid",
+    "id",
+  ];
+
+  for (const name of candidates) {
+    const index =
+      normalized.indexOf(name);
+
+    if (index !== -1) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function scheduleShiftOT(value) {
+  const match =
+    /\(OT\s+(\d+(?:\.\d+)?)\s*h\)/i.exec(
+      String(value || "")
+    );
+
+  return match
+    ? Number(match[1]) || 0
+    : 0;
+}
+
+function scheduleEmployeeOT(shifts) {
+  return STAFF_SCHEDULE_DAYS.reduce(
+    (total, day) =>
+      total +
+      scheduleShiftOT(
+        shifts?.[day]
+      ),
+    0
+  );
+}
+
+async function readStaffScheduleSheet(env) {
+  return getSheetValues(
+    env,
+    getStaffScheduleSheetId(env),
+    `${STAFF_SCHEDULE_TAB}!A:ZZ`
+  );
+}
+
+function scheduleCacheKey(
+  branchCode,
+  weekStartISO
+) {
+  return `${branchCode}|${weekStartISO}`;
+}
+
+async function invalidateStaffScheduleCache(
+  env,
+  branchCodes = []
+) {
+  for (
+    const branchCode of
+    Array.from(
+      new Set(
+        branchCodes
+          .filter(Boolean)
+          .map((code) =>
+            String(code)
+              .trim()
+              .toUpperCase()
+          )
+      )
+    )
+  ) {
+    await env.DB.prepare(`
+      DELETE FROM schedule_cache
+      WHERE cache_key LIKE ?
+    `)
+      .bind(
+        `${branchCode}|%`
+      )
+      .run();
+  }
+}
+
+function parseStaffScheduleRows(
+  rows,
+  branchCode,
+  selectedDate
+) {
+  if (!rows?.length) {
+    throw new Error(
+      "StaffSchedule sheet is empty."
+    );
+  }
+
+  const headers = rows[0] || [];
+  const normalized =
+    headers.map(normalizeHeader);
+
+  const branchIndex =
+    normalized.indexOf("branch");
+  const nameIndex =
+    normalized.indexOf("name");
+  const roleIndex =
+    normalized.indexOf("role");
+  const employeeIdIndex =
+    findEmployeeIdColumn(headers);
+
+  if (
+    branchIndex < 0 ||
+    nameIndex < 0 ||
+    roleIndex < 0
+  ) {
+    throw new Error(
+      "StaffSchedule requires Branch, Name and Role columns."
+    );
+  }
+
+  const week =
+    scheduleWeekMeta(selectedDate);
+
+  const dayIndexes =
+    Object.fromEntries(
+      STAFF_SCHEDULE_DAYS.map((day) => [
+        day,
+        headers.indexOf(
+          week.dayLabels[day]
+        ),
+      ])
+    );
+
+  const overtimeIndex =
+    headers.indexOf(
+      week.otHeader
+    );
+
+  let submitted = false;
+  const employees = [];
+
+  for (
+    let index = 1;
+    index < rows.length;
+    index++
+  ) {
+    const row =
+      rows[index] || [];
+
+    const rowBranch =
+      String(
+        row[branchIndex] || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    if (
+      rowBranch !==
+      branchCode
+    ) {
+      continue;
+    }
+
+    const name =
+      String(
+        row[nameIndex] || ""
+      ).trim();
+
+    if (!name) {
+      continue;
+    }
+
+    const shifts = {};
+
+    for (
+      const day of
+      STAFF_SCHEDULE_DAYS
+    ) {
+      const column =
+        dayIndexes[day];
+
+      const value =
+        column >= 0
+          ? String(
+              row[column] || ""
+            )
+          : "";
+
+      shifts[day] = value;
+
+      if (value.trim()) {
+        submitted = true;
+      }
+    }
+
+    employees.push({
+      rowNumber:
+        index + 1,
+
+      employeeId:
+        employeeIdIndex >= 0
+          ? String(
+              row[employeeIdIndex] || ""
+            ).trim()
+          : "",
+
+      name,
+
+      role:
+        String(
+          row[roleIndex] || ""
+        ).trim(),
+
+      shifts,
+
+      overtime:
+        overtimeIndex >= 0
+          ? String(
+              row[overtimeIndex] || ""
+            ).trim()
+          : `${scheduleEmployeeOT(
+              shifts
+            )} hrs`,
+    });
+  }
+
+  return {
+    week,
+    headers,
+    employees,
+    submitted,
+  };
+}
+
+async function getStaffScheduleInit(
+  env,
+  branchCode,
+  selectedDate,
+  force = false
+) {
+  const branch =
+    await getBartBranch(
+      env,
+      branchCode
+    );
+
+  if (!branch) {
+    throw new Error(
+      "Branch not found."
+    );
+  }
+
+  const week =
+    scheduleWeekMeta(
+      selectedDate
+    );
+
+  const key =
+    scheduleCacheKey(
+      branchCode,
+      week.weekStartISO
+    );
+
+  const now =
+    Math.floor(Date.now() / 1000);
+
+  if (!force) {
+    const cached =
+      await env.DB.prepare(`
+        SELECT
+          payload,
+          synced_at
+        FROM schedule_cache
+        WHERE cache_key = ?
+        LIMIT 1
+      `)
+        .bind(key)
+        .first();
+
+    if (
+      cached &&
+      now -
+        Number(cached.synced_at) <
+        STAFF_SCHEDULE_CACHE_SECONDS
+    ) {
+      return {
+        success: true,
+        source: "D1",
+        branch: {
+          code: branch.code,
+          name: branch.name,
+        },
+        ...JSON.parse(
+          cached.payload
+        ),
+      };
+    }
+  }
+
+  const rows =
+    await readStaffScheduleSheet(env);
+
+  const parsed =
+    parseStaffScheduleRows(
+      rows,
+      branchCode,
+      selectedDate
+    );
+
+  const branchRows =
+    await env.DB.prepare(`
+      SELECT
+        code,
+        name
+      FROM branches
+      WHERE brand = 'bart'
+      ORDER BY code ASC
+    `).all();
+
+  const payload = {
+    ...parsed,
+    roles:
+      STAFF_ROLE_OPTIONS,
+
+    destinations:
+      (branchRows.results || [])
+        .filter(
+          (item) =>
+            item.code !==
+            branchCode
+        )
+        .map((item) => ({
+          code: item.code,
+          name: item.name,
+          label:
+            `${item.code} - ${item.name}`,
+        })),
+  };
+
+  await env.DB.prepare(`
+    INSERT INTO schedule_cache (
+      cache_key,
+      payload,
+      synced_at
+    )
+    VALUES (?, ?, ?)
+    ON CONFLICT(cache_key)
+    DO UPDATE SET
+      payload = excluded.payload,
+      synced_at = excluded.synced_at
+  `)
+    .bind(
+      key,
+      JSON.stringify(payload),
+      now
+    )
+    .run();
+
+  return {
+    success: true,
+    source: "GOOGLE->D1",
+    branch: {
+      code: branch.code,
+      name: branch.name,
+    },
+    ...payload,
+  };
+}
+
+async function ensureStaffScheduleHeaders(
+  env,
+  rows,
+  week
+) {
+  const headers =
+    [...(rows[0] || [])];
+
+  const updates = [];
+
+  for (
+    const day of
+    STAFF_SCHEDULE_DAYS
+  ) {
+    const header =
+      week.dayLabels[day];
+
+    if (
+      !headers.includes(header)
+    ) {
+      const column =
+        headers.length + 1;
+
+      updates.push({
+        range:
+          `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+            column
+          )}1`,
+
+        values:
+          [[header]],
+      });
+
+      headers.push(header);
+    }
+  }
+
+  if (
+    !headers.includes(
+      week.otHeader
+    )
+  ) {
+    const column =
+      headers.length + 1;
+
+    updates.push({
+      range:
+        `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+          column
+        )}1`,
+
+      values:
+        [[week.otHeader]],
+    });
+
+    headers.push(
+      week.otHeader
+    );
+  }
+
+  if (updates.length) {
+    await batchWriteSheet(
+      env,
+      getStaffScheduleSheetId(env),
+      updates
+    );
+  }
+
+  return headers;
+}
+
+async function submitStaffSchedule(
+  env,
+  body
+) {
+  const branchCode =
+    String(
+      body.branchCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const selectedDate =
+    String(
+      body.selectedDate || ""
+    ).trim();
+
+  const employees =
+    Array.isArray(
+      body.employees
+    )
+      ? body.employees
+      : [];
+
+  if (
+    !branchCode ||
+    !selectedDate ||
+    !employees.length
+  ) {
+    return {
+      success: false,
+      message:
+        "Branch, date and employees are required.",
+    };
+  }
+
+  const rows =
+    await readStaffScheduleSheet(env);
+
+  const current =
+    parseStaffScheduleRows(
+      rows,
+      branchCode,
+      selectedDate
+    );
+
+  if (current.submitted) {
+    return {
+      success: false,
+      duplicate: true,
+      message:
+        "This week's schedule has already been submitted for this branch.",
+    };
+  }
+
+  const week =
+    scheduleWeekMeta(
+      selectedDate
+    );
+
+  const headers =
+    await ensureStaffScheduleHeaders(
+      env,
+      rows,
+      week
+    );
+
+  const normalized =
+    headers.map(normalizeHeader);
+
+  const branchIndex =
+    normalized.indexOf("branch");
+  const nameIndex =
+    normalized.indexOf("name");
+  const roleIndex =
+    normalized.indexOf("role");
+
+  if (
+    branchIndex < 0 ||
+    nameIndex < 0 ||
+    roleIndex < 0
+  ) {
+    throw new Error(
+      "StaffSchedule requires Branch, Name and Role."
+    );
+  }
+
+  const employeeIdIndex =
+    findEmployeeIdColumn(
+      headers
+    );
+
+  const sheetRows =
+    rows.slice(1);
+
+  const updates = [];
+
+  for (
+    const employee of employees
+  ) {
+    const name =
+      String(
+        employee.name || ""
+      ).trim();
+
+    if (!name) {
+      continue;
+    }
+
+    let rowNumber = null;
+
+    for (
+      let index = 0;
+      index < sheetRows.length;
+      index++
+    ) {
+      const row =
+        sheetRows[index] || [];
+
+      const branchMatches =
+        String(
+          row[branchIndex] || ""
+        )
+          .trim()
+          .toUpperCase() ===
+        branchCode;
+
+      const idMatches =
+        employeeIdIndex >= 0 &&
+        employee.employeeId &&
+        String(
+          row[employeeIdIndex] || ""
+        ).trim() ===
+        String(
+          employee.employeeId
+        ).trim();
+
+      const nameMatches =
+        String(
+          row[nameIndex] || ""
+        ).trim() ===
+        name;
+
+      if (
+        branchMatches &&
+        (
+          idMatches ||
+          nameMatches
+        )
+      ) {
+        rowNumber =
+          index + 2;
+        break;
+      }
+    }
+
+    if (!rowNumber) {
+      rowNumber =
+        sheetRows.length + 2;
+
+      sheetRows.push([]);
+
+      updates.push(
+        {
+          range:
+            `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+              branchIndex + 1
+            )}${rowNumber}`,
+          values:
+            [[branchCode]],
+        },
+        {
+          range:
+            `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+              nameIndex + 1
+            )}${rowNumber}`,
+          values:
+            [[name]],
+        },
+        {
+          range:
+            `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+              roleIndex + 1
+            )}${rowNumber}`,
+          values:
+            [[employee.role || ""]],
+        }
+      );
+
+      if (
+        employeeIdIndex >= 0 &&
+        employee.employeeId
+      ) {
+        updates.push({
+          range:
+            `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+              employeeIdIndex + 1
+            )}${rowNumber}`,
+          values:
+            [[employee.employeeId]],
+        });
+      }
+    } else {
+      updates.push({
+        range:
+          `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+            roleIndex + 1
+          )}${rowNumber}`,
+        values:
+          [[employee.role || ""]],
+      });
+    }
+
+    for (
+      const day of
+      STAFF_SCHEDULE_DAYS
+    ) {
+      const columnIndex =
+        headers.indexOf(
+          week.dayLabels[day]
+        );
+
+      if (
+        columnIndex < 0
+      ) {
+        continue;
+      }
+
+      updates.push({
+        range:
+          `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+            columnIndex + 1
+          )}${rowNumber}`,
+
+        values:
+          [[
+            String(
+              employee.shifts?.[day] ||
+              ""
+            ),
+          ]],
+      });
+    }
+
+    const otIndex =
+      headers.indexOf(
+        week.otHeader
+      );
+
+    if (
+      otIndex >= 0
+    ) {
+      const total =
+        scheduleEmployeeOT(
+          employee.shifts || {}
+        );
+
+      updates.push({
+        range:
+          `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+            otIndex + 1
+          )}${rowNumber}`,
+
+        values:
+          [[
+            total > 0
+              ? `${total} hrs`
+              : "0 hrs",
+          ]],
+      });
+    }
+  }
+
+  if (!updates.length) {
+    return {
+      success: false,
+      message:
+        "No schedule values to submit.",
+    };
+  }
+
+  await batchWriteSheet(
+    env,
+    getStaffScheduleSheetId(env),
+    updates
+  );
+
+  await invalidateStaffScheduleCache(
+    env,
+    [branchCode]
+  );
+
+  return {
+    success: true,
+    weekStart:
+      week.weekStartISO,
+    weekStartDisplay:
+      week.weekStartDisplay,
+    employees:
+      employees.length,
+    submittedAt:
+      formatJeddahTimestamp(),
+    message:
+      "Schedule submitted successfully.",
+  };
+}
+
+async function ensureEmployeeIdHeader(
+  env,
+  rows
+) {
+  const headers =
+    [...(rows[0] || [])];
+
+  let employeeIdIndex =
+    findEmployeeIdColumn(
+      headers
+    );
+
+  if (
+    employeeIdIndex !== -1
+  ) {
+    return {
+      headers,
+      employeeIdIndex,
+    };
+  }
+
+  employeeIdIndex =
+    headers.length;
+
+  await batchWriteSheet(
+    env,
+    getStaffScheduleSheetId(env),
+    [
+      {
+        range:
+          `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+            employeeIdIndex + 1
+          )}1`,
+        values:
+          [["Employee ID"]],
+      },
+    ]
+  );
+
+  headers.push(
+    "Employee ID"
+  );
+
+  return {
+    headers,
+    employeeIdIndex,
+  };
+}
+
+async function addStaffScheduleEmployee(
+  env,
+  body
+) {
+  const branchCode =
+    String(
+      body.branchCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const employeeId =
+    String(
+      body.employeeId || ""
+    ).trim();
+
+  const name =
+    String(
+      body.name || ""
+    ).trim();
+
+  const role =
+    String(
+      body.role || ""
+    ).trim();
+
+  if (
+    !branchCode ||
+    !name ||
+    !role
+  ) {
+    return {
+      success: false,
+      message:
+        "Branch, employee name and role are required.",
+    };
+  }
+
+  if (
+    !STAFF_ROLE_OPTIONS.includes(
+      role
+    )
+  ) {
+    return {
+      success: false,
+      message:
+        "Invalid employee role.",
+    };
+  }
+
+  const rows =
+    await readStaffScheduleSheet(env);
+
+  const {
+    headers,
+    employeeIdIndex,
+  } =
+    await ensureEmployeeIdHeader(
+      env,
+      rows
+    );
+
+  const normalized =
+    headers.map(normalizeHeader);
+
+  const branchIndex =
+    normalized.indexOf("branch");
+  const nameIndex =
+    normalized.indexOf("name");
+  const roleIndex =
+    normalized.indexOf("role");
+
+  if (
+    branchIndex < 0 ||
+    nameIndex < 0 ||
+    roleIndex < 0
+  ) {
+    throw new Error(
+      "StaffSchedule requires Branch, Name and Role."
+    );
+  }
+
+  for (
+    let index = 1;
+    index < rows.length;
+    index++
+  ) {
+    const row =
+      rows[index] || [];
+
+    if (
+      employeeId &&
+      String(
+        row[employeeIdIndex] || ""
+      ).trim() ===
+      employeeId
+    ) {
+      return {
+        success: false,
+        message:
+          "This Employee ID already exists.",
+      };
+    }
+
+    if (
+      String(
+        row[branchIndex] || ""
+      )
+        .trim()
+        .toUpperCase() ===
+        branchCode &&
+      String(
+        row[nameIndex] || ""
+      )
+        .trim()
+        .toLowerCase() ===
+        name.toLowerCase()
+    ) {
+      return {
+        success: false,
+        message:
+          "This employee already exists in the branch.",
+      };
+    }
+  }
+
+  const row =
+    new Array(
+      headers.length
+    ).fill("");
+
+  row[branchIndex] =
+    branchCode;
+
+  row[nameIndex] =
+    name;
+
+  row[roleIndex] =
+    role;
+
+  row[employeeIdIndex] =
+    employeeId;
+
+  await appendSheetRow(
+    env,
+    getStaffScheduleSheetId(env),
+    `${STAFF_SCHEDULE_TAB}!A:ZZ`,
+    row
+  );
+
+  await invalidateStaffScheduleCache(
+    env,
+    [branchCode]
+  );
+
+  return {
+    success: true,
+    employee: {
+      employeeId,
+      name,
+      role,
+      branchCode,
+    },
+    message:
+      `${name} added to ${branchCode}.`,
+  };
+}
+
+function findStaffScheduleEmployeeRow(
+  rows,
+  branchCode,
+  body
+) {
+  const headers =
+    rows[0] || [];
+
+  const normalized =
+    headers.map(normalizeHeader);
+
+  const branchIndex =
+    normalized.indexOf("branch");
+  const nameIndex =
+    normalized.indexOf("name");
+  const roleIndex =
+    normalized.indexOf("role");
+  const employeeIdIndex =
+    findEmployeeIdColumn(
+      headers
+    );
+
+  if (
+    branchIndex < 0 ||
+    nameIndex < 0 ||
+    roleIndex < 0
+  ) {
+    throw new Error(
+      "StaffSchedule requires Branch, Name and Role."
+    );
+  }
+
+  const wantedId =
+    String(
+      body.employeeId || ""
+    ).trim();
+
+  const wantedName =
+    String(
+      body.name || ""
+    ).trim();
+
+  for (
+    let index = 1;
+    index < rows.length;
+    index++
+  ) {
+    const row =
+      rows[index] || [];
+
+    if (
+      String(
+        row[branchIndex] || ""
+      )
+        .trim()
+        .toUpperCase() !==
+      branchCode
+    ) {
+      continue;
+    }
+
+    if (
+      wantedId &&
+      employeeIdIndex >= 0 &&
+      String(
+        row[employeeIdIndex] || ""
+      ).trim() ===
+      wantedId
+    ) {
+      return {
+        rowNumber:
+          index + 1,
+        row,
+        headers,
+        branchIndex,
+        nameIndex,
+        roleIndex,
+        employeeIdIndex,
+      };
+    }
+
+    if (
+      wantedName &&
+      String(
+        row[nameIndex] || ""
+      )
+        .trim()
+        .toLowerCase() ===
+      wantedName.toLowerCase()
+    ) {
+      return {
+        rowNumber:
+          index + 1,
+        row,
+        headers,
+        branchIndex,
+        nameIndex,
+        roleIndex,
+        employeeIdIndex,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function removeStaffScheduleEmployee(
+  env,
+  body
+) {
+  const branchCode =
+    String(
+      body.branchCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const reason =
+    String(
+      body.reason || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const destinationBranch =
+    String(
+      body.destinationBranch || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  if (
+    ![
+      "transfer",
+      "terminated",
+      "contract_finished",
+    ].includes(reason)
+  ) {
+    return {
+      success: false,
+      message:
+        "Invalid employee action.",
+    };
+  }
+
+  const rows =
+    await readStaffScheduleSheet(env);
+
+  const match =
+    findStaffScheduleEmployeeRow(
+      rows,
+      branchCode,
+      body
+    );
+
+  if (!match) {
+    return {
+      success: false,
+      message:
+        "Employee not found in this branch.",
+    };
+  }
+
+  const {
+    rowNumber,
+    row,
+    branchIndex,
+    nameIndex,
+    roleIndex,
+    employeeIdIndex,
+  } = match;
+
+  const name =
+    String(
+      row[nameIndex] ||
+      body.name ||
+      ""
+    ).trim();
+
+  if (
+    reason === "transfer"
+  ) {
+    if (
+      !destinationBranch ||
+      destinationBranch ===
+      branchCode
+    ) {
+      return {
+        success: false,
+        message:
+          "Select another destination branch.",
+      };
+    }
+
+    const destination =
+      await getBartBranch(
+        env,
+        destinationBranch
+      );
+
+    if (!destination) {
+      return {
+        success: false,
+        message:
+          "Destination branch not found.",
+      };
+    }
+
+    /*
+      Move the same employee row to the destination.
+      Historical weekly columns stay attached to the same row.
+    */
+    await batchWriteSheet(
+      env,
+      getStaffScheduleSheetId(env),
+      [
+        {
+          range:
+            `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+              branchIndex + 1
+            )}${rowNumber}`,
+          values:
+            [[destinationBranch]],
+        },
+      ]
+    );
+
+    await invalidateStaffScheduleCache(
+      env,
+      [
+        branchCode,
+        destinationBranch,
+      ]
+    );
+
+    return {
+      success: true,
+      action:
+        "transfer",
+      destinationBranch,
+      message:
+        `${name} transferred to ${destinationBranch}.`,
+    };
+  }
+
+  /*
+    For Terminated / Contract Finished:
+    keep the historical row but remove it from active branch filtering.
+  */
+
+  const statusBranch =
+    reason === "terminated"
+      ? "TERMINATED"
+      : "CONTRACT_FINISHED";
+
+  const updates = [
+    {
+      range:
+        `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+          branchIndex + 1
+        )}${rowNumber}`,
+      values:
+        [[statusBranch]],
+    },
+  ];
+
+  if (
+    reason ===
+      "contract_finished" &&
+    employeeIdIndex >= 0
+  ) {
+    updates.push({
+      range:
+        `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+          employeeIdIndex + 1
+        )}${rowNumber}`,
+      values:
+        [[""]],
+    });
+  }
+
+  await batchWriteSheet(
+    env,
+    getStaffScheduleSheetId(env),
+    updates
+  );
+
+  await invalidateStaffScheduleCache(
+    env,
+    [branchCode]
+  );
+
+  return {
+    success: true,
+    action:
+      reason,
+    message:
+      reason === "terminated"
+        ? `${name} removed from the active branch as terminated.`
+        : `${name} marked contract finished and Employee ID cleared.`,
+  };
+}
+
+/* ============================================================
    DATABASE STATUS
 ============================================================ */
 
@@ -5350,6 +6757,143 @@ async function databaseStatus(
 
 
 /* ============================================================
+   STAFF EMPLOYEE VACATION
+============================================================ */
+
+async function setStaffEmployeeVacation(
+  env,
+  body
+) {
+  const branchCode =
+    String(
+      body.branchCode ||
+      ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const selectedDate =
+    String(
+      body.selectedDate ||
+      ""
+    ).trim();
+
+  if (
+    !branchCode ||
+    !selectedDate
+  ) {
+    return {
+      success: false,
+      message:
+        "Branch and selected week are required.",
+    };
+  }
+
+  const rows =
+    await readStaffScheduleSheet(
+      env
+    );
+
+  const match =
+    findStaffScheduleEmployeeRow(
+      rows,
+      branchCode,
+      body
+    );
+
+  if (!match) {
+    return {
+      success: false,
+      message:
+        "Employee not found in this branch.",
+    };
+  }
+
+  const week =
+    scheduleWeekMeta(
+      selectedDate
+    );
+
+  const headers =
+    await ensureStaffScheduleHeaders(
+      env,
+      rows,
+      week
+    );
+
+  const updates = [];
+
+  for (
+    const day of
+    STAFF_SCHEDULE_DAYS
+  ) {
+    const columnIndex =
+      headers.indexOf(
+        week.dayLabels[day]
+      );
+
+    if (columnIndex < 0) {
+      continue;
+    }
+
+    updates.push({
+      range:
+        `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+          columnIndex + 1
+        )}${match.rowNumber}`,
+      values:
+        [["VACATION"]],
+    });
+  }
+
+  const overtimeIndex =
+    headers.indexOf(
+      week.otHeader
+    );
+
+  if (overtimeIndex >= 0) {
+    updates.push({
+      range:
+        `${STAFF_SCHEDULE_TAB}!${columnNumberToLetters(
+          overtimeIndex + 1
+        )}${match.rowNumber}`,
+      values:
+        [["0 hrs"]],
+    });
+  }
+
+  await batchWriteSheet(
+    env,
+    getStaffScheduleSheetId(env),
+    updates
+  );
+
+  await invalidateStaffScheduleCache(
+    env,
+    [branchCode]
+  );
+
+  const employeeName =
+    String(
+      match.row[match.nameIndex] ||
+      body.name ||
+      ""
+    ).trim();
+
+  return {
+    success: true,
+    action: "vacation",
+    employee: employeeName,
+    branchCode,
+    weekStart:
+      week.weekStartISO,
+    message:
+      `${employeeName} marked VACATION for the full week.`,
+  };
+}
+
+
+/* ============================================================
    WORKER
 ============================================================ */
 
@@ -5407,7 +6951,7 @@ export default {
             true,
 
           version:
-            "BART-STOCK-TRANSFER-V7",
+            "BART-STAFF-SCHEDULE-V8",
 
           message:
             "DAM BART Worker active",
@@ -5430,6 +6974,15 @@ export default {
               true,
 
             stockTransfer:
+              true,
+
+            staffSchedule:
+              true,
+
+            employeeMovement:
+              true,
+
+            employeeVacation:
               true,
           },
 
@@ -5458,6 +7011,12 @@ export default {
             MASTER_SHEET_ID:
               Boolean(
                 env.MASTER_SHEET_ID
+              ),
+
+            STAFF_SCHEDULE_SHEET_ID:
+              Boolean(
+                env.STAFF_SCHEDULE_SHEET_ID ||
+                STAFF_SCHEDULE_FALLBACK_ID
               ),
 
             ADMIN_SYNC_KEY:
@@ -5944,6 +7503,169 @@ export default {
 
           result,
 
+          result.success
+            ? 200
+            : 409
+        );
+      }
+
+
+      /* ======================================================
+         STAFF SCHEDULE INIT
+      ====================================================== */
+
+      if (
+        url.pathname ===
+        "/api/staff/bart/schedule/init" &&
+        request.method ===
+        "GET"
+      ) {
+
+        const branch =
+          String(
+            url.searchParams.get(
+              "branch"
+            ) ||
+            ""
+          )
+            .trim()
+            .toUpperCase();
+
+
+        const date =
+          String(
+            url.searchParams.get(
+              "date"
+            ) ||
+            ""
+          ).trim();
+
+
+        const force =
+          url.searchParams.get(
+            "refresh"
+          ) ===
+          "1";
+
+
+        const result =
+          await getStaffScheduleInit(
+            env,
+            branch,
+            date,
+            force
+          );
+
+
+        return jsonResponse(
+          result,
+          result.success
+            ? 200
+            : 400
+        );
+      }
+
+
+      /* ======================================================
+         STAFF SCHEDULE SUBMIT
+      ====================================================== */
+
+      if (
+        url.pathname ===
+        "/api/staff/bart/schedule/submit" &&
+        request.method ===
+        "POST"
+      ) {
+
+        const result =
+          await submitStaffSchedule(
+            env,
+            await request.json()
+          );
+
+
+        return jsonResponse(
+          result,
+          result.success
+            ? 200
+            : 409
+        );
+      }
+
+
+      /* ======================================================
+         STAFF ADD EMPLOYEE
+      ====================================================== */
+
+      if (
+        url.pathname ===
+        "/api/staff/bart/schedule/employee/add" &&
+        request.method ===
+        "POST"
+      ) {
+
+        const result =
+          await addStaffScheduleEmployee(
+            env,
+            await request.json()
+          );
+
+
+        return jsonResponse(
+          result,
+          result.success
+            ? 200
+            : 409
+        );
+      }
+
+
+      /* ======================================================
+         STAFF REMOVE / TRANSFER EMPLOYEE
+      ====================================================== */
+
+      if (
+        url.pathname ===
+        "/api/staff/bart/schedule/employee/remove" &&
+        request.method ===
+        "POST"
+      ) {
+
+        const result =
+          await removeStaffScheduleEmployee(
+            env,
+            await request.json()
+          );
+
+
+        return jsonResponse(
+          result,
+          result.success
+            ? 200
+            : 409
+        );
+      }
+
+
+      /* ======================================================
+         STAFF EMPLOYEE VACATION
+      ====================================================== */
+
+      if (
+        url.pathname ===
+        "/api/staff/bart/schedule/employee/vacation" &&
+        request.method ===
+        "POST"
+      ) {
+
+        const result =
+          await setStaffEmployeeVacation(
+            env,
+            await request.json()
+          );
+
+        return jsonResponse(
+          result,
           result.success
             ? 200
             : 409
