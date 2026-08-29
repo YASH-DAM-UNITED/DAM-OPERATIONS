@@ -6774,4 +6774,18 @@ footer {
   font-weight: 700;
 }
 
-.bsr
+.bsr-validation-modal > button {
+  width: 100%;
+  min-height: 46px;
+
+  border: 0;
+  border-radius: 12px;
+
+  color: white;
+  background: #17191e;
+
+  font-size: 8px;
+  font-weight: 900;
+
+  cursor: pointer;
+}
