@@ -1,0 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, RefreshCcw, Search } from "lucide-react";
+import { moomaFetch } from "./moomaApi.js";
+import "./MoomaStockView.css";
+export default function MoomaStockView({branch,onBack}){
+ const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[tab,setTab]=useState("daily"),[search,setSearch]=useState("");
+ async function load(force=false){try{setLoading(true);setError("");const r=await moomaFetch(`/api/mooma/stock-view?branch=${encodeURIComponent(branch.code)}${force?"&refresh=1":""}`);setData(r.stock||{})}catch(e){setError(e.message)}finally{setLoading(false)}}
+ useEffect(()=>{load(false)},[branch?.code]);const rows=useMemo(()=>{const a=data?.[tab]||[],q=search.trim().toLowerCase();return q?a.filter(x=>JSON.stringify(x).toLowerCase().includes(q)):a},[data,tab,search]);const cols=useMemo(()=>rows.length?Object.keys(rows[0]):[],[rows]);
+ return <div className="mm-page"><header className="mm-head"><button onClick={onBack}><ArrowLeft size={15}/> DASHBOARD</button><strong>MOOMA · STOCK VIEW</strong><button onClick={()=>load(true)}><RefreshCcw size={15}/> REFRESH</button></header><main className="mm-main"><div className="mm-title"><small>{branch.code} / {branch.name}</small><h1>See the stock.</h1><p>Live branch stock overview.</p></div>{error&&<div className="mm-msg error">{error}</div>}<section className="mm-panel"><div className="mm-toolbar"><div className="mm-tabs"><button className={tab==="daily"?"active":""} onClick={()=>setTab("daily")}>DAILY</button><button className={tab==="weekly"?"active":""} onClick={()=>setTab("weekly")}>WEEKLY</button></div><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search item or SKU"/></div><div className="mm-table-wrap"><table className="mm-table"><thead><tr>{cols.map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{cols.map(c=><td key={c}>{String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>{!loading&&!rows.length&&<div className="mm-empty">No stock rows found.</div>}</section></main></div>
+}
