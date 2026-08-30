@@ -36,6 +36,7 @@ import MoomaDashboard from "./MoomaDashboard.jsx";
 import MoomaLoading from "./MoomaLoading.jsx";
 
 import "./MoomaPortal.css";
+console.log("MOOMA PORTAL V2026-08-30-TEST");
 
 
 /* ============================================================
@@ -468,8 +469,12 @@ export default function MoomaPortal({
     <div
       className="mooma-portal"
       data-mooma-theme={
-        theme
-      }
+      style={{
+        background: "red",
+        minHeight: "100vh",
+          
+        
+      }}
     >
       {/* ======================================================
           BACKGROUND
