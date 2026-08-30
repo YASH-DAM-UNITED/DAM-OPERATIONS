@@ -1,885 +1,945 @@
-/* MOOMA dashboard uses the exact BART layout language with MOOMA identity. */
-.mooma-dashboard{--mooma-primary:#e47ca7;--mooma-secondary:#ffc1d8;--bg:#fff;--bg-deep:#fff;--surface:rgba(255,255,255,.76);--surface-strong:#fff;--text:#101116;--text-soft:rgba(16,17,22,.58);--text-muted:rgba(16,17,22,.36);--border:rgba(15,23,42,.09);--grid-line:rgba(15,23,42,.055);}
-@media(prefers-color-scheme:dark){.mooma-dashboard{--bg:#0d0e12;--bg-deep:#0d0e12;--surface:rgba(22,23,29,.74);--surface-strong:#18191f;--text:#f7f7f8;--text-soft:rgba(247,247,248,.6);--text-muted:rgba(247,247,248,.4);--border:rgba(255,255,255,.08);--grid-line:rgba(255,255,255,.035)}}
-.mooma-dashboard .dam-module-transition{background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(28px)}
+/* ============================================================
+   MOOMA DASHBOARD
+   LIGHT + DARK + MOBILE
+============================================================ */
+
 .mooma-dashboard {
-  position: relative;
+  --md-accent: #d96796;
+  --md-accent-strong: #bc4778;
+  --md-accent-soft: #ffe2ed;
+
+  --md-bg: #ffffff;
+  --md-bg-secondary: #fafafa;
+
+  --md-card: rgba(255, 255, 255, 0.92);
+  --md-card-hover: #ffffff;
+
+  --md-text: #171217;
+  --md-text-soft: #716870;
+  --md-text-faint: #9c939a;
+
+  --md-border: rgba(30, 18, 27, 0.09);
+  --md-border-strong: rgba(217, 103, 150, 0.25);
+
+  --md-shadow:
+    0 18px 60px rgba(39, 20, 31, 0.07);
+
   min-height: 100vh;
-  overflow: hidden;
-  color: var(--text);
+
+  position: relative;
+  overflow-x: hidden;
+
+  color: var(--md-text);
   background:
     radial-gradient(
-      circle at 90% 5%,
-      rgba(255, 101, 89, 0.16),
+      circle at 8% 8%,
+      rgba(217, 103, 150, 0.08),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 92% 72%,
+      rgba(255, 199, 221, 0.12),
+      transparent 30%
+    ),
+    var(--md-bg);
+
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  transition:
+    background 0.35s ease,
+    color 0.35s ease;
+}
+
+
+/* ============================================================
+   DARK MODE
+============================================================ */
+
+.mooma-dashboard[data-mooma-theme="dark"] {
+  --md-bg: #0d090c;
+  --md-bg-secondary: #131014;
+
+  --md-card: rgba(25, 19, 23, 0.84);
+  --md-card-hover: rgba(31, 23, 28, 0.96);
+
+  --md-text: #fff8fb;
+  --md-text-soft: #b6a9b1;
+  --md-text-faint: #786e75;
+
+  --md-border: rgba(255, 255, 255, 0.075);
+  --md-border-strong: rgba(237, 131, 173, 0.26);
+
+  --md-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.28);
+
+  background:
+    radial-gradient(
+      circle at 7% 5%,
+      rgba(217, 103, 150, 0.11),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 92% 70%,
+      rgba(130, 65, 102, 0.12),
       transparent 32%
     ),
-    radial-gradient(
-      circle at 0% 100%,
-      rgba(255, 148, 103, 0.1),
-      transparent 35%
-    ),
-    var(--bg);
+    var(--md-bg);
 }
 
-.mooma-dashboard-grid {
-  position: absolute;
+
+/* ============================================================
+   BACKGROUND
+============================================================ */
+
+.md-grid-background {
+  position: fixed;
   inset: 0;
+
   pointer-events: none;
-  opacity: 0.3;
+
   background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 68px 68px;
-  mask-image: linear-gradient(to bottom, black, transparent 92%);
+    linear-gradient(
+      rgba(80, 40, 62, 0.035) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(80, 40, 62, 0.035) 1px,
+      transparent 1px
+    );
+
+  background-size: 44px 44px;
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.7),
+      transparent 88%
+    );
 }
 
-.mooma-dashboard-glow {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(15px);
+
+[data-mooma-theme="dark"] .md-grid-background {
+  background-image:
+    linear-gradient(
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px
+    );
 }
 
-.mooma-dashboard-glow.glow-one {
-  width: 430px;
-  height: 430px;
-  right: -230px;
-  top: 70px;
-  background: rgba(255, 101, 89, 0.09);
-  animation: bartDashGlowOne 9s ease-in-out infinite alternate;
-}
 
-.mooma-dashboard-glow.glow-two {
-  width: 350px;
-  height: 350px;
-  left: -210px;
-  bottom: -50px;
-  background: rgba(255, 155, 105, 0.07);
-  animation: bartDashGlowTwo 11s ease-in-out infinite alternate;
-}
+.md-glow {
+  position: fixed;
 
-@keyframes bartDashGlowOne {
-  to {
-    transform: translate(-60px, 40px) scale(1.12);
-  }
-}
-
-@keyframes bartDashGlowTwo {
-  to {
-    transform: translate(65px, -30px) scale(1.08);
-  }
-}
-
-/* NAV */
-
-.mooma-dashboard-nav {
-  position: relative;
-  z-index: 20;
-  width: min(1240px, 92vw);
-  height: 88px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mooma-dash-brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.mooma-dash-logo {
-  width: 43px;
-  height: 43px;
-  display: grid;
-  place-items: center;
-  border-radius: 14px;
-  color: #ffffff;
-  background: linear-gradient(135deg, #ff735f, #e84e45);
-  box-shadow: 0 12px 30px rgba(255, 101, 89, 0.2);
-}
-
-.mooma-dash-brand > div:last-child {
-  display: flex;
-  flex-direction: column;
-}
-
-.mooma-dash-brand strong {
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 900;
-  letter-spacing: 2px;
-}
-
-.mooma-dash-brand span {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 1.8px;
-}
-
-.mooma-nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.mooma-session-status {
-  margin-right: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 1.4px;
-}
-
-.mooma-session-status > span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #38d878;
-  box-shadow: 0 0 13px rgba(56, 216, 120, 0.75);
-  animation: bartSessionPulse 2s infinite;
-}
-
-@keyframes bartSessionPulse {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.mooma-icon-button {
-  width: 39px;
-  height: 39px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  color: var(--text-soft);
-  background: var(--surface);
-  cursor: pointer;
-  transition: 0.25s ease;
-}
-
-.mooma-icon-button:hover {
-  transform: translateY(-2px);
-  color: var(--text);
-  border-color: rgba(255, 101, 89, 0.3);
-}
-
-.mooma-icon-button.danger:hover {
-  color: #e84e45;
-}
-
-/* MAIN */
-
-.mooma-dashboard-main {
-  position: relative;
-  z-index: 10;
-  width: min(1180px, 92vw);
-  margin: 12px auto 0;
-  padding-bottom: 80px;
-}
-
-.mooma-back-button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 0;
-  border: 0;
-  color: var(--text-muted);
-  background: transparent;
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 1.3px;
-  cursor: pointer;
-}
-
-.mooma-back-button:hover {
-  color: #e47ca7;
-}
-
-/* HERO */
-
-.mooma-dashboard-hero {
-  margin-top: 38px;
-  display: grid;
-  grid-template-columns: 1.55fr 0.75fr;
-  gap: 35px;
-  align-items: center;
-}
-
-.mooma-mini-label {
-  width: fit-content;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #f05b50;
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 2px;
-}
-
-.mooma-hero-copy h1 {
-  margin: 11px 0 0;
-  color: var(--text);
-  font-size: clamp(50px, 5.5vw, 80px);
-  line-height: 0.91;
-  font-weight: 900;
-  letter-spacing: -5px;
-}
-
-.mooma-hero-copy h1 span {
-  background: linear-gradient(90deg, #e47ca7, #ff9c6a);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.mooma-hero-copy > p {
-  max-width: 560px;
-  margin-top: 21px;
-  color: var(--text-soft);
-  font-size: 10px;
-  line-height: 1.75;
-}
-
-/* BRANCH CARD */
-
-.mooma-branch-card {
-  position: relative;
-  overflow: hidden;
-  padding: 25px;
-  border-radius: 23px;
-  background: var(--surface-strong);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(25px);
-}
-
-.mooma-branch-card::after {
-  content: "";
-  position: absolute;
-  width: 180px;
-  height: 180px;
-  right: -90px;
-  top: -95px;
-  border-radius: 50%;
-  background: rgba(255, 101, 89, 0.1);
-  filter: blur(10px);
-}
-
-.mooma-branch-top {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mooma-branch-location {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 13px;
-  color: #e47ca7;
-  background: rgba(255, 101, 89, 0.1);
-}
-
-.mooma-branch-top > span {
-  color: var(--text-muted);
-  font-size: 6px;
-  font-weight: 900;
-  letter-spacing: 1.5px;
-}
-
-.mooma-branch-card h2 {
-  position: relative;
-  z-index: 3;
-  margin: 25px 0 0;
-  color: var(--text);
-  font-size: 21px;
-  font-weight: 900;
-  letter-spacing: -1px;
-}
-
-.mooma-branch-code {
-  position: relative;
-  z-index: 3;
-  width: fit-content;
-  margin-top: 7px;
-  padding: 5px 9px;
   border-radius: 999px;
-  color: #e95349;
-  background: rgba(255, 101, 89, 0.1);
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 1.4px;
-}
 
-.mooma-branch-meta {
-  position: relative;
-  z-index: 3;
-  margin-top: 23px;
-  padding-top: 17px;
-  display: flex;
-  gap: 20px;
-  border-top: 1px solid var(--border);
-}
-
-.mooma-branch-meta > div {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 7px;
-}
-
-.mooma-branch-meta svg {
-  color: #e47ca7;
-}
-
-/* NOTIFICATION */
-
-.mooma-notification-strip {
-  margin-top: 43px;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  border-radius: 17px;
-  border: 1px solid rgba(255, 101, 89, 0.16);
-  background: rgba(255, 101, 89, 0.055);
-}
-
-.mooma-notification-icon {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  color: #e47ca7;
-  background: rgba(255, 101, 89, 0.1);
-}
-
-.mooma-notification-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mooma-notification-text small {
-  color: #ed5b51;
-  font-size: 6px;
-  font-weight: 900;
-  letter-spacing: 1.4px;
-}
-
-.mooma-notification-text strong {
-  color: var(--text);
-  font-size: 9px;
-}
-
-.mooma-notification-strip > button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 13px;
-  border: 0;
-  border-radius: 10px;
-  color: #ffffff;
-  background: #e47ca7;
-  font-size: 7px;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-/* MODULE HEADER */
-
-.mooma-module-header {
-  margin-top: 48px;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-}
-
-.mooma-module-header span {
-  color: #ed5b51;
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 2px;
-}
-
-.mooma-module-header h2 {
-  margin: 7px 0 0;
-  color: var(--text);
-  font-size: 27px;
-  font-weight: 900;
-  letter-spacing: -1.5px;
-}
-
-.mooma-module-count {
-  color: var(--text-muted);
-  font-size: 6px;
-  font-weight: 900;
-  letter-spacing: 1.4px;
-}
-
-/* MODULE CARDS */
-
-.mooma-module-grid {
-  margin-top: 22px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-}
-
-.mooma-module-card {
-  position: relative;
-  min-height: 285px;
-  padding: 22px;
-  overflow: hidden;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  color: var(--text);
-  background: var(--surface-strong);
-  box-shadow: var(--shadow);
-  text-align: left;
-  cursor: pointer;
-  backdrop-filter: blur(24px);
-}
-
-.mooma-card-light {
-  position: absolute;
-  width: 180px;
-  height: 180px;
-  right: -110px;
-  top: -105px;
-  border-radius: 50%;
-  background: rgba(255, 101, 89, 0.1);
-  transition: 0.5s ease;
-}
-
-.mooma-module-card:hover .mooma-card-light {
-  transform: scale(1.65);
-}
-
-.mooma-module-top {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mooma-module-icon {
-  width: 45px;
-  height: 45px;
-  display: grid;
-  place-items: center;
-  border-radius: 14px;
-  color: #e47ca7;
-  background: rgba(255, 101, 89, 0.1);
-}
-
-.mooma-module-number {
-  color: var(--text-faint);
-  font-size: 7px;
-  font-weight: 900;
-  letter-spacing: 1.5px;
-}
-
-.mooma-module-subtitle {
-  position: relative;
-  z-index: 3;
-  margin-top: 28px;
-  color: #ed5b51;
-  font-size: 6px;
-  font-weight: 900;
-  letter-spacing: 1.3px;
-}
-
-.mooma-module-card h3 {
-  position: relative;
-  z-index: 3;
-  margin: 7px 0 0;
-  color: var(--text);
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -1px;
-}
-
-.mooma-module-card > p {
-  position: relative;
-  z-index: 3;
-  margin-top: 11px;
-  color: var(--text-muted);
-  font-size: 8px;
-  line-height: 1.65;
-}
-
-.mooma-module-open {
-  position: absolute;
-  z-index: 3;
-  left: 22px;
-  right: 22px;
-  bottom: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--text-muted);
-  font-size: 6px;
-  font-weight: 900;
-  letter-spacing: 1.3px;
-}
-
-.mooma-module-open > div {
-  width: 33px;
-  height: 33px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: #ffffff;
-  background: #e47ca7;
-  transition: 0.25s ease;
-}
-
-.mooma-module-card:hover .mooma-module-open > div {
-  transform: translateX(4px);
-}
-
-/* BOTTOM STATUS */
-
-.mooma-bottom-status {
-  margin-top: 28px;
-  padding: 14px 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 28px;
-  border-top: 1px solid var(--border);
-}
-
-.mooma-bottom-status > div:not(.mooma-status-line) {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #e47ca7;
-}
-
-.mooma-bottom-status span {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.mooma-bottom-status strong {
-  color: var(--text);
-  font-size: 8px;
-}
-
-.mooma-bottom-status small {
-  color: var(--text-muted);
-  font-size: 6px;
-}
-
-.mooma-status-line {
-  width: 1px;
-  height: 28px;
-  background: var(--border);
-}
-
-/* RESPONSIVE */
-
-@media (max-width: 950px) {
-  .mooma-dashboard-hero {
-    grid-template-columns: 1fr;
-  }
-
-  .mooma-branch-card {
-    max-width: 520px;
-  }
-
-  .mooma-module-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 600px) {
-  .mooma-dashboard-nav {
-    height: 74px;
-  }
-
-  .mooma-session-status {
-    display: none;
-  }
-
-  .mooma-dashboard-main {
-    margin-top: 8px;
-  }
-
-  .mooma-dashboard-hero {
-    margin-top: 25px;
-  }
-
-  .mooma-hero-copy h1 {
-    font-size: 48px;
-    letter-spacing: -3.5px;
-  }
-
-  .mooma-module-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .mooma-notification-strip {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .mooma-notification-strip > button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .mooma-module-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .mooma-bottom-status {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .mooma-status-line {
-    width: 100%;
-    height: 1px;
-  }
-}
-/* ==========================================================
-   MOOMA STAFF - TRANSFER / DATABASE ADDITIONS
-========================================================== */
-
-.has-pending-transfer {
-  position: relative;
-}
-
-.has-pending-transfer::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
   pointer-events: none;
-  border: 1px solid rgba(228, 124, 167, 0.35);
-  animation: transferPulse 2s ease-in-out infinite;
-}
 
-@keyframes transferPulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
+  filter: blur(120px);
 
-  50% {
-    opacity: 1;
-  }
+  opacity: 0.13;
 }
 
 
-/* ==========================================================
-   DATABASE STATUS
-========================================================== */
+.md-glow-one {
+  width: 420px;
+  height: 420px;
 
-.mooma-database-status-card {
-  width: 100%;
-  margin-top: 14px;
+  top: -180px;
+  left: -160px;
+
+  background: var(--md-accent);
+}
+
+
+.md-glow-two {
+  width: 380px;
+  height: 380px;
+
+  right: -150px;
+  top: 38%;
+
+  background: #f6a7c7;
+}
+
+
+.md-glow-three {
+  width: 300px;
+  height: 300px;
+
+  left: 32%;
+  bottom: -200px;
+
+  background: #d96796;
+
+  opacity: 0.07;
+}
+
+
+.md-background-word {
+  position: fixed;
+
+  right: -25px;
+  bottom: -55px;
+
+  pointer-events: none;
+
+  user-select: none;
+
+  color: rgba(80, 30, 55, 0.025);
+
+  font-size: clamp(130px, 22vw, 330px);
+  font-weight: 950;
+
+  line-height: 0.8;
+
+  letter-spacing: -0.09em;
+}
+
+
+[data-mooma-theme="dark"] .md-background-word {
+  color: rgba(255, 255, 255, 0.018);
+}
+
+
+/* ============================================================
+   HEADER
+============================================================ */
+
+.md-header {
+  height: 76px;
+
+  padding: 0 30px;
+
+  position: sticky;
+  top: 0;
+  z-index: 50;
 
   display: grid;
-  grid-template-columns:
-    minmax(180px, 1.5fr)
-    minmax(90px, 0.6fr)
-    minmax(90px, 0.6fr)
-    minmax(220px, 1.5fr)
-    auto;
-
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 18px;
 
-  padding: 15px 17px;
+  border-bottom: 1px solid var(--md-border);
 
-  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.82);
 
-  border: 1px solid
-    rgba(127, 127, 127, 0.14);
-
-  background:
-    rgba(255, 255, 255, 0.58);
-
-  backdrop-filter:
-    blur(18px);
-}
-
-.mooma-db-status-left {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.mooma-db-icon {
-  width: 36px;
-  height: 36px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 11px;
-
-  background:
-    rgba(228, 124, 167, 0.09);
-
-  color: #e47ca7;
-}
-
-.mooma-db-status-left div:last-child,
-.mooma-db-stat,
-.mooma-db-sync {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.mooma-db-status-left small,
-.mooma-db-stat small,
-.mooma-db-sync small {
-  font-size: 7px;
-  letter-spacing: 0.14em;
-  opacity: 0.48;
-  font-weight: 800;
-}
-
-.mooma-db-status-left strong,
-.mooma-db-stat strong,
-.mooma-db-sync strong {
-  font-size: 10px;
-  font-weight: 800;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
 }
 
 
-/* ==========================================================
-   DATABASE REFRESH BUTTON
-========================================================== */
+[data-mooma-theme="dark"] .md-header {
+  background: rgba(13, 9, 12, 0.84);
+}
 
-.database-refresh-btn {
-  min-height: 38px;
 
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
+.md-header-button,
+.md-icon-button {
+  border: 1px solid var(--md-border);
 
-  padding: 0 14px;
-
-  border: 1px solid
-    rgba(127, 127, 127, 0.18);
-
-  border-radius: 11px;
-
-  background:
-    rgba(255, 255, 255, 0.75);
-
-  color: inherit;
-
-  font-size: 7px;
-  font-weight: 850;
-  letter-spacing: 0.08em;
+  color: var(--md-text);
+  background: var(--md-card);
 
   cursor: pointer;
 
   transition:
     transform 0.2s ease,
-    opacity 0.2s ease,
+    border-color 0.2s ease,
     background 0.2s ease;
 }
 
-.database-refresh-btn:hover:not(:disabled) {
-  transform:
-    translateY(-2px);
-}
 
-.database-refresh-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.md-header-button {
+  width: fit-content;
 
+  min-height: 40px;
 
-/* ==========================================================
-   OPERATION MESSAGE
-========================================================== */
-
-.mooma-operation-message {
-  margin-top: 10px;
-
-  min-height: 42px;
-
-  padding: 10px 13px;
+  padding: 0 13px;
 
   display: flex;
   align-items: center;
-  gap: 9px;
+  justify-content: center;
+  gap: 8px;
+
+  border-radius: 11px;
+
+  font-size: 8px;
+  font-weight: 850;
+
+  letter-spacing: 0.08em;
+}
+
+
+.md-header-button:hover,
+.md-icon-button:hover {
+  border-color: var(--md-border-strong);
+
+  transform: translateY(-1px);
+}
+
+
+.md-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+
+.md-brand-mark {
+  width: 39px;
+  height: 39px;
+
+  display: grid;
+  place-items: center;
 
   border-radius: 12px;
 
+  color: #ffffff;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--md-accent-strong),
+      #ee91b6
+    );
+
+  box-shadow:
+    0 8px 24px rgba(217, 103, 150, 0.25);
+
+  font-size: 17px;
+  font-weight: 950;
+}
+
+
+.md-brand-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+
+.md-brand-copy strong {
+  font-size: 11px;
+
+  letter-spacing: 0.13em;
+}
+
+
+.md-brand-copy span {
+  margin-top: 2px;
+
+  color: var(--md-text-faint);
+
+  font-size: 6px;
+  font-weight: 700;
+
+  letter-spacing: 0.16em;
+}
+
+
+.md-header-actions {
+  justify-self: end;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
+.md-icon-button {
+  width: 40px;
+  height: 40px;
+
+  padding: 0;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 11px;
+}
+
+
+.md-icon-button > span {
+  display: grid;
+  place-items: center;
+}
+
+
+.md-exit-button {
+  color: var(--md-text-soft);
+}
+
+
+/* ============================================================
+   MAIN
+============================================================ */
+
+.md-main {
+  width: min(
+    1160px,
+    calc(100% - 40px)
+  );
+
+  margin: 0 auto;
+
+  padding:
+    68px
+    0
+    120px;
+
+  position: relative;
+  z-index: 2;
+}
+
+
+/* ============================================================
+   HERO
+============================================================ */
+
+.md-hero {
+  min-height: 470px;
+
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    380px;
+
+  gap: 70px;
+
+  align-items: center;
+}
+
+
+.md-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  color: var(--md-accent-strong);
+
   font-size: 8px;
-  font-weight: 750;
+  font-weight: 900;
+
+  letter-spacing: 0.17em;
 }
 
-.mooma-operation-message.success {
+
+[data-mooma-theme="dark"] .md-kicker {
+  color: #f4a6c5;
+}
+
+
+.md-hero h1 {
+  max-width: 750px;
+
+  margin:
+    18px
+    0
+    18px;
+
+  font-size:
+    clamp(
+      46px,
+      7vw,
+      82px
+    );
+
+  font-weight: 900;
+
+  line-height: 0.94;
+
+  letter-spacing: -0.065em;
+}
+
+
+.md-hero h1 span {
+  color: var(--md-accent-strong);
+}
+
+
+[data-mooma-theme="dark"] .md-hero h1 span {
+  color: #f09abd;
+}
+
+
+.md-hero-copy > p {
+  max-width: 570px;
+
+  margin: 0;
+
+  color: var(--md-text-soft);
+
+  font-size: 12px;
+
+  line-height: 1.75;
+}
+
+
+.md-hero-meta {
+  margin-top: 34px;
+
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+
+.md-hero-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+
+.md-hero-meta small {
+  color: var(--md-text-faint);
+
+  font-size: 7px;
+  font-weight: 850;
+
+  letter-spacing: 0.14em;
+}
+
+
+.md-hero-meta strong {
+  font-size: 11px;
+
+  letter-spacing: 0.06em;
+}
+
+
+.md-online {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+
+.md-online i {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #38c879;
+
+  box-shadow:
+    0 0 0 4px rgba(56, 200, 121, 0.1),
+    0 0 15px rgba(56, 200, 121, 0.5);
+}
+
+
+/* ============================================================
+   HERO VISUAL
+============================================================ */
+
+.md-hero-visual {
+  width: 330px;
+  height: 330px;
+
+  justify-self: end;
+
+  position: relative;
+
+  display: grid;
+  place-items: center;
+}
+
+
+.md-hero-logo {
+  width: 142px;
+  height: 142px;
+
+  position: relative;
+  z-index: 3;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 38px;
+
+  color: #ffffff;
+
   background:
-    rgba(42, 183, 102, 0.09);
+    linear-gradient(
+      145deg,
+      #bc4778,
+      #e47ba5,
+      #f1a5c2
+    );
 
-  color: #23945a;
+  box-shadow:
+    0 35px 80px rgba(190, 71, 120, 0.25);
+
+  font-size: 58px;
+  font-weight: 950;
+
+  letter-spacing: -0.07em;
 }
 
-.mooma-operation-message.error {
+
+.md-orbit {
+  position: absolute;
+
+  border-radius: 50%;
+
+  border: 1px solid var(--md-border-strong);
+}
+
+
+.md-orbit-one {
+  width: 245px;
+  height: 245px;
+
+  animation:
+    mdOrbit 14s linear infinite;
+}
+
+
+.md-orbit-two {
+  width: 320px;
+  height: 320px;
+
+  opacity: 0.5;
+
+  animation:
+    mdOrbitReverse 20s linear infinite;
+}
+
+
+.md-orbit-one::after,
+.md-orbit-two::after {
+  content: "";
+
+  width: 8px;
+  height: 8px;
+
+  position: absolute;
+
+  top: -4px;
+  left: 50%;
+
+  border-radius: 50%;
+
+  background: var(--md-accent);
+
+  box-shadow:
+    0 0 18px rgba(217, 103, 150, 0.65);
+}
+
+
+@keyframes mdOrbit {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+@keyframes mdOrbitReverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+
+/* ============================================================
+   OPERATIONS
+============================================================ */
+
+.md-operation-section {
+  padding-top: 75px;
+
+  scroll-margin-top: 95px;
+}
+
+
+.md-section-heading {
+  margin-bottom: 24px;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+
+.md-section-heading small {
+  color: var(--md-accent-strong);
+
+  font-size: 7px;
+  font-weight: 900;
+
+  letter-spacing: 0.16em;
+}
+
+
+.md-section-heading h2 {
+  margin:
+    7px
+    0
+    0;
+
+  font-size:
+    clamp(
+      28px,
+      4vw,
+      42px
+    );
+
+  letter-spacing: -0.04em;
+}
+
+
+.md-operation-count {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  color: var(--md-text-faint);
+
+  font-size: 7px;
+  font-weight: 850;
+
+  letter-spacing: 0.12em;
+}
+
+
+/* ============================================================
+   MODULE CARDS
+============================================================ */
+
+.md-module-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 16px;
+}
+
+
+.md-module-card {
+  min-height: 285px;
+
+  padding: 26px;
+
+  position: relative;
+
+  overflow: hidden;
+
+  display: flex;
+  flex-direction: column;
+
+  text-align: left;
+
+  border: 1px solid var(--md-border);
+  border-radius: 23px;
+
+  color: var(--md-text);
+
   background:
-    rgba(232, 72, 72, 0.09);
+    linear-gradient(
+      145deg,
+      var(--md-card),
+      rgba(217, 103, 150, 0.025)
+    );
 
-  color: #d84242;
-}
+  box-shadow: var(--md-shadow);
 
-.mooma-operation-message.info {
-  background:
-    rgba(70, 112, 230, 0.09);
-
-  color: #4269cf;
-}
-
-.mooma-operation-message span {
-  flex: 1;
-}
-
-.mooma-operation-message button {
-  border: 0;
-  background: transparent;
-  color: inherit;
   cursor: pointer;
+
+  transition:
+    border-color 0.25s ease,
+    background 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 
-/* ==========================================================
-   TRANSFER MODAL
-========================================================== */
+.md-module-card:hover {
+  border-color: var(--md-border-strong);
 
-.mooma-transfer-backdrop {
+  background: var(--md-card-hover);
+
+  box-shadow:
+    0 28px 80px rgba(74, 34, 56, 0.11);
+}
+
+
+[data-mooma-theme="dark"] .md-module-card:hover {
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.32);
+}
+
+
+.md-module-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+
+.md-module-icon {
+  width: 52px;
+  height: 52px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 15px;
+
+  color: var(--md-accent-strong);
+
+  background:
+    rgba(217, 103, 150, 0.1);
+
+  border:
+    1px solid
+    rgba(217, 103, 150, 0.12);
+}
+
+
+[data-mooma-theme="dark"] .md-module-icon {
+  color: #f2a0c0;
+}
+
+
+.md-module-number {
+  color: var(--md-text-faint);
+
+  font-size: 9px;
+  font-weight: 850;
+
+  letter-spacing: 0.1em;
+}
+
+
+.md-module-content {
+  margin-top: 36px;
+}
+
+
+.md-module-content small {
+  color: var(--md-accent-strong);
+
+  font-size: 7px;
+  font-weight: 900;
+
+  letter-spacing: 0.14em;
+}
+
+
+.md-module-content h3 {
+  margin:
+    7px
+    0
+    8px;
+
+  font-size: 23px;
+
+  letter-spacing: -0.03em;
+}
+
+
+.md-module-content p {
+  max-width: 410px;
+
+  margin: 0;
+
+  color: var(--md-text-soft);
+
+  font-size: 10px;
+
+  line-height: 1.65;
+}
+
+
+.md-module-open {
+  margin-top: auto;
+  padding-top: 30px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: var(--md-accent-strong);
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing: 0.11em;
+}
+
+
+.md-module-card:hover .md-module-open svg {
+  transform: translateX(5px);
+}
+
+
+.md-module-open svg {
+  transition: transform 0.2s ease;
+}
+
+
+.md-card-shine {
+  width: 150px;
+  height: 350px;
+
+  position: absolute;
+
+  top: -70px;
+  left: -220px;
+
+  pointer-events: none;
+
+  opacity: 0;
+
+  transform: rotate(24deg);
+
+  background:
+    linear-gradient(
+      to right,
+      transparent,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    );
+
+  transition:
+    left 0.65s ease,
+    opacity 0.25s ease;
+}
+
+
+.md-module-card:hover .md-card-shine {
+  left: 120%;
+
+  opacity: 0.3;
+}
+
+
+/* ============================================================
+   OPENING OVERLAY
+============================================================ */
+
+.md-opening-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -887,1724 +947,486 @@
   display: grid;
   place-items: center;
 
-  padding: 22px;
+  padding: 20px;
 
   background:
-    rgba(12, 12, 16, 0.42);
+    rgba(13, 8, 12, 0.94);
 
-  backdrop-filter:
-    blur(16px);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
-.mooma-transfer-modal {
-  position: relative;
 
+.md-opening-animation {
   width: min(
-    620px,
+    400px,
     100%
   );
 
-  max-height: 88vh;
+  text-align: center;
 
-  overflow-y: auto;
-
-  padding: 30px;
-
-  border-radius: 25px;
-
-  background:
-    rgba(255, 255, 255, 0.96);
-
-  border: 1px solid
-    rgba(255, 255, 255, 0.7);
-
-  box-shadow:
-    0 35px 100px
-    rgba(0, 0, 0, 0.22);
+  color: #ffffff;
 }
 
-.mooma-transfer-close {
-  position: absolute;
-  top: 17px;
-  right: 17px;
 
-  width: 34px;
-  height: 34px;
+.md-opening-rings {
+  width: 155px;
+  height: 155px;
+
+  margin:
+    0
+    auto
+    28px;
+
+  position: relative;
 
   display: grid;
   place-items: center;
+}
+
+
+.md-opening-rings i {
+  position: absolute;
 
   border-radius: 50%;
 
-  border: 1px solid
-    rgba(127, 127, 127, 0.15);
-
-  background:
-    rgba(127, 127, 127, 0.06);
-
-  cursor: pointer;
-}
-
-.mooma-transfer-modal-icon {
-  width: 48px;
-  height: 48px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 15px;
-
-  background:
-    rgba(228, 124, 167, 0.1);
-
-  color: #e47ca7;
-
-  margin-bottom: 17px;
-}
-
-.mooma-transfer-kicker {
-  margin-bottom: 7px;
-
-  font-size: 7px;
-  font-weight: 900;
-
-  letter-spacing:
-    0.18em;
-
-  color: #e47ca7;
-}
-
-.mooma-transfer-modal h2 {
-  margin: 0;
-
-  font-size: 27px;
-  line-height: 1.05;
-}
-
-.mooma-transfer-id {
-  display: inline-flex;
-
-  margin-top: 10px;
-
-  padding: 6px 9px;
-
-  border-radius: 8px;
-
-  background:
-    rgba(127, 127, 127, 0.08);
-
-  font-size: 9px;
-  font-weight: 850;
-
-  letter-spacing:
-    0.07em;
-}
-
-
-/* ==========================================================
-   TRANSFER ROUTE
-========================================================== */
-
-.mooma-transfer-route {
-  margin-top: 22px;
-
-  display: grid;
-
-  grid-template-columns:
-    1fr auto 1fr;
-
-  align-items: center;
-
-  gap: 14px;
-
-  padding: 15px;
-
-  border-radius: 15px;
-
-  background:
-    rgba(127, 127, 127, 0.055);
-}
-
-.mooma-transfer-route > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mooma-transfer-route small {
-  font-size: 7px;
-  letter-spacing: 0.14em;
-  opacity: 0.45;
-  font-weight: 800;
-}
-
-.mooma-transfer-route strong {
-  font-size: 10px;
-}
-
-
-/* ==========================================================
-   TRANSFER ITEMS
-========================================================== */
-
-.mooma-transfer-items {
-  margin-top: 17px;
-
   border:
     1px solid
-    rgba(127, 127, 127, 0.12);
-
-  border-radius: 15px;
-
-  overflow: hidden;
-}
-
-.mooma-transfer-items-head {
-  min-height: 43px;
-
-  padding: 0 14px;
-
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  background:
-    rgba(127, 127, 127, 0.045);
-}
-
-.mooma-transfer-items-head strong {
-  flex: 1;
-
-  font-size: 9px;
-}
-
-.mooma-transfer-items-head span {
-  width: 24px;
-  height: 24px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 7px;
-
-  background:
-    rgba(228, 124, 167, 0.1);
-
-  color: #e47ca7;
-
-  font-size: 8px;
-  font-weight: 850;
-}
-
-.mooma-transfer-item {
-  min-height: 47px;
-
-  padding: 9px 14px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 15px;
-
-  border-top:
-    1px solid
-    rgba(127, 127, 127, 0.08);
-}
-
-.mooma-transfer-item > div {
-  min-width: 0;
-
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.mooma-transfer-item span {
-  font-size: 7px;
-  opacity: 0.4;
-  font-weight: 800;
-}
-
-.mooma-transfer-item strong {
-  font-size: 9px;
-}
-
-.mooma-transfer-item b {
-  font-size: 11px;
-
-  color: #e47ca7;
+    rgba(237, 131, 173, 0.32);
 }
 
 
-/* ==========================================================
-   REASON / WARNING
-========================================================== */
+.md-opening-rings i:nth-child(1) {
+  width: 100%;
+  height: 100%;
 
-.mooma-transfer-reason {
-  margin-top: 16px;
-
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-
-  padding: 13px 14px;
-
-  border-radius: 13px;
-
-  background:
-    rgba(127, 127, 127, 0.05);
-}
-
-.mooma-transfer-reason small {
-  font-size: 7px;
-  font-weight: 850;
-  letter-spacing: 0.13em;
-  opacity: 0.45;
-}
-
-.mooma-transfer-reason strong {
-  font-size: 9px;
-}
-
-.mooma-transfer-warning {
-  margin-top: 12px;
-
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-
-  padding: 11px 13px;
-
-  border-radius: 12px;
-
-  background:
-    rgba(235, 76, 76, 0.08);
-
-  color: #c74343;
-
-  font-size: 8px;
-  line-height: 1.5;
-
-  font-weight: 700;
-}
-
-
-/* ==========================================================
-   ACCEPT / REJECT
-========================================================== */
-
-.mooma-transfer-actions {
-  margin-top: 19px;
-
-  display: grid;
-  grid-template-columns:
-    1fr 1fr;
-
-  gap: 10px;
-}
-
-.mooma-transfer-actions button {
-  min-height: 48px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  gap: 8px;
-
-  border: 0;
-
-  border-radius: 13px;
-
-  font-size: 9px;
-  font-weight: 850;
-
-  cursor: pointer;
-
-  transition:
-    transform 0.2s ease,
-    opacity 0.2s ease;
-}
-
-.mooma-transfer-actions button:hover:not(:disabled) {
-  transform:
-    translateY(-2px);
-}
-
-.mooma-transfer-actions button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.mooma-transfer-reject {
-  background:
-    rgba(225, 64, 64, 0.1);
-
-  color: #d94444;
-}
-
-.mooma-transfer-accept {
-  background:
-    #e47ca7;
-
-  color: #fff;
-}
-
-
-/* ==========================================================
-   SPINNER
-========================================================== */
-
-.branch-loading-spinner {
   animation:
-    bartSpin 0.8s linear
+    mdLoadingRing
+    1.8s
+    linear
     infinite;
 }
 
-@keyframes bartSpin {
-  to {
-    transform:
-      rotate(360deg);
-  }
-}
 
-
-/* ==========================================================
-   DARK MODE
-========================================================== */
-
-@media (
-  prefers-color-scheme: dark
-) {
-  .mooma-database-status-card {
-    background:
-      rgba(18, 18, 22, 0.72);
-
-    border-color:
-      rgba(255, 255, 255, 0.09);
-  }
-
-  .database-refresh-btn {
-    background:
-      rgba(255, 255, 255, 0.055);
-
-    border-color:
-      rgba(255, 255, 255, 0.1);
-
-    color: #fff;
-  }
-
-  .mooma-transfer-modal {
-    background:
-      rgba(20, 20, 24, 0.97);
-
-    border-color:
-      rgba(255, 255, 255, 0.09);
-
-    color: #fff;
-  }
-
-  .mooma-transfer-route,
-  .mooma-transfer-reason {
-    background:
-      rgba(255, 255, 255, 0.045);
-  }
-
-  .mooma-transfer-items {
-    border-color:
-      rgba(255, 255, 255, 0.09);
-  }
-
-  .mooma-transfer-items-head {
-    background:
-      rgba(255, 255, 255, 0.045);
-  }
-
-  .mooma-transfer-item {
-    border-color:
-      rgba(255, 255, 255, 0.07);
-  }
-}
-
-
-/* ==========================================================
-   MOBILE
-========================================================== */
-
-@media (
-  max-width: 850px
-) {
-  .mooma-database-status-card {
-    grid-template-columns:
-      1fr 1fr;
-  }
-
-  .mooma-db-status-left,
-  .mooma-db-sync,
-  .database-refresh-btn {
-    grid-column:
-      1 / -1;
-  }
-}
-
-@media (
-  max-width: 600px
-) {
-  .mooma-transfer-modal {
-    padding:
-      24px 18px;
-  }
-
-  .mooma-transfer-route {
-    grid-template-columns:
-      1fr;
-  }
-
-  .mooma-transfer-route > svg {
-    transform:
-      rotate(90deg);
-  }
-
-  .mooma-transfer-actions {
-    grid-template-columns:
-      1fr;
-  }
-}
-
-
-
-
-
-/* ==========================================================
-   DAM MOOMA LIVE FEATURES
-   APPEND ONLY - DO NOT REPLACE EXISTING CSS
-========================================================== */
-
-
-/* ==========================================================
-   SPINNER
-========================================================== */
-
-.dam-spin {
-  animation:
-    damLiveSpin 0.8s
-    linear infinite;
-}
-
-@keyframes damLiveSpin {
-  to {
-    transform:
-      rotate(360deg);
-  }
-}
-
-
-/* ==========================================================
-   ACTIVE TRANSFER STRIP
-========================================================== */
-
-.dam-has-transfer {
-  position:
-    relative;
-}
-
-.dam-has-transfer::after {
-  content: "";
-
-  position:
-    absolute;
-
-  inset:
-    -1px;
-
-  border:
-    1px solid
-    rgba(
-      255,
-      95,
-      87,
-      0.45
-    );
-
-  border-radius:
-    inherit;
-
-  pointer-events:
-    none;
+.md-opening-rings i:nth-child(2) {
+  width: 76%;
+  height: 76%;
 
   animation:
-    damTransferPulse
-    1.8s
+    mdLoadingRingReverse
+    1.3s
+    linear
+    infinite;
+}
+
+
+.md-opening-rings i:nth-child(3) {
+  width: 55%;
+  height: 55%;
+
+  border-color:
+    rgba(255, 255, 255, 0.17);
+
+  animation:
+    mdLoadingPulse
+    1.1s
     ease-in-out
     infinite;
 }
 
-@keyframes damTransferPulse {
 
+.md-opening-rings i:nth-child(1)::after,
+.md-opening-rings i:nth-child(2)::after {
+  content: "";
+
+  width: 8px;
+  height: 8px;
+
+  position: absolute;
+
+  top: -4px;
+  left: 50%;
+
+  border-radius: 50%;
+
+  background: #ed83ad;
+
+  box-shadow:
+    0 0 20px rgba(237, 131, 173, 0.8);
+}
+
+
+.md-opening-rings span {
+  width: 55px;
+  height: 55px;
+
+  position: relative;
+  z-index: 3;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 16px;
+
+  color: #ffffff;
+
+  background:
+    linear-gradient(
+      135deg,
+      #bd4779,
+      #ed83ad
+    );
+
+  font-size: 23px;
+  font-weight: 950;
+
+  box-shadow:
+    0 15px 45px rgba(237, 131, 173, 0.25);
+}
+
+
+.md-opening-animation > small {
+  display: block;
+
+  color: #ed9cbc;
+
+  font-size: 7px;
+  font-weight: 900;
+
+  letter-spacing: 0.18em;
+}
+
+
+.md-opening-animation > strong {
+  display: block;
+
+  margin-top: 8px;
+
+  font-size: 25px;
+
+  letter-spacing: -0.035em;
+}
+
+
+.md-opening-animation > p {
+  margin:
+    8px
+    0
+    0;
+
+  color: rgba(255, 255, 255, 0.42);
+
+  font-size: 10px;
+}
+
+
+@keyframes mdLoadingRing {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+@keyframes mdLoadingRingReverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+
+@keyframes mdLoadingPulse {
   0%,
   100% {
-    opacity:
-      0.35;
+    transform: scale(0.9);
+
+    opacity: 0.4;
   }
 
   50% {
-    opacity:
-      1;
+    transform: scale(1.08);
+
+    opacity: 1;
   }
 }
 
 
-/* ==========================================================
-   ACTIVE STOCK MODULE
-========================================================== */
-
-.dam-module-active {
-  border-color:
-    rgba(
-      255,
-      95,
-      87,
-      0.45
-    ) !important;
-}
-
-
-/* ==========================================================
-   TRANSFER OVERLAY
-========================================================== */
-
-.dam-transfer-overlay {
-  position:
-    fixed;
-
-  inset:
-    0;
-
-  z-index:
-    99999;
-
-  display:
-    grid;
-
-  place-items:
-    center;
-
-  padding:
-    20px;
-
-  background:
-    rgba(
-      7,
-      10,
-      18,
-      0.48
-    );
-
-  backdrop-filter:
-    blur(18px);
-}
-
-
-/* ==========================================================
-   TRANSFER POPUP
-========================================================== */
-
-.dam-transfer-popup {
-  position:
-    relative;
-
-  width:
-    min(
-      620px,
-      100%
-    );
-
-  max-height:
-    88vh;
-
-  overflow-y:
-    auto;
-
-  padding:
-    30px;
-
-  border-radius:
-    26px;
-
-  border:
-    1px solid
-    rgba(
-      127,
-      127,
-      127,
-      0.14
-    );
-
-  background:
-    rgba(
-      255,
-      255,
-      255,
-      0.97
-    );
-
-  color:
-    #17191e;
-
-  box-shadow:
-    0 35px 100px
-    rgba(
-      0,
-      0,
-      0,
-      0.25
-    );
-}
-
-
-.dam-transfer-x {
-  position:
-    absolute;
-
-  top:
-    17px;
-
-  right:
-    17px;
-
-  width:
-    35px;
-
-  height:
-    35px;
-
-  display:
-    grid;
-
-  place-items:
-    center;
-
-  border:
-    0;
-
-  border-radius:
-    50%;
-
-  background:
-    rgba(
-      0,
-      0,
-      0,
-      0.055
-    );
-
-  cursor:
-    pointer;
-}
-
-
-.dam-transfer-logo {
-  width:
-    50px;
-
-  height:
-    50px;
-
-  display:
-    grid;
-
-  place-items:
-    center;
-
-  margin-bottom:
-    16px;
-
-  border-radius:
-    15px;
-
-  color:
-    #e47ca7;
-
-  background:
-    rgba(
-      255,
-      95,
-      87,
-      0.1
-    );
-}
-
-
-.dam-transfer-label {
-  display:
-    block;
-
-  margin-bottom:
-    6px;
-
-  color:
-    #e47ca7;
-
-  font-size:
-    8px;
-
-  font-weight:
-    900;
-
-  letter-spacing:
-    0.16em;
-}
-
-
-.dam-transfer-popup h2 {
-  margin:
-    0;
-
-  font-size:
-    27px;
-}
-
-
-.dam-transfer-id {
-  display:
-    inline-flex;
-
-  margin-top:
-    9px;
-
-  padding:
-    6px 10px;
-
-  border-radius:
-    8px;
-
-  font-size:
-    9px;
-
-  font-weight:
-    800;
-
-  background:
-    rgba(
-      0,
-      0,
-      0,
-      0.055
-    );
-}
-
-
-.dam-transfer-route {
-  display:
-    grid;
-
-  grid-template-columns:
-    1fr auto 1fr;
-
-  align-items:
-    center;
-
-  gap:
-    13px;
-
-  margin-top:
-    20px;
-
-  padding:
-    15px;
-
-  border-radius:
-    15px;
-
-  background:
-    rgba(
-      0,
-      0,
-      0,
-      0.04
-    );
-}
-
-
-.dam-transfer-route div {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    4px;
-}
-
-
-.dam-transfer-route small,
-.dam-transfer-reason small {
-  font-size:
-    7px;
-
-  font-weight:
-    850;
-
-  letter-spacing:
-    0.13em;
-
-  opacity:
-    0.5;
-}
-
-
-.dam-transfer-route strong {
-  font-size:
-    10px;
-}
-
-
-/* ==========================================================
-   TRANSFER ITEMS
-========================================================== */
-
-.dam-transfer-items {
-  margin-top:
-    15px;
-
-  border:
-    1px solid
-    rgba(
-      0,
-      0,
-      0,
-      0.08
-    );
-
-  border-radius:
-    14px;
-
-  overflow:
-    hidden;
-}
-
-
-.dam-transfer-item {
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    space-between;
-
-  gap:
-    20px;
-
-  min-height:
-    46px;
-
-  padding:
-    9px 14px;
-
-  border-bottom:
-    1px solid
-    rgba(
-      0,
-      0,
-      0,
-      0.06
-    );
-}
-
-
-.dam-transfer-item:last-child {
-  border-bottom:
-    0;
-}
-
-
-.dam-transfer-item span {
-  font-size:
-    9px;
-
-  font-weight:
-    700;
-}
-
-
-.dam-transfer-item strong {
-  color:
-    #e47ca7;
-
-  font-size:
-    11px;
-}
-
-
-/* ==========================================================
-   TRANSFER REASON
-========================================================== */
-
-.dam-transfer-reason {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    5px;
-
-  margin-top:
-    14px;
-
-  padding:
-    13px;
-
-  border-radius:
-    13px;
-
-  background:
-    rgba(
-      0,
-      0,
-      0,
-      0.04
-    );
-}
-
-
-.dam-transfer-reason strong {
-  font-size:
-    9px;
-}
-
-
-.dam-transfer-warning {
-  display:
-    flex;
-
-  align-items:
-    flex-start;
-
-  gap:
-    8px;
-
-  margin-top:
-    11px;
-
-  padding:
-    11px;
-
-  border-radius:
-    12px;
-
-  background:
-    rgba(
-      220,
-      55,
-      55,
-      0.08
-    );
-
-  color:
-    #ca4141;
-
-  font-size:
-    8px;
-
-  font-weight:
-    700;
-
-  line-height:
-    1.45;
-}
-
-
-/* ==========================================================
-   ACCEPT REJECT
-========================================================== */
-
-.dam-transfer-buttons {
-  display:
-    grid;
-
-  grid-template-columns:
-    1fr 1fr;
-
-  gap:
-    10px;
-
-  margin-top:
-    18px;
-}
-
-
-.dam-transfer-buttons button {
-  min-height:
-    48px;
-
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    center;
-
-  gap:
-    8px;
-
-  border:
-    0;
-
-  border-radius:
-    13px;
-
-  font-size:
-    9px;
-
-  font-weight:
-    900;
-
-  cursor:
-    pointer;
-
-  transition:
-    0.2s ease;
-}
-
-
-.dam-transfer-buttons button:hover:not(:disabled) {
-  transform:
-    translateY(-2px);
-}
-
-
-.dam-reject-transfer {
-  color:
-    #cf4444;
-
-  background:
-    rgba(
-      220,
-      55,
-      55,
-      0.1
-    );
-}
-
-
-.dam-accept-transfer {
-  color:
-    #fff;
-
-  background:
-    #e47ca7;
-}
-
-
-/* ==========================================================
-   STOCK VIEW
-========================================================== */
-
-.dam-stock-view {
-  width:
-    100%;
-
-  margin-top:
-    34px;
-
-  padding:
-    22px;
-
-  border:
-    1px solid
-    rgba(
-      127,
-      127,
-      127,
-      0.13
-    );
-
-  border-radius:
-    22px;
-
-  background:
-    rgba(
-      255,
-      255,
-      255,
-      0.62
-    );
-
-  backdrop-filter:
-    blur(18px);
-}
-
-
-.dam-stock-view-header {
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    space-between;
-
-  gap:
-    20px;
-
-  margin-bottom:
-    20px;
-}
-
-
-.dam-stock-view-header span {
-  font-size:
-    7px;
-
-  font-weight:
-    900;
-
-  letter-spacing:
-    0.14em;
-
-  color:
-    #e47ca7;
-}
-
-
-.dam-stock-view-header h2 {
-  margin:
-    4px 0 3px;
-
-  font-size:
-    24px;
-}
-
-
-.dam-stock-view-header p {
-  margin:
-    0;
-
-  font-size:
-    10px;
-
-  opacity:
-    0.55;
-}
-
-
-.dam-stock-actions {
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  gap:
-    8px;
-}
-
-
-.dam-stock-actions button {
-  min-height:
-    36px;
-
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    center;
-
-  gap:
-    7px;
-
-  padding:
-    0 12px;
-
-  border:
-    1px solid
-    rgba(
-      127,
-      127,
-      127,
-      0.14
-    );
-
-  border-radius:
-    10px;
-
-  background:
-    transparent;
-
-  color:
-    inherit;
-
-  cursor:
-    pointer;
-
-  font-size:
-    7px;
-
-  font-weight:
-    850;
-}
-
-
-.dam-stock-source {
-  padding:
-    7px 9px;
-
-  border-radius:
-    8px;
-
-  background:
-    rgba(
-      255,
-      95,
-      87,
-      0.09
-    );
-
-  font-size:
-    7px !important;
-
-  color:
-    #e47ca7;
-}
-
-
-/* ==========================================================
-   STOCK SECTIONS
-========================================================== */
-
-.dam-stock-section {
-  margin-top:
-    20px;
-}
-
-
-.dam-stock-section-head {
-  display:
-    flex;
-
-  align-items:
-    flex-end;
-
-  justify-content:
-    space-between;
-
-  margin-bottom:
-    10px;
-}
-
-
-.dam-stock-section-head span {
-  font-size:
-    7px;
-
-  font-weight:
-    850;
-
-  letter-spacing:
-    0.12em;
-
-  opacity:
-    0.45;
-}
-
-
-.dam-stock-section-head h3 {
-  margin:
-    3px 0 0;
-
-  font-size:
-    17px;
-}
-
-
-.dam-stock-section-head > strong {
-  font-size:
-    8px;
-
-  opacity:
-    0.55;
-}
-
-
-/* ==========================================================
-   STOCK TABLE
-========================================================== */
-
-.dam-stock-table-wrap {
-  width:
-    100%;
-
-  max-height:
-    430px;
-
-  overflow:
-    auto;
-
-  border:
-    1px solid
-    rgba(
-      127,
-      127,
-      127,
-      0.12
-    );
-
-  border-radius:
-    14px;
-}
-
-
-.dam-stock-table {
-  width:
-    max-content;
-
-  min-width:
-    100%;
-
-  border-collapse:
-    separate;
-
-  border-spacing:
-    0;
-
-  font-size:
-    9px;
-}
-
-
-.dam-stock-table th {
-  position:
-    sticky;
-
-  top:
-    0;
-
-  z-index:
-    4;
-
-  padding:
-    10px 12px;
-
-  text-align:
-    left;
-
-  white-space:
-    nowrap;
-
-  background:
-    #f7f7f8;
-
-  border-bottom:
-    1px solid
-    rgba(
-      0,
-      0,
-      0,
-      0.08
-    );
-}
-
-
-.dam-stock-table td {
-  min-width:
-    90px;
-
-  padding:
-    9px 12px;
-
-  white-space:
-    nowrap;
-
-  border-bottom:
-    1px solid
-    rgba(
-      0,
-      0,
-      0,
-      0.05
-    );
-}
-
-
-/* PIN ITEM COLUMN */
-
-.dam-stock-table th:first-child,
-.dam-stock-table td:first-child {
-  position:
-    sticky;
-
-  left:
-    0;
-
-  z-index:
-    3;
-
-  min-width:
-    210px;
-
-  background:
-    #fff;
-
-  font-weight:
-    800;
-}
-
-
-.dam-stock-table th:first-child {
-  z-index:
-    6;
-
-  background:
-    #f7f7f8;
-}
-
-
-/* TOTAL */
-
-.dam-stock-table th:last-child,
-.dam-stock-table td:last-child {
-  font-weight:
-    900;
-
-  color:
-    #e47ca7;
-}
-
-
-/* ==========================================================
-   STOCK LOADING / ERROR
-========================================================== */
-
-.dam-stock-loading,
-.dam-stock-error,
-.dam-stock-empty {
-  min-height:
-    120px;
-
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    center;
-
-  gap:
-    9px;
-
-  border-radius:
-    14px;
-
-  font-size:
-    9px;
-
-  font-weight:
-    750;
-
-  background:
-    rgba(
-      127,
-      127,
-      127,
-      0.05
-    );
-}
-
-
-.dam-stock-error {
-  color:
-    #d34747;
-}
-
-
-/* ==========================================================
-   DARK MODE ADDITIONS
-========================================================== */
-
-@media (
-  prefers-color-scheme:
-    dark
-) {
-
-  .dam-transfer-popup {
-    color:
-      #f6f6f7;
-
-    background:
-      rgba(
-        18,
-        19,
-        23,
-        0.98
-      );
-
-    border-color:
-      rgba(
-        255,
-        255,
-        255,
-        0.08
-      );
+/* ============================================================
+   TABLET
+============================================================ */
+
+@media (max-width: 900px) {
+  .md-main {
+    padding-top: 45px;
   }
 
 
-  .dam-transfer-id,
-  .dam-transfer-route,
-  .dam-transfer-reason {
-    background:
-      rgba(
-        255,
-        255,
-        255,
-        0.055
-      );
+  .md-hero {
+    min-height: auto;
+
+    grid-template-columns: 1fr;
+
+    gap: 45px;
   }
 
 
-  .dam-transfer-items,
-  .dam-transfer-item {
-    border-color:
-      rgba(
-        255,
-        255,
-        255,
-        0.07
-      );
+  .md-hero-visual {
+    width: 260px;
+    height: 260px;
+
+    justify-self: center;
   }
 
 
-  .dam-stock-view {
-    background:
-      rgba(
-        17,
-        18,
-        22,
-        0.7
-      );
+  .md-hero-logo {
+    width: 115px;
+    height: 115px;
 
-    border-color:
-      rgba(
-        255,
-        255,
-        255,
-        0.08
-      );
+    border-radius: 30px;
+
+    font-size: 46px;
   }
 
 
-  .dam-stock-table-wrap {
-    border-color:
-      rgba(
-        255,
-        255,
-        255,
-        0.08
-      );
+  .md-orbit-one {
+    width: 200px;
+    height: 200px;
   }
 
 
-  .dam-stock-table th {
-    background:
-      #191a1f;
-
-    border-color:
-      rgba(
-        255,
-        255,
-        255,
-        0.07
-      );
-  }
-
-
-  .dam-stock-table td {
-    border-color:
-      rgba(
-        255,
-        255,
-        255,
-        0.055
-      );
-  }
-
-
-  .dam-stock-table td:first-child {
-    background:
-      #14151a;
-  }
-
-
-  .dam-stock-table th:first-child {
-    background:
-      #191a1f;
+  .md-orbit-two {
+    width: 255px;
+    height: 255px;
   }
 }
 
 
-/* ==========================================================
+/* ============================================================
    MOBILE
-========================================================== */
+============================================================ */
 
-@media (
-  max-width:
-    700px
-) {
+@media (max-width: 720px) {
+  .md-header {
+    height: 68px;
 
-  .dam-transfer-popup {
-    padding:
-      24px 17px;
-  }
+    padding: 0 13px;
 
-
-  .dam-transfer-route {
     grid-template-columns:
-      1fr;
+      auto
+      1fr
+      auto;
+
+    gap: 8px;
   }
 
 
-  .dam-transfer-route > svg {
-    transform:
-      rotate(90deg);
+  .md-brand {
+    justify-self: center;
   }
 
 
-  .dam-transfer-buttons {
-    grid-template-columns:
-      1fr;
+  .md-brand-mark {
+    width: 35px;
+    height: 35px;
+
+    border-radius: 10px;
+
+    font-size: 15px;
   }
 
 
-  .dam-stock-view-header {
-    align-items:
-      flex-start;
-
-    flex-direction:
-      column;
+  .md-brand-copy {
+    display: none;
   }
 
 
-  .dam-stock-actions {
+  .md-header-button {
+    width: 39px;
+    height: 39px;
+
+    min-height: 39px;
+
+    padding: 0;
+  }
+
+
+  .md-header-button span {
+    display: none;
+  }
+
+
+  .md-icon-button {
+    width: 39px;
+    height: 39px;
+  }
+
+
+  .md-main {
     width:
-      100%;
+      calc(
+        100% - 26px
+      );
 
-    flex-wrap:
-      wrap;
+    padding:
+      38px
+      0
+      90px;
+  }
+
+
+  .md-hero {
+    gap: 35px;
+  }
+
+
+  .md-hero h1 {
+    margin-top: 14px;
+
+    font-size:
+      clamp(
+        41px,
+        13vw,
+        62px
+      );
+  }
+
+
+  .md-hero-copy > p {
+    font-size: 11px;
+  }
+
+
+  .md-hero-meta {
+    margin-top: 27px;
+
+    gap: 26px;
+  }
+
+
+  .md-hero-visual {
+    width: 225px;
+    height: 225px;
+  }
+
+
+  .md-hero-logo {
+    width: 96px;
+    height: 96px;
+
+    border-radius: 26px;
+
+    font-size: 40px;
+  }
+
+
+  .md-orbit-one {
+    width: 170px;
+    height: 170px;
+  }
+
+
+  .md-orbit-two {
+    width: 220px;
+    height: 220px;
+  }
+
+
+  .md-operation-section {
+    padding-top: 55px;
+  }
+
+
+  .md-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+
+  .md-module-grid {
+    grid-template-columns: 1fr;
+
+    gap: 12px;
+  }
+
+
+  .md-module-card {
+    min-height: 250px;
+
+    padding: 21px;
+
+    border-radius: 19px;
+  }
+
+
+  .md-module-content {
+    margin-top: 28px;
+  }
+
+
+  .md-module-content h3 {
+    font-size: 21px;
   }
 }
 
 
+/* ============================================================
+   VERY SMALL MOBILE
+============================================================ */
+
+@media (max-width: 420px) {
+  .md-header-actions {
+    gap: 5px;
+  }
 
 
+  .md-hero h1 {
+    font-size: 39px;
+  }
+
+
+  .md-hero-meta {
+    width: 100%;
+
+    justify-content: space-between;
+
+    gap: 10px;
+  }
+
+
+  .md-hero-visual {
+    transform: scale(0.92);
+  }
+
+
+  .md-module-card {
+    min-height: 235px;
+  }
+}
+
+
+/* ============================================================
+   REDUCED MOTION
+============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .md-orbit-one,
+  .md-orbit-two,
+  .md-opening-rings i {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+
+  .md-module-card,
+  .md-card-shine,
+  .md-module-open svg {
+    transition: none !important;
+  }
+}
