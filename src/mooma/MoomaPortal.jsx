@@ -33,7 +33,7 @@ import "./MoomaPortal.css";
 
 const MOOMA_API_BASE =
   import.meta.env.VITE_MOOMA_API_URL ||
-  "https://dam-mooma-operations.damunited.workers.dev";
+  "https://dam-operations.damunited.workers.dev";
 
 
 /* =========================================================
