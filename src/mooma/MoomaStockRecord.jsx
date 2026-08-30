@@ -3,7 +3,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, CheckCircle2, ClipboardList, LoaderCircle, RefreshCcw, RotateCcw, Search, Sparkles, XCircle } from "lucide-react";
 import { activeScroll, moomaFetch } from "./moomaApi.js";
 import MoomaLoading from "./MoomaLoading.jsx";
-import "./MoomaStockRecord.css";
+
+
 
 const MODES=[{id:"daily",number:"01",title:"Daily Stock",sub:"DAILY ITEM",copy:"Record today's daily operational stock."},{id:"weekly",number:"02",title:"Weekly Stock",sub:"WEEKLY ITEM",copy:"Record weekly inventory items."},{id:"bakery",number:"03",title:"Bakery",sub:"BAKERY ITEMS",copy:"Record the bakery SKU set."}];
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
