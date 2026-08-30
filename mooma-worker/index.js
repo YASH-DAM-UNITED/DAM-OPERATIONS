@@ -1,44 +1,148 @@
+/* ============================================================
+   DAM OPERATIONS
+   MOOMA BACKEND
+
+   VERSION:
+   MOOMA-WORKER-V1
+============================================================ */
+
+
+/* ============================================================
+   CONFIG
+============================================================ */
+
 const GOOGLE_TOKEN_URL =
   "https://oauth2.googleapis.com/token";
 
 const GOOGLE_SCOPE =
   "https://www.googleapis.com/auth/spreadsheets";
 
+const MOOMA_MASTER_TAB =
+  "Sheet1";
+
+
+/* ============================================================
+   RESPONSE
+============================================================ */
+
 function corsHeaders() {
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Origin":
+      "*",
+
+    "Access-Control-Allow-Headers":
+      "Content-Type",
+
+    "Access-Control-Allow-Methods":
+      "GET, POST, OPTIONS",
   };
 }
 
-function jsonResponse(data, status = 200) {
+
+function jsonResponse(
+  data,
+  status = 200
+) {
   return new Response(
-    JSON.stringify(data, null, 2),
+    JSON.stringify(
+      data,
+      null,
+      2
+    ),
     {
       status,
+
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
+
         ...corsHeaders(),
       },
     }
   );
 }
 
-function base64UrlEncodeString(input) {
+
+/* ============================================================
+   BASIC HELPERS
+============================================================ */
+
+function normalizeHeader(
+  value
+) {
+  return String(
+    value || ""
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/_/g, "")
+    .replace(/-/g, "");
+}
+
+
+function findHeaderIndex(
+  headers,
+  candidates
+) {
+  const normalized =
+    headers.map(
+      normalizeHeader
+    );
+
+  for (
+    const candidate of
+    candidates
+  ) {
+    const index =
+      normalized.indexOf(
+        normalizeHeader(
+          candidate
+        )
+      );
+
+    if (
+      index !== -1
+    ) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+
+/* ============================================================
+   JWT
+============================================================ */
+
+function base64UrlEncodeString(
+  input
+) {
   return btoa(input)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
 
-function arrayBufferToBase64Url(buffer) {
-  const bytes = new Uint8Array(buffer);
+
+function arrayBufferToBase64Url(
+  buffer
+) {
+  const bytes =
+    new Uint8Array(
+      buffer
+    );
 
   let binary = "";
 
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  for (
+    const byte of bytes
+  ) {
+    binary +=
+      String.fromCharCode(
+        byte
+      );
   }
 
   return btoa(binary)
@@ -47,26 +151,48 @@ function arrayBufferToBase64Url(buffer) {
     .replace(/=+$/g, "");
 }
 
-function pemToArrayBuffer(pem) {
-  const normalized = String(pem || "")
-    .replace(/\\n/g, "\n")
-    .trim();
 
-  const clean = normalized
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s/g, "");
+function pemToArrayBuffer(
+  pem
+) {
+  const normalized =
+    String(
+      pem || ""
+    )
+      .replace(
+        /\\n/g,
+        "\n"
+      )
+      .trim();
+
+  const clean =
+    normalized
+      .replace(
+        /-----BEGIN PRIVATE KEY-----/g,
+        ""
+      )
+      .replace(
+        /-----END PRIVATE KEY-----/g,
+        ""
+      )
+      .replace(
+        /\s/g,
+        ""
+      );
 
   if (!clean) {
     throw new Error(
-      "Google private key missing."
+      "MOOMA Google private key missing."
     );
   }
 
-  const binary = atob(clean);
+  const binary =
+    atob(clean);
 
   const bytes =
-    new Uint8Array(binary.length);
+    new Uint8Array(
+      binary.length
+    );
 
   for (
     let i = 0;
@@ -80,71 +206,145 @@ function pemToArrayBuffer(pem) {
   return bytes.buffer;
 }
 
-let tokenCache = null;
 
-async function getGoogleAccessToken(env) {
-  const now = Date.now();
+/* ============================================================
+   GOOGLE TOKEN CACHE
+============================================================ */
 
-  if (
-    tokenCache?.token &&
-    tokenCache.expiresAt >
-      now + 60000
-  ) {
-    return tokenCache.token;
+let googleTokenCache =
+  null;
+
+
+async function getGoogleAccessToken(
+  env
+) {
+  const email =
+    String(
+      env.MOOMA_GOOGLE_CLIENT_EMAIL ||
+      ""
+    ).trim();
+
+  const privateKey =
+    String(
+      env.MOOMA_GOOGLE_PRIVATE_KEY ||
+      ""
+    );
+
+  if (!email) {
+    throw new Error(
+      "MOOMA_GOOGLE_CLIENT_EMAIL missing."
+    );
   }
 
+  if (!privateKey) {
+    throw new Error(
+      "MOOMA_GOOGLE_PRIVATE_KEY missing."
+    );
+  }
+
+
+  const now =
+    Date.now();
+
+
+  if (
+    googleTokenCache?.token &&
+    googleTokenCache.expiresAt >
+      now + 60000
+  ) {
+    return (
+      googleTokenCache.token
+    );
+  }
+
+
   const timestamp =
-    Math.floor(now / 1000);
+    Math.floor(
+      now / 1000
+    );
+
 
   const header = {
-    alg: "RS256",
-    typ: "JWT",
+    alg:
+      "RS256",
+
+    typ:
+      "JWT",
   };
 
+
   const claims = {
-    iss: env.GOOGLE_CLIENT_EMAIL,
-    scope: GOOGLE_SCOPE,
-    aud: GOOGLE_TOKEN_URL,
-    iat: timestamp,
-    exp: timestamp + 3600,
+    iss:
+      email,
+
+    scope:
+      GOOGLE_SCOPE,
+
+    aud:
+      GOOGLE_TOKEN_URL,
+
+    iat:
+      timestamp,
+
+    exp:
+      timestamp + 3600,
   };
+
 
   const encodedHeader =
     base64UrlEncodeString(
-      JSON.stringify(header)
+      JSON.stringify(
+        header
+      )
     );
+
 
   const encodedClaims =
     base64UrlEncodeString(
-      JSON.stringify(claims)
+      JSON.stringify(
+        claims
+      )
     );
+
 
   const unsignedJWT =
     `${encodedHeader}.${encodedClaims}`;
 
+
   const importedKey =
     await crypto.subtle.importKey(
       "pkcs8",
+
       pemToArrayBuffer(
-        env.GOOGLE_PRIVATE_KEY
+        privateKey
       ),
+
       {
         name:
           "RSASSA-PKCS1-v1_5",
-        hash: "SHA-256",
+
+        hash:
+          "SHA-256",
       },
+
       false,
+
       ["sign"]
     );
+
 
   const signature =
     await crypto.subtle.sign(
       "RSASSA-PKCS1-v1_5",
+
       importedKey,
-      new TextEncoder().encode(
-        unsignedJWT
-      )
+
+      new TextEncoder()
+        .encode(
+          unsignedJWT
+        )
     );
+
 
   const jwt =
     `${unsignedJWT}.` +
@@ -152,11 +352,13 @@ async function getGoogleAccessToken(env) {
       signature
     );
 
+
   const response =
     await fetch(
       GOOGLE_TOKEN_URL,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -168,23 +370,29 @@ async function getGoogleAccessToken(env) {
             grant_type:
               "urn:ietf:params:oauth:grant-type:jwt-bearer",
 
-            assertion: jwt,
+            assertion:
+              jwt,
           }),
       }
     );
 
+
   const result =
     await response.json();
 
-  if (!response.ok) {
+
+  if (
+    !response.ok
+  ) {
     throw new Error(
       result.error_description ||
       result.error ||
-      "Google authentication failed."
+      "MOOMA Google authentication failed."
     );
   }
 
-  tokenCache = {
+
+  googleTokenCache = {
     token:
       result.access_token,
 
@@ -197,8 +405,16 @@ async function getGoogleAccessToken(env) {
       1000,
   };
 
-  return result.access_token;
+
+  return (
+    result.access_token
+  );
 }
+
+
+/* ============================================================
+   GOOGLE READ
+============================================================ */
 
 async function getSheetValues(
   env,
@@ -206,7 +422,10 @@ async function getSheetValues(
   range
 ) {
   const token =
-    await getGoogleAccessToken(env);
+    await getGoogleAccessToken(
+      env
+    );
+
 
   const url =
     `https://sheets.googleapis.com/v4/spreadsheets/` +
@@ -217,11 +436,13 @@ async function getSheetValues(
       range
     )}`;
 
+
   const response =
     await fetch(
       url,
       {
-        method: "GET",
+        method:
+          "GET",
 
         headers: {
           Authorization:
@@ -230,98 +451,173 @@ async function getSheetValues(
       }
     );
 
-  const data =
+
+  const result =
     await response.json();
 
-  if (!response.ok) {
+
+  if (
+    !response.ok
+  ) {
     throw new Error(
-      data?.error?.message ||
-      "Google Sheets read failed."
+      result?.error?.message ||
+      "MOOMA Google Sheets read failed."
     );
   }
 
-  return data.values || [];
+
+  return (
+    result.values ||
+    []
+  );
 }
 
-function normalizeHeader(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/_/g, "")
-    .replace(/-/g, "");
+
+/* ============================================================
+   MASTER SHEET
+============================================================ */
+
+function getMoomaMasterSheetId(
+  env
+) {
+  const sheetId =
+    String(
+      env.MOOMA_MASTER_SHEET_ID ||
+      ""
+    ).trim();
+
+  if (!sheetId) {
+    throw new Error(
+      "MOOMA_MASTER_SHEET_ID missing."
+    );
+  }
+
+  return sheetId;
 }
 
-async function readMoomaBranches(env) {
+
+/* ============================================================
+   READ MOOMA BRANCHES
+============================================================ */
+
+async function readMoomaBranches(
+  env
+) {
   const rows =
     await getSheetValues(
       env,
-      env.MASTER_SHEET_ID,
-      "Sheet1!A:Z"
+
+      getMoomaMasterSheetId(
+        env
+      ),
+
+      `${MOOMA_MASTER_TAB}!A:Z`
     );
 
-  if (!rows.length) {
+
+  if (
+    !rows.length
+  ) {
     return [];
   }
 
+
   const headers =
-    rows[0].map(
-      normalizeHeader
-    );
+    rows[0] || [];
+
 
   const codeIndex =
-    headers.indexOf(
-      "branchcode"
+    findHeaderIndex(
+      headers,
+      [
+        "BranchCode",
+        "Branch Code",
+        "Code",
+      ]
     );
+
 
   const nameIndex =
-    headers.indexOf(
-      "branchname"
+    findHeaderIndex(
+      headers,
+      [
+        "BranchName",
+        "Branch Name",
+        "Name",
+      ]
     );
 
+
   if (
-    codeIndex === -1 ||
-    nameIndex === -1
+    codeIndex === -1
   ) {
     throw new Error(
-      "BranchCode or BranchName missing."
+      "MOOMA master sheet BranchCode column not found."
     );
   }
 
+
+  if (
+    nameIndex === -1
+  ) {
+    throw new Error(
+      "MOOMA master sheet BranchName column not found."
+    );
+  }
+
+
   const branches = [];
 
+
   for (
-    const row of
-      rows.slice(1)
+    let index = 1;
+    index < rows.length;
+    index++
   ) {
+    const row =
+      rows[index] || [];
+
+
     const code =
       String(
-        row[codeIndex] || ""
+        row[codeIndex] ||
+        ""
       )
         .trim()
         .toUpperCase();
 
-    /*
-      MOOMA branches should use M codes:
-      M001
-      M002
-      M003
-      ...
-    */
+
+    const name =
+      String(
+        row[nameIndex] ||
+        ""
+      ).trim();
+
+
     if (
-      !code.startsWith("M")
+      !code ||
+      !name
     ) {
       continue;
     }
 
-    const name =
-      String(
-        row[nameIndex] || ""
-      ).trim();
 
-    if (!name) {
+    /*
+      MOOMA codes:
+      M001
+      M002
+      M003
+      etc.
+    */
+
+    if (
+      !code.startsWith(
+        "M"
+      )
+    ) {
       continue;
     }
+
 
     branches.push({
       code,
@@ -329,8 +625,27 @@ async function readMoomaBranches(env) {
     });
   }
 
+
+  branches.sort(
+    (a, b) =>
+      a.code.localeCompare(
+        b.code,
+        undefined,
+        {
+          numeric:
+            true,
+        }
+      )
+  );
+
+
   return branches;
 }
+
+
+/* ============================================================
+   WORKER
+============================================================ */
 
 export default {
   async fetch(
@@ -342,6 +657,11 @@ export default {
         request.url
       );
 
+
+    /* ======================================================
+       CORS
+    ====================================================== */
+
     if (
       request.method ===
       "OPTIONS"
@@ -349,30 +669,110 @@ export default {
       return new Response(
         null,
         {
-          status: 204,
+          status:
+            204,
+
           headers:
             corsHeaders(),
         }
       );
     }
 
+
     try {
+
+      /* ====================================================
+         ROOT
+      ==================================================== */
+
       if (
         url.pathname ===
         "/"
       ) {
         return jsonResponse({
-          success: true,
+          success:
+            true,
+
           version:
             "MOOMA-WORKER-V1",
+
           message:
-            "MOOMA backend active",
+            "DAM MOOMA Worker active",
+
+          features: {
+            googleConnection:
+              true,
+
+            branchDirectory:
+              true,
+          },
+
+          envCheck: {
+            MOOMA_GOOGLE_CLIENT_EMAIL:
+              Boolean(
+                env.MOOMA_GOOGLE_CLIENT_EMAIL
+              ),
+
+            MOOMA_GOOGLE_PRIVATE_KEY:
+              Boolean(
+                env.MOOMA_GOOGLE_PRIVATE_KEY
+              ),
+
+            MOOMA_MASTER_SHEET_ID:
+              Boolean(
+                env.MOOMA_MASTER_SHEET_ID
+              ),
+          },
         });
       }
+
+
+      /* ====================================================
+         TEST
+      ==================================================== */
+
+      if (
+        url.pathname ===
+        "/api/mooma/test"
+      ) {
+        return jsonResponse({
+          success:
+            true,
+
+          version:
+            "MOOMA-WORKER-V1",
+
+          message:
+            "MOOMA API online",
+
+          envCheck: {
+            googleEmail:
+              Boolean(
+                env.MOOMA_GOOGLE_CLIENT_EMAIL
+              ),
+
+            googleKey:
+              Boolean(
+                env.MOOMA_GOOGLE_PRIVATE_KEY
+              ),
+
+            masterSheet:
+              Boolean(
+                env.MOOMA_MASTER_SHEET_ID
+              ),
+          },
+        });
+      }
+
+
+      /* ====================================================
+         BRANCHES
+      ==================================================== */
 
       if (
         url.pathname ===
           "/api/mooma/branches" &&
+
         request.method ===
           "GET"
       ) {
@@ -381,31 +781,50 @@ export default {
             env
           );
 
+
         return jsonResponse({
-          success: true,
+          success:
+            true,
+
+          source:
+            "MOOMA-GOOGLE",
+
           count:
             branches.length,
+
           branches,
         });
       }
 
-      return jsonResponse(
-        {
-          success: false,
-          message:
-            "Route not found.",
-        },
-        404
-      );
-    } catch (error) {
-      console.error(
-        "MOOMA Worker error:",
-        error
-      );
+
+      /* ====================================================
+         404
+      ==================================================== */
 
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
+
+          message:
+            "MOOMA route not found.",
+        },
+        404
+      );
+
+    } catch (error) {
+
+      console.error(
+        "MOOMA WORKER ERROR:",
+        error
+      );
+
+
+      return jsonResponse(
+        {
+          success:
+            false,
+
           message:
             error?.message ||
             "MOOMA backend error.",
