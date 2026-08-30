@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Boxes, RefreshCcw, Search, Sparkles } from "lucide-react";
 import { activeScroll, moomaFetch } from "./moomaApi.js";
 import MoomaLoading from "./MoomaLoading.jsx";
-import "./MoomaStockView.css";
+
 export default function MoomaStockView({branch,onBack}){
  const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[tab,setTab]=useState("daily"),[search,setSearch]=useState("");const tableRef=useRef(null);
  async function load(force=false){try{setLoading(true);setError("");const r=await moomaFetch(`/api/mooma/stock-view?branch=${encodeURIComponent(branch.code)}${force?"&refresh=1":""}`);setData(r.stock||r.data||{})}catch(e){setError(e.message)}finally{setLoading(false)}}
