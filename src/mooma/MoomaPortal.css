@@ -1,1 +1,1112 @@
+.mooma-page {
+  --mooma: #e87ca7;
+  --mooma-soft: #ffc2d8;
+  --mooma-deep: #9e426c;
+  --mooma-bg: #100c10;
+  --mooma-panel: rgba(24, 17, 22, 0.82);
+  --mooma-line: rgba(255, 255, 255, 0.08);
 
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+
+  color: #fff;
+
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(232, 124, 167, 0.16),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 85% 75%,
+      rgba(255, 194, 216, 0.1),
+      transparent 34%
+    ),
+    #100c10;
+
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+
+.mooma-bg-grid {
+  position: fixed;
+  inset: 0;
+
+  pointer-events: none;
+
+  opacity: 0.23;
+
+  background-image:
+    linear-gradient(
+      rgba(255,255,255,0.035) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0.035) 1px,
+      transparent 1px
+    );
+
+  background-size:
+    42px 42px;
+}
+
+
+.mooma-orb {
+  position: fixed;
+
+  width: 440px;
+  height: 440px;
+
+  border-radius: 50%;
+
+  pointer-events: none;
+
+  filter: blur(110px);
+
+  opacity: 0.13;
+}
+
+
+.mooma-orb-one {
+  top: -180px;
+  left: -150px;
+
+  background:
+    var(--mooma);
+}
+
+
+.mooma-orb-two {
+  right: -200px;
+  bottom: -180px;
+
+  background:
+    var(--mooma-soft);
+}
+
+
+.mooma-topbar {
+  position: relative;
+  z-index: 20;
+
+  min-height: 78px;
+
+  padding:
+    0 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  border-bottom:
+    1px solid
+    rgba(255,255,255,0.06);
+
+  background:
+    rgba(12, 9, 12, 0.72);
+
+  backdrop-filter:
+    blur(20px);
+}
+
+
+.mooma-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+
+.mooma-logo-mark {
+  width: 38px;
+  height: 38px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 12px;
+
+  color: #170d12;
+
+  font-weight: 950;
+  font-size: 17px;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--mooma),
+      var(--mooma-soft)
+    );
+
+  box-shadow:
+    0 0 35px
+    rgba(232,124,167,0.25);
+}
+
+
+.mooma-logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+
+.mooma-logo-text strong {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+
+.mooma-logo-text span {
+  margin-top: 2px;
+
+  font-size: 7px;
+  letter-spacing: 0.24em;
+
+  opacity: 0.45;
+}
+
+
+.mooma-network-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-size: 8px;
+  font-weight: 800;
+
+  letter-spacing: 0.16em;
+
+  opacity: 0.66;
+}
+
+
+.mooma-network-status span,
+.mooma-ready-system span {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background:
+    #65e39c;
+
+  box-shadow:
+    0 0 16px
+    rgba(101,227,156,0.75);
+}
+
+
+.mooma-main {
+  position: relative;
+  z-index: 10;
+
+  width:
+    min(1120px, calc(100% - 40px));
+
+  margin:
+    0 auto;
+
+  padding:
+    38px 0 130px;
+}
+
+
+.mooma-back-button {
+  appearance: none;
+
+  border: 0;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding:
+    10px 13px;
+
+  border-radius: 10px;
+
+  color:
+    rgba(255,255,255,0.55);
+
+  background:
+    rgba(255,255,255,0.045);
+
+  cursor: pointer;
+
+  font-size: 8px;
+  font-weight: 800;
+
+  letter-spacing: 0.12em;
+
+  transition:
+    0.2s ease;
+}
+
+
+.mooma-back-button:hover {
+  color: #fff;
+
+  background:
+    rgba(255,255,255,0.09);
+}
+
+
+.mooma-hero {
+  margin-top: 60px;
+
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    220px;
+
+  gap: 40px;
+
+  align-items: end;
+}
+
+
+.mooma-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  color:
+    var(--mooma-soft);
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing: 0.2em;
+}
+
+
+.mooma-hero h1 {
+  margin:
+    15px 0 14px;
+
+  font-size:
+    clamp(
+      42px,
+      7vw,
+      82px
+    );
+
+  line-height: 0.93;
+
+  letter-spacing:
+    -0.055em;
+}
+
+
+.mooma-hero h1 span {
+  color:
+    var(--mooma);
+}
+
+
+.mooma-hero p {
+  max-width: 520px;
+
+  margin: 0;
+
+  color:
+    rgba(255,255,255,0.47);
+
+  font-size: 13px;
+
+  line-height: 1.8;
+}
+
+
+.mooma-network-card {
+  min-height: 190px;
+
+  padding: 24px;
+
+  display: flex;
+  flex-direction: column;
+
+  justify-content: flex-end;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.08);
+
+  border-radius: 22px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(232,124,167,0.14),
+      rgba(255,255,255,0.025)
+    );
+
+  box-shadow:
+    0 25px 60px
+    rgba(0,0,0,0.28);
+}
+
+
+.mooma-network-card > svg {
+  margin-bottom: auto;
+
+  color:
+    var(--mooma);
+}
+
+
+.mooma-network-card small {
+  font-size: 7px;
+
+  letter-spacing:
+    0.18em;
+
+  opacity: 0.45;
+}
+
+
+.mooma-network-card strong {
+  margin-top: 5px;
+
+  font-size: 38px;
+
+  line-height: 1;
+}
+
+
+.mooma-network-card span {
+  margin-top: 8px;
+
+  font-size: 8px;
+
+  letter-spacing:
+    0.12em;
+
+  opacity: 0.5;
+}
+
+
+.mooma-selector {
+  margin-top: 55px;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.075);
+
+  border-radius: 24px;
+
+  overflow: hidden;
+
+  background:
+    rgba(18,13,17,0.76);
+
+  backdrop-filter:
+    blur(24px);
+
+  box-shadow:
+    0 30px 80px
+    rgba(0,0,0,0.3);
+}
+
+
+.mooma-search {
+  min-height: 70px;
+
+  padding:
+    0 22px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  border-bottom:
+    1px solid
+    rgba(255,255,255,0.065);
+}
+
+
+.mooma-search > svg {
+  flex-shrink: 0;
+
+  color:
+    var(--mooma);
+}
+
+
+.mooma-search input {
+  flex: 1;
+
+  min-width: 0;
+
+  border: 0;
+  outline: 0;
+
+  color: #fff;
+
+  background:
+    transparent;
+
+  font-size: 12px;
+}
+
+
+.mooma-search input::placeholder {
+  color:
+    rgba(255,255,255,0.28);
+}
+
+
+.mooma-search > span {
+  font-size: 7px;
+  font-weight: 850;
+
+  letter-spacing:
+    0.13em;
+
+  opacity: 0.42;
+}
+
+
+.mooma-spin {
+  animation:
+    moomaSpin 0.85s
+    linear infinite;
+}
+
+
+@keyframes moomaSpin {
+  to {
+    transform:
+      rotate(360deg);
+  }
+}
+
+
+.mooma-loading {
+  min-height: 310px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-direction: column;
+
+  text-align: center;
+}
+
+
+.mooma-radar {
+  position: relative;
+
+  width: 90px;
+  height: 90px;
+
+  display: grid;
+  place-items: center;
+
+  margin-bottom: 22px;
+}
+
+
+.mooma-radar > div {
+  position: absolute;
+  inset: 0;
+
+  border:
+    1px solid
+    rgba(232,124,167,0.16);
+
+  border-top-color:
+    var(--mooma);
+
+  border-radius: 50%;
+}
+
+
+.mooma-radar strong {
+  width: 54px;
+  height: 54px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  color:
+    #1b0d14;
+
+  background:
+    var(--mooma);
+
+  font-size: 21px;
+}
+
+
+.mooma-loading h3 {
+  margin:
+    0 0 8px;
+
+  font-size: 10px;
+
+  letter-spacing:
+    0.17em;
+}
+
+
+.mooma-loading p {
+  margin: 0;
+
+  color:
+    rgba(255,255,255,0.4);
+
+  font-size: 10px;
+}
+
+
+.mooma-error {
+  min-height: 290px;
+
+  padding: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-direction: column;
+
+  text-align: center;
+}
+
+
+.mooma-error svg {
+  color:
+    #ff7770;
+}
+
+
+.mooma-error strong {
+  margin-top: 12px;
+
+  font-size: 10px;
+  letter-spacing: 0.15em;
+}
+
+
+.mooma-error span {
+  max-width: 500px;
+
+  margin-top: 8px;
+
+  color:
+    rgba(255,255,255,0.45);
+
+  font-size: 10px;
+}
+
+
+.mooma-error button {
+  margin-top: 18px;
+
+  border: 0;
+
+  padding:
+    11px 16px;
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  border-radius: 10px;
+
+  background:
+    var(--mooma);
+
+  cursor: pointer;
+
+  font-size: 8px;
+  font-weight: 900;
+}
+
+
+.mooma-branch-list {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+}
+
+
+.mooma-branch {
+  min-height: 82px;
+
+  padding:
+    15px 18px;
+
+  appearance: none;
+
+  border: 0;
+
+  border-bottom:
+    1px solid
+    rgba(255,255,255,0.055);
+
+  display: flex;
+  align-items: center;
+
+  gap: 13px;
+
+  color: #fff;
+
+  background:
+    transparent;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    0.2s ease;
+}
+
+
+.mooma-branch:nth-child(odd) {
+  border-right:
+    1px solid
+    rgba(255,255,255,0.055);
+}
+
+
+.mooma-branch:hover,
+.mooma-branch.active {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(232,124,167,0.13),
+      rgba(232,124,167,0.025)
+    );
+}
+
+
+.mooma-branch.active {
+  box-shadow:
+    inset 3px 0 0
+    var(--mooma);
+}
+
+
+.mooma-number {
+  width: 22px;
+
+  font-size: 7px;
+
+  opacity: 0.28;
+}
+
+
+.mooma-pin {
+  width: 38px;
+  height: 38px;
+
+  flex-shrink: 0;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 11px;
+
+  color:
+    var(--mooma-soft);
+
+  background:
+    rgba(232,124,167,0.1);
+}
+
+
+.mooma-branch-info {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+}
+
+
+.mooma-branch-info strong {
+  font-size: 11px;
+
+  letter-spacing:
+    0.02em;
+}
+
+
+.mooma-branch-info small {
+  margin-top: 5px;
+
+  color:
+    var(--mooma-soft);
+
+  font-size: 7px;
+
+  letter-spacing:
+    0.13em;
+}
+
+
+.mooma-branch > svg {
+  opacity: 0.28;
+}
+
+
+.mooma-view-more {
+  width: 100%;
+
+  border: 0;
+
+  padding: 17px;
+
+  color:
+    var(--mooma-soft);
+
+  background:
+    rgba(232,124,167,0.045);
+
+  cursor: pointer;
+
+  font-size: 8px;
+  font-weight: 850;
+
+  letter-spacing:
+    0.13em;
+}
+
+
+.mooma-empty {
+  padding: 45px 20px;
+
+  text-align: center;
+
+  color:
+    rgba(255,255,255,0.38);
+
+  font-size: 10px;
+}
+
+
+.mooma-ready {
+  margin:
+    18px;
+
+  padding:
+    18px 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 20px;
+
+  border:
+    1px solid
+    rgba(232,124,167,0.22);
+
+  border-radius: 17px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(232,124,167,0.11),
+      rgba(255,255,255,0.025)
+    );
+}
+
+
+.mooma-ready > div {
+  display: flex;
+  flex-direction: column;
+}
+
+
+.mooma-ready small {
+  font-size: 7px;
+
+  letter-spacing:
+    0.16em;
+
+  opacity: 0.4;
+}
+
+
+.mooma-ready strong {
+  margin-top: 6px;
+
+  font-size: 12px;
+}
+
+
+.mooma-ready button {
+  border: 0;
+
+  min-height: 43px;
+
+  padding:
+    0 17px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  border-radius: 11px;
+
+  color:
+    #1b0d14;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--mooma),
+      var(--mooma-soft)
+    );
+
+  cursor: pointer;
+
+  font-size: 8px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.09em;
+}
+
+
+.mooma-giant-word {
+  position: fixed;
+
+  right: -20px;
+  bottom: -36px;
+
+  pointer-events: none;
+
+  font-size:
+    clamp(
+      100px,
+      19vw,
+      310px
+    );
+
+  font-weight: 950;
+
+  letter-spacing:
+    -0.09em;
+
+  color:
+    rgba(255,255,255,0.018);
+}
+
+
+.mooma-active-page {
+  display: flex;
+  flex-direction: column;
+}
+
+
+.mooma-active-main {
+  position: relative;
+  z-index: 10;
+
+  min-height:
+    calc(100vh - 78px);
+
+  padding: 40px;
+
+  display: grid;
+  place-items: center;
+}
+
+
+.mooma-active-card {
+  width:
+    min(620px, 100%);
+
+  padding:
+    55px 45px;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.08);
+
+  border-radius: 28px;
+
+  text-align: center;
+
+  background:
+    rgba(24,17,22,0.78);
+
+  backdrop-filter:
+    blur(25px);
+
+  box-shadow:
+    0 35px 90px
+    rgba(0,0,0,0.34);
+}
+
+
+.mooma-success-icon {
+  width: 72px;
+  height: 72px;
+
+  margin:
+    0 auto 22px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  color:
+    var(--mooma);
+
+  background:
+    rgba(232,124,167,0.1);
+
+  box-shadow:
+    0 0 50px
+    rgba(232,124,167,0.13);
+}
+
+
+.mooma-active-card h1 {
+  margin:
+    15px 0 8px;
+
+  font-size:
+    clamp(
+      36px,
+      7vw,
+      66px
+    );
+
+  line-height: 1;
+
+  letter-spacing:
+    -0.055em;
+}
+
+
+.mooma-active-code {
+  margin:
+    18px auto;
+
+  width:
+    fit-content;
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  color:
+    var(--mooma-soft);
+
+  font-size: 9px;
+
+  letter-spacing:
+    0.13em;
+}
+
+
+.mooma-active-card p {
+  max-width: 480px;
+
+  margin:
+    20px auto;
+
+  color:
+    rgba(255,255,255,0.45);
+
+  line-height: 1.8;
+
+  font-size: 11px;
+}
+
+
+.mooma-ready-system {
+  width:
+    fit-content;
+
+  margin:
+    28px auto 0;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-size: 8px;
+  font-weight: 850;
+
+  letter-spacing:
+    0.16em;
+
+  opacity: 0.7;
+}
+
+
+@media (
+  max-width: 760px
+) {
+  .mooma-topbar {
+    padding:
+      0 18px;
+  }
+
+  .mooma-main {
+    width:
+      min(
+        100% - 24px,
+        1120px
+      );
+  }
+
+  .mooma-hero {
+    grid-template-columns:
+      1fr;
+
+    margin-top: 40px;
+  }
+
+  .mooma-network-card {
+    min-height: 140px;
+  }
+
+  .mooma-branch-list {
+    grid-template-columns:
+      1fr;
+  }
+
+  .mooma-branch:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .mooma-ready {
+    align-items:
+      stretch;
+
+    flex-direction:
+      column;
+  }
+
+  .mooma-ready button {
+    justify-content:
+      center;
+  }
+
+  .mooma-search > span {
+    display: none;
+  }
+}
