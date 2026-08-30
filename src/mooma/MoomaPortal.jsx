@@ -468,12 +468,10 @@ export default function MoomaPortal({
   return (
     <div
       className="mooma-portal"
-      data-mooma-theme={
+      data-mooma-theme={theme}
       style={{
         background: "red",
         minHeight: "100vh",
-          
-        
       }}
     >
       {/* ======================================================
