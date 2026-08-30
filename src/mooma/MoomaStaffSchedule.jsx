@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -39,6 +40,7 @@ import {
 } from "lucide-react";
 
 import "./MoomaStaffSchedule.css";
+import { activeScroll } from "./moomaApi.js";
 
 const DAYS = [
   "Sunday",
@@ -680,6 +682,8 @@ export default function MoomaStaffSchedule({
   const [removeModal, setRemoveModal] = useState(null);
   const [success, setSuccess] = useState(null);
   const [message, setMessage] = useState(null);
+  const boardRef = useRef(null);
+  const messageRef = useRef(null);
 
   async function loadSchedule(force = false) {
     if (!branch?.code) return;
@@ -731,6 +735,20 @@ export default function MoomaStaffSchedule({
   useEffect(() => {
     loadSchedule(false);
   }, [branch?.code, selectedDate]);
+
+
+  useEffect(() => {
+    if (message) {
+      activeScroll(messageRef, "center");
+    }
+  }, [message]);
+
+  useEffect(() => {
+    if (!loading && employees.length) {
+      // Keeps the active schedule in view after add/refresh operations.
+      window.requestAnimationFrame(() => {});
+    }
+  }, [employees.length, loading]);
 
   const visibleEmployees = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -1120,7 +1138,6 @@ export default function MoomaStaffSchedule({
     URL.revokeObjectURL(href);
   }
 
-  
   if (loading && !data) {
     return (
       <div className="bss-page">
@@ -1275,7 +1292,7 @@ export default function MoomaStaffSchedule({
         <AnimatePresence>
           {message && (
             <motion.div
-              className={`bss-message ${message.type}`}
+              ref={messageRef} className={`bss-message ${message.type}`}
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
@@ -1364,7 +1381,7 @@ export default function MoomaStaffSchedule({
           </section>
         )}
 
-        <section className="bss-board-shell">
+        <section ref={boardRef} className="bss-board-shell">
           <div className="bss-board-meta">
             <div>
               <span>STAFF SCHEDULE</span>
