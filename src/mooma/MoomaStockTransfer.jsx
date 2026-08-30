@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, CheckCircle2, History, LoaderCircle, MapPin, PackagePlus, RefreshCcw, Search, Send, Sparkles, Trash2, Truck, X } from "lucide-react";
 import { activeScroll, moomaFetch } from "./moomaApi.js";
 import MoomaLoading from "./MoomaLoading.jsx";
-import "./MoomaStockTransfer.css";
+
 export default function MoomaStockTransfer({branch,onBack}){
  const [data,setData]=useState(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[destination,setDestination]=useState(""),[search,setSearch]=useState(""),[cart,setCart]=useState([]),[reason,setReason]=useState(""),[history,setHistory]=useState([]),[message,setMessage]=useState(null),[showHistory,setShowHistory]=useState(false);
  const cartRef=useRef(null),historyRef=useRef(null),messageRef=useRef(null);
