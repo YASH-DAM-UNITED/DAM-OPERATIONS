@@ -6937,6 +6937,16 @@ export default {
         request.url
       );
 
+    // 👇 PASTE IT HERE
+
+    if (url.pathname.startsWith("/api/mooma/")) {
+      return handleMoomaRequest(request, env);
+    }
+
+
+
+
+     
 
     if (
       request.method ===
