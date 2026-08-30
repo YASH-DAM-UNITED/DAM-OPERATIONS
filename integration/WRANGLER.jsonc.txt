@@ -1,0 +1,23 @@
+KEEP your existing single Wrangler configuration. Do NOT add a second worker object.
+
+{
+  "name": "dam-operations",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-08-26",
+  "keep_vars": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dam-operations-db",
+      "database_id": "4a828bb8-1811-4867-8c5e-0faaf618d810"
+    }
+  ]
+}

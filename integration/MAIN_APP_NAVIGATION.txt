@@ -1,0 +1,9 @@
+In the existing brand click function, MOOMA should navigate to the independent page instead of importing MOOMA React files into src:
+
+if (brand.id === "mooma") {
+  window.location.href = "/mooma/";
+  return;
+}
+
+This is the only handoff required from the main BART frontend.
+All MOOMA components, CSS and backend code remain outside src/.

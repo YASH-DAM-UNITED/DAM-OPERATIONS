@@ -1,0 +1,17 @@
+worker/index.js
+
+1) At the TOP add:
+
+import { handleMoomaRequest } from "../mooma/moomaBackend.js";
+
+2) Inside async fetch(request, env), immediately after:
+
+const url = new URL(request.url);
+
+add:
+
+if (url.pathname.startsWith("/api/mooma/")) {
+  return handleMoomaRequest(request, env);
+}
+
+Do not change BART routes.
