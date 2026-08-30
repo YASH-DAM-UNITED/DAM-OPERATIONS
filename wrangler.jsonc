@@ -21,3 +21,11 @@
     }
   ]
 }
+
+
+
+{
+  "name": "dam-mooma-operations",
+  "main": "index.js",
+  "compatibility_date": "2026-08-30"
+}
