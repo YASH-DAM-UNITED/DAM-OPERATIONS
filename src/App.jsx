@@ -1934,6 +1934,54 @@ function chooseBrand(brand) {
         />
       )}
 
+
+
+
+
+
+
+
+
+
+
+
+      {/* ======================================================
+    MOOMA INDEPENDENT PORTAL
+====================================================== */}
+
+{page === "mooma" &&
+  selectedBrand?.id ===
+    "mooma" && (
+    <motion.div
+      key="mooma-portal"
+      initial={{
+        opacity: 0,
+      }}
+      animate={{
+        opacity: 1,
+      }}
+      exit={{
+        opacity: 0,
+      }}
+    >
+      <MoomaPortal
+        onBack={() => {
+          setSelectedBrand(
+            null
+          );
+
+          setSelectedBranch(
+            null
+          );
+
+          setPage(
+            "brands"
+          );
+        }}
+      />
+    </motion.div>
+  )}
+
       {/* REAL BRANCH LIST */}
 
       {page === "branches" &&
