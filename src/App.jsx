@@ -26,6 +26,7 @@ import {
 import "./index.css";
 import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
+import MoomaPortal from "./mooma/MoomaPortal.jsx";
 
 /* =========================================================
    API
@@ -1787,23 +1788,29 @@ function App() {
   /* =======================================================
      BRAND
   ======================================================= */
+function chooseBrand(brand) {
+  setSelectedBrand(brand);
 
-  function chooseBrand(brand) {
-    /*
-      BART IS LIVE.
+  setSelectedBranch(null);
 
-      GLOR + MOOMA are kept
-      in the UI but backend comes later.
-    */
+  setAuthenticatedBranch(null);
 
-    setSelectedBrand(brand);
+  /*
+    MOOMA IS NOW ITS OWN
+    INDEPENDENT FRONTEND SYSTEM.
+  */
+  if (brand.id === "mooma") {
+    setPage("mooma");
 
-    setSelectedBranch(null);
-
-    setAuthenticatedBranch(null);
-
-    setPage("branches");
+    return;
   }
+
+  /*
+    KEEP EXISTING BART / OTHER
+    FLOW UNCHANGED.
+  */
+  setPage("branches");
+}
 
   /* =======================================================
      BRANCH
