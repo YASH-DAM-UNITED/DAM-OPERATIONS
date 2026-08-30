@@ -469,10 +469,7 @@ export default function MoomaPortal({
     <div
       className="mooma-portal"
       data-mooma-theme={theme}
-      style={{
-        background: "red",
-        minHeight: "100vh",
-      }}
+      
     >
       {/* ======================================================
           BACKGROUND
