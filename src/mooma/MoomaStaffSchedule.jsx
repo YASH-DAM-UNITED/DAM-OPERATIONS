@@ -39,7 +39,7 @@ import {
   X,
 } from "lucide-react";
 
-import "./MoomaStaffSchedule.css";
+
 import { activeScroll } from "./moomaApi.js";
 
 const DAYS = [
