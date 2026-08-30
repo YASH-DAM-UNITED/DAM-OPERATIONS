@@ -9480,25 +9480,3 @@ footer {
 
 
 
-
-
-/* ============================================================
-   MOOMA CSS TEST
-============================================================ */
-
-.mooma-portal {
-  min-height: 100vh !important;
-  background: hotpink !important;
-  color: blue !important;
-}
-
-.mp-header {
-  padding: 30px !important;
-  background: black !important;
-  color: white !important;
-}
-
-.mp-branch-card {
-  background: yellow !important;
-  border: 8px solid red !important;
-}
