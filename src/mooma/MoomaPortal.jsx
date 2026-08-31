@@ -23,8 +23,9 @@ import {
   Search,
 } from "lucide-react";
 
-import "./Mooma.css";
 
+import "./Mooma.css";
+import MoomaDashboard from "./MoomaDashboard.jsx";
 
 /* ============================================================
    MOOMA API
@@ -520,93 +521,28 @@ export default function MoomaPortal({
      MoomaDashboard.jsx will replace this screen.
   ============================================================ */
 
-  if (authenticated) {
-    return (
-      <motion.div
-        className="mooma-auth-screen"
-        initial={{
-          opacity: 0,
-        }}
-        animate={{
-          opacity: 1,
-        }}
-        transition={{
-          duration: 0.3,
-        }}
-      >
-        <motion.div
-          className="mooma-auth-card"
-          initial={{
-            opacity: 0,
-            y: 25,
-            scale: 0.97,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-            scale: 1,
-          }}
-          transition={{
-            duration: 0.4,
-          }}
-        >
-          <div className="mooma-auth-icon">
-            M
-          </div>
+if (authenticated) {
+  return (
+    <MoomaDashboard
+      branch={authenticated}
 
+      onLogout={() => {
+        setAuthenticated(null);
+        setSelected(null);
+        setPassword("");
+        setLoginError("");
+        setShowPassword(false);
+      }}
 
-          <small>
-            MOOMA BRANCH VERIFIED
-          </small>
-
-
-          <h1>
-            {authenticated?.name ||
-              selected?.name ||
-              "MOOMA"}
-          </h1>
-
-
-          <p>
-            {authenticated?.code ||
-              selected?.code ||
-              ""}
-          </p>
-
-
-          <strong>
-            MOOMA OPERATIONS
-            CONNECTION READY
-          </strong>
-
-
-          <button
-            type="button"
-            onClick={() => {
-              setAuthenticated(
-                null
-              );
-
-              setSelected(
-                null
-              );
-
-              setPassword("");
-
-              setLoginError("");
-            }}
-          >
-            <ArrowLeft
-              size={16}
-            />
-
-            CHANGE BRANCH
-          </button>
-        </motion.div>
-      </motion.div>
-    );
-  }
-
+      onModule={(moduleId) => {
+        console.log(
+          "[MOOMA] MODULE CLICK:",
+          moduleId
+        );
+      }}
+    />
+  );
+}
 
   /* ============================================================
      MOOMA PORTAL
