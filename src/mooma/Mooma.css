@@ -1,0 +1,630 @@
+/* =========================================================
+   MOOMA PORTAL
+========================================================= */
+
+.mooma-portal {
+  --mooma-primary: #e47ca7;
+  --mooma-secondary: #ffc1d8;
+  --mooma-dark: #181116;
+  --mooma-text: #21171d;
+  --mooma-soft: #776871;
+
+  position: relative;
+
+  min-height: 100vh;
+  width: 100%;
+
+  overflow: hidden;
+
+  background: #ffffff;
+  color: var(--mooma-text);
+
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+
+/* =========================================================
+   BACKGROUND
+========================================================= */
+
+.mooma-bg {
+  position: absolute;
+  inset: 0;
+
+  background:
+    radial-gradient(
+      circle at 78% 20%,
+      rgba(228, 124, 167, 0.20),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 15% 85%,
+      rgba(255, 193, 216, 0.25),
+      transparent 35%
+    ),
+    linear-gradient(
+      135deg,
+      #ffffff 0%,
+      #fffafd 55%,
+      #fff5f9 100%
+    );
+
+  pointer-events: none;
+}
+
+
+.mooma-grid {
+  position: absolute;
+  inset: 0;
+
+  opacity: 0.32;
+
+  background-image:
+    linear-gradient(
+      rgba(228, 124, 167, 0.07) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(228, 124, 167, 0.07) 1px,
+      transparent 1px
+    );
+
+  background-size: 55px 55px;
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      black,
+      transparent 85%
+    );
+
+  pointer-events: none;
+}
+
+
+.mooma-orb {
+  position: absolute;
+
+  border-radius: 999px;
+
+  filter: blur(5px);
+
+  pointer-events: none;
+
+  animation:
+    moomaFloat 8s ease-in-out infinite;
+}
+
+
+.mooma-orb-one {
+  width: 340px;
+  height: 340px;
+
+  right: -120px;
+  top: 120px;
+
+  background:
+    rgba(228, 124, 167, 0.10);
+}
+
+
+.mooma-orb-two {
+  width: 220px;
+  height: 220px;
+
+  left: -80px;
+  bottom: 40px;
+
+  background:
+    rgba(255, 193, 216, 0.18);
+
+  animation-delay: -3s;
+}
+
+
+@keyframes moomaFloat {
+  0%,
+  100% {
+    transform:
+      translate3d(0, 0, 0)
+      scale(1);
+  }
+
+  50% {
+    transform:
+      translate3d(0, -20px, 0)
+      scale(1.04);
+  }
+}
+
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.mooma-header {
+  position: relative;
+  z-index: 20;
+
+  height: 78px;
+
+  padding:
+    0 clamp(20px, 5vw, 75px);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  border-bottom:
+    1px solid rgba(31, 20, 27, 0.07);
+
+  background:
+    rgba(255, 255, 255, 0.72);
+
+  backdrop-filter:
+    blur(18px);
+}
+
+
+.mooma-brand {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+}
+
+
+.mooma-logo {
+  width: 38px;
+  height: 38px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--mooma-primary),
+      var(--mooma-secondary)
+    );
+
+  color: white;
+
+  font-size: 17px;
+  font-weight: 950;
+
+  box-shadow:
+    0 10px 30px
+    rgba(228, 124, 167, 0.25);
+}
+
+
+.mooma-brand-text {
+  display: flex;
+  flex-direction: column;
+
+  gap: 2px;
+}
+
+
+.mooma-brand-text strong {
+  font-size: 14px;
+
+  letter-spacing:
+    0.04em;
+}
+
+
+.mooma-brand-text span {
+  color: #9b8793;
+
+  font-size: 7px;
+  font-weight: 800;
+
+  letter-spacing:
+    0.18em;
+}
+
+
+.mooma-status {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  color: #806f79;
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.15em;
+}
+
+
+.mooma-status-dot {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background:
+    var(--mooma-primary);
+
+  box-shadow:
+    0 0 0 5px
+    rgba(228, 124, 167, 0.10);
+
+  animation:
+    moomaPulse 1.8s ease-in-out infinite;
+}
+
+
+@keyframes moomaPulse {
+  50% {
+    box-shadow:
+      0 0 0 9px
+      rgba(228, 124, 167, 0);
+  }
+}
+
+
+/* =========================================================
+   MAIN
+========================================================= */
+
+.mooma-main {
+  position: relative;
+  z-index: 10;
+
+  width:
+    min(1180px, calc(100% - 40px));
+
+  margin: 0 auto;
+
+  padding:
+    40px 0 100px;
+}
+
+
+/* =========================================================
+   BACK
+========================================================= */
+
+.mooma-back {
+  border: 0;
+
+  padding: 10px 0;
+
+  display: inline-flex;
+  align-items: center;
+
+  gap: 8px;
+
+  background: transparent;
+
+  color: #76656f;
+
+  cursor: pointer;
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.15em;
+
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+
+.mooma-back:hover {
+  color:
+    var(--mooma-primary);
+
+  transform:
+    translateX(-3px);
+}
+
+
+/* =========================================================
+   HERO
+========================================================= */
+
+.mooma-hero {
+  max-width: 780px;
+
+  padding-top:
+    clamp(65px, 9vh, 115px);
+}
+
+
+.mooma-eyebrow {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  margin-bottom: 20px;
+
+  color:
+    var(--mooma-primary);
+
+  font-size: 9px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.17em;
+}
+
+
+.mooma-hero h1 {
+  margin: 0;
+
+  color:
+    var(--mooma-dark);
+
+  font-size:
+    clamp(
+      62px,
+      9vw,
+      125px
+    );
+
+  line-height: 0.88;
+
+  letter-spacing:
+    -0.065em;
+
+  font-weight: 900;
+}
+
+
+.mooma-hero h1 span {
+  color:
+    var(--mooma-primary);
+}
+
+
+.mooma-hero p {
+  max-width: 590px;
+
+  margin:
+    30px 0 0;
+
+  color:
+    var(--mooma-soft);
+
+  font-size: 14px;
+
+  line-height: 1.75;
+}
+
+
+/* =========================================================
+   READY CARD
+========================================================= */
+
+.mooma-ready-card {
+  width:
+    min(480px, 100%);
+
+  margin-top: 35px;
+
+  padding:
+    18px 20px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+
+  border:
+    1px solid rgba(228, 124, 167, 0.18);
+
+  border-radius: 18px;
+
+  background:
+    rgba(255, 255, 255, 0.72);
+
+  box-shadow:
+    0 20px 60px
+    rgba(92, 49, 70, 0.08);
+
+  backdrop-filter:
+    blur(16px);
+}
+
+
+.mooma-ready-icon {
+  width: 43px;
+  height: 43px;
+
+  flex: 0 0 auto;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 13px;
+
+  background:
+    rgba(228, 124, 167, 0.11);
+
+  color:
+    var(--mooma-primary);
+}
+
+
+.mooma-ready-card > div:nth-child(2) {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+
+.mooma-ready-card small {
+  color: #a28f99;
+
+  font-size: 7px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.16em;
+}
+
+
+.mooma-ready-card strong {
+  color:
+    var(--mooma-dark);
+
+  font-size: 11px;
+
+  letter-spacing:
+    0.04em;
+}
+
+
+.mooma-ready-arrow {
+  color:
+    var(--mooma-primary);
+}
+
+
+/* =========================================================
+   GIANT BACKGROUND WORD
+========================================================= */
+
+.mooma-giant-word {
+  position: absolute;
+
+  right: -35px;
+  bottom: -65px;
+
+  color:
+    rgba(228, 124, 167, 0.055);
+
+  font-size:
+    clamp(
+      150px,
+      27vw,
+      440px
+    );
+
+  line-height: 0.75;
+
+  font-weight: 950;
+
+  letter-spacing:
+    -0.09em;
+
+  pointer-events: none;
+  user-select: none;
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 700px) {
+  .mooma-header {
+    height: 68px;
+
+    padding:
+      0 18px;
+  }
+
+
+  .mooma-brand-text span {
+    display: none;
+  }
+
+
+  .mooma-status {
+    font-size: 7px;
+  }
+
+
+  .mooma-main {
+    width:
+      calc(100% - 36px);
+
+    padding-top: 25px;
+  }
+
+
+  .mooma-hero {
+    padding-top: 60px;
+  }
+
+
+  .mooma-hero h1 {
+    font-size:
+      clamp(
+        55px,
+        18vw,
+        78px
+      );
+  }
+
+
+  .mooma-hero p {
+    font-size: 13px;
+  }
+
+
+  .mooma-ready-card {
+    box-sizing:
+      border-box;
+
+    padding: 15px;
+  }
+
+
+  .mooma-giant-word {
+    right: -20px;
+    bottom: -20px;
+
+    font-size: 38vw;
+  }
+}
+
+
+/* =========================================================
+   VERY SMALL MOBILE
+========================================================= */
+
+@media (max-width: 420px) {
+  .mooma-logo {
+    width: 34px;
+    height: 34px;
+  }
+
+
+  .mooma-status {
+    font-size: 6px;
+  }
+
+
+  .mooma-hero {
+    padding-top: 45px;
+  }
+
+
+  .mooma-hero h1 {
+    font-size: 54px;
+  }
+}
