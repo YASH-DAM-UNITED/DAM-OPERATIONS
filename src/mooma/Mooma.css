@@ -7030,3 +7030,1699 @@
     animation: none !important;
   }
 }
+
+
+
+/* ============================================================
+   ============================================================
+   MOOMA STOCK RECORD
+   CHARCOAL × RED INVENTORY SYSTEM
+   ============================================================
+   ============================================================ */
+
+.mooma-stock-page {
+  --ms-red: #b52230;
+  --ms-red-bright: #d23846;
+  --ms-red-dark: #75131c;
+
+  --ms-bg: #f4f3f1;
+  --ms-surface: rgba(255, 255, 255, 0.82);
+  --ms-surface-solid: #ffffff;
+  --ms-surface-2: #ebe9e7;
+
+  --ms-text: #222225;
+  --ms-text-soft: #55555b;
+  --ms-muted: #88888e;
+
+  --ms-border: rgba(25, 25, 28, 0.09);
+  --ms-red-border: rgba(181, 34, 48, 0.24);
+
+  --ms-shadow:
+    0 25px 70px rgba(20, 20, 24, 0.09);
+
+  position: relative;
+  min-height: 100vh;
+
+  background:
+    radial-gradient(
+      circle at 85% 0%,
+      rgba(181, 34, 48, 0.07),
+      transparent 30%
+    ),
+    var(--ms-bg);
+
+  color: var(--ms-text);
+
+  overflow-x: hidden;
+}
+
+
+/* ============================================================
+   DARK MODE
+============================================================ */
+
+@media (prefers-color-scheme: dark) {
+  .mooma-stock-page {
+    --ms-bg: #18181a;
+    --ms-surface: rgba(38, 38, 41, 0.88);
+    --ms-surface-solid: #262629;
+    --ms-surface-2: #202023;
+
+    --ms-text: #f2f2f3;
+    --ms-text-soft: #c0c0c5;
+    --ms-muted: #88888f;
+
+    --ms-border: rgba(255, 255, 255, 0.08);
+    --ms-red-border: rgba(210, 56, 70, 0.29);
+
+    --ms-shadow:
+      0 28px 75px rgba(0, 0, 0, 0.32);
+  }
+}
+
+
+/* ============================================================
+   BACKGROUND
+============================================================ */
+
+.mooma-stock-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+
+  background:
+    radial-gradient(
+      circle at 10% 20%,
+      rgba(181, 34, 48, 0.05),
+      transparent 26%
+    ),
+    radial-gradient(
+      circle at 90% 75%,
+      rgba(181, 34, 48, 0.045),
+      transparent 30%
+    );
+}
+
+.mooma-stock-grid-bg {
+  position: fixed;
+  inset: 0;
+
+  pointer-events: none;
+
+  opacity: 0.025;
+
+  background-image:
+    linear-gradient(
+      rgba(100, 100, 100, 0.8) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(100, 100, 100, 0.8) 1px,
+      transparent 1px
+    );
+
+  background-size: 45px 45px;
+}
+
+
+/* ============================================================
+   HEADER
+============================================================ */
+
+.mooma-stock-header {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+
+  min-height: 70px;
+
+  padding: 0 32px;
+
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+
+  border-bottom: 1px solid var(--ms-border);
+
+  background: color-mix(
+    in srgb,
+    var(--ms-bg) 84%,
+    transparent
+  );
+
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.mooma-stock-back {
+  justify-self: start;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 9px 12px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 9px;
+
+  background: var(--ms-surface);
+
+  color: var(--ms-text-soft);
+
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.mooma-stock-back:hover {
+  transform: translateX(-3px);
+  color: var(--ms-red);
+  border-color: var(--ms-red-border);
+}
+
+.mooma-stock-header-title {
+  text-align: center;
+}
+
+.mooma-stock-header-title span,
+.mooma-stock-header-branch small {
+  display: block;
+
+  margin-bottom: 3px;
+
+  color: var(--ms-muted);
+
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+}
+
+.mooma-stock-header-title strong {
+  font-size: 14px;
+  letter-spacing: 0.12em;
+}
+
+.mooma-stock-header-branch {
+  justify-self: end;
+  text-align: right;
+}
+
+.mooma-stock-header-branch strong {
+  color: var(--ms-red);
+
+  font-size: 14px;
+  letter-spacing: 0.1em;
+}
+
+
+/* ============================================================
+   MAIN
+============================================================ */
+
+.mooma-stock-main {
+  position: relative;
+  z-index: 2;
+
+  width: min(1280px, calc(100% - 48px));
+
+  margin: 0 auto;
+  padding: 48px 0 90px;
+}
+
+
+/* ============================================================
+   HERO
+============================================================ */
+
+.mooma-stock-hero {
+  min-height: 180px;
+
+  padding: 36px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 30px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 22px;
+
+  background:
+    linear-gradient(
+      125deg,
+      var(--ms-surface),
+      transparent
+    );
+
+  box-shadow: var(--ms-shadow);
+}
+
+.mooma-stock-eyebrow {
+  display: block;
+
+  margin-bottom: 13px;
+
+  color: var(--ms-red);
+
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.mooma-stock-hero h1 {
+  margin: 0;
+
+  font-size: clamp(34px, 5vw, 60px);
+  line-height: 0.95;
+
+  letter-spacing: -0.045em;
+}
+
+.mooma-stock-hero p {
+  margin: 13px 0 0;
+
+  color: var(--ms-muted);
+
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+
+/* ============================================================
+   DATE CARD
+============================================================ */
+
+.mooma-stock-date-card {
+  min-width: 290px;
+
+  padding: 16px;
+
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 13px;
+
+  border: 1px solid var(--ms-red-border);
+  border-radius: 14px;
+
+  background: var(--ms-surface);
+
+  box-shadow:
+    0 10px 30px rgba(181, 34, 48, 0.06);
+}
+
+.mooma-stock-date-card > svg {
+  color: var(--ms-red);
+}
+
+.mooma-stock-date-card small {
+  display: block;
+
+  margin-bottom: 3px;
+
+  color: var(--ms-muted);
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.mooma-stock-date-card strong {
+  font-size: 13px;
+}
+
+.mooma-stock-date-card input {
+  width: 38px;
+  height: 38px;
+
+  padding: 6px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 9px;
+
+  background: var(--ms-surface-2);
+  color: var(--ms-text);
+
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   SECTIONS
+============================================================ */
+
+.mooma-stock-modes {
+  margin-top: 50px;
+}
+
+.mooma-stock-section-heading {
+  margin-bottom: 18px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+}
+
+.mooma-stock-section-heading span {
+  color: var(--ms-red);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.mooma-stock-section-heading h2 {
+  margin: 5px 0 0;
+
+  font-size: 25px;
+  letter-spacing: -0.03em;
+}
+
+
+/* ============================================================
+   MODE CARDS
+============================================================ */
+
+.mooma-stock-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.mooma-stock-mode-card {
+  position: relative;
+
+  min-height: 245px;
+
+  padding: 22px;
+
+  text-align: left;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 17px;
+
+  background: var(--ms-surface);
+
+  color: var(--ms-text);
+
+  cursor: pointer;
+
+  overflow: hidden;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.mooma-stock-mode-card::before {
+  content: "";
+
+  position: absolute;
+  left: 0;
+  top: 0;
+
+  width: 3px;
+  height: 0;
+
+  background: var(--ms-red);
+
+  transition: height 0.3s ease;
+}
+
+.mooma-stock-mode-card:hover,
+.mooma-stock-mode-card.active {
+  border-color: var(--ms-red-border);
+
+  box-shadow:
+    0 18px 45px rgba(181, 34, 48, 0.08);
+}
+
+.mooma-stock-mode-card:hover::before,
+.mooma-stock-mode-card.active::before {
+  height: 100%;
+}
+
+.mooma-stock-mode-card.submitted {
+  opacity: 0.67;
+}
+
+.mooma-stock-mode-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+
+  margin-bottom: 28px;
+}
+
+.mooma-stock-mode-icon {
+  width: 45px;
+  height: 45px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid var(--ms-red-border);
+  border-radius: 12px;
+
+  background: rgba(181, 34, 48, 0.07);
+
+  color: var(--ms-red);
+}
+
+.mooma-stock-mode-top > span {
+  color: var(--ms-muted);
+
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mooma-stock-mode-card > small {
+  color: var(--ms-red);
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.mooma-stock-mode-card h3 {
+  margin: 7px 0 8px;
+
+  font-size: 21px;
+}
+
+.mooma-stock-mode-card p {
+  margin: 0;
+
+  max-width: 300px;
+
+  color: var(--ms-muted);
+
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.mooma-stock-mode-bottom {
+  position: absolute;
+
+  left: 22px;
+  right: 22px;
+  bottom: 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  color: var(--ms-text-soft);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+
+/* ============================================================
+   WORKSPACE
+============================================================ */
+
+.mooma-stock-workspace {
+  scroll-margin-top: 90px;
+
+  margin-top: 45px;
+  padding: 28px;
+
+  border: 1px solid var(--ms-red-border);
+  border-radius: 22px;
+
+  background: var(--ms-surface);
+
+  box-shadow: var(--ms-shadow);
+}
+
+.mooma-stock-workspace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 20px;
+}
+
+.mooma-stock-workspace-head span {
+  color: var(--ms-red);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.mooma-stock-workspace-head h2 {
+  margin: 5px 0;
+
+  font-size: 27px;
+}
+
+.mooma-stock-workspace-head p {
+  margin: 0;
+
+  color: var(--ms-muted);
+
+  font-size: 12px;
+}
+
+
+/* ============================================================
+   PROGRESS
+============================================================ */
+
+.mooma-stock-progress {
+  min-width: 80px;
+  text-align: right;
+}
+
+.mooma-stock-progress strong {
+  display: block;
+
+  color: var(--ms-red);
+
+  font-size: 24px;
+}
+
+.mooma-stock-progress small {
+  color: var(--ms-muted);
+
+  font-size: 10px;
+}
+
+.mooma-stock-progress-track {
+  height: 4px;
+
+  margin: 20px 0 28px;
+
+  border-radius: 20px;
+
+  background: var(--ms-surface-2);
+
+  overflow: hidden;
+}
+
+.mooma-stock-progress-track > div {
+  height: 100%;
+
+  border-radius: inherit;
+
+  background:
+    linear-gradient(
+      90deg,
+      var(--ms-red-dark),
+      var(--ms-red-bright)
+    );
+
+  box-shadow:
+    0 0 12px rgba(181, 34, 48, 0.35);
+}
+
+
+/* ============================================================
+   DRAFT STATUS
+============================================================ */
+
+.mooma-stock-draft-state {
+  width: fit-content;
+
+  margin: 0 0 16px auto;
+  padding: 7px 10px;
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+
+  background: var(--ms-surface-2);
+
+  color: var(--ms-muted);
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.mooma-stock-draft-state.saved {
+  color: var(--ms-red);
+  border-color: var(--ms-red-border);
+}
+
+.mooma-stock-draft-state.error {
+  color: var(--ms-red-bright);
+}
+
+
+/* ============================================================
+   ITEM GRID
+============================================================ */
+
+.mooma-stock-items {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.mooma-stock-item {
+  min-height: 78px;
+
+  padding: 12px 14px;
+
+  display: grid;
+  grid-template-columns: 38px 1fr 135px;
+  align-items: center;
+  gap: 12px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 12px;
+
+  background: var(--ms-surface-solid);
+
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.mooma-stock-item:focus-within {
+  transform: translateY(-2px);
+
+  border-color: var(--ms-red-border);
+
+  box-shadow:
+    0 8px 24px rgba(181, 34, 48, 0.07);
+}
+
+.mooma-stock-item-number {
+  width: 32px;
+  height: 32px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 8px;
+
+  background: var(--ms-surface-2);
+
+  color: var(--ms-muted);
+
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.mooma-stock-item-info {
+  min-width: 0;
+}
+
+.mooma-stock-item-info > strong {
+  display: block;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  font-size: 12px;
+}
+
+.mooma-stock-item-info > div {
+  margin-top: 6px;
+
+  display: flex;
+  gap: 6px;
+}
+
+.mooma-stock-item-info span {
+  padding: 3px 6px;
+
+  border-radius: 5px;
+
+  background: var(--ms-surface-2);
+
+  color: var(--ms-muted);
+
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.mooma-stock-item-input {
+  display: flex;
+  align-items: center;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 9px;
+
+  background: var(--ms-surface-2);
+
+  overflow: hidden;
+
+  transition: border-color 0.18s ease;
+}
+
+.mooma-stock-item-input:focus-within {
+  border-color: var(--ms-red);
+}
+
+.mooma-stock-item-input input {
+  width: 100%;
+  min-width: 0;
+
+  padding: 11px 10px;
+
+  border: 0;
+  outline: 0;
+
+  background: transparent;
+
+  color: var(--ms-text);
+
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mooma-stock-item-input > span {
+  padding-right: 9px;
+
+  color: var(--ms-red);
+
+  font-size: 8px;
+  font-weight: 900;
+}
+
+
+/* ============================================================
+   REVIEW BUTTON
+============================================================ */
+
+.mooma-stock-review-button {
+  width: 100%;
+
+  margin-top: 22px;
+  padding: 17px 19px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  border: 1px solid var(--ms-red);
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      125deg,
+      var(--ms-red-dark),
+      var(--ms-red)
+    );
+
+  color: #fff;
+
+  cursor: pointer;
+
+  box-shadow:
+    0 12px 30px rgba(181, 34, 48, 0.16);
+}
+
+.mooma-stock-review-button div {
+  text-align: left;
+}
+
+.mooma-stock-review-button small {
+  display: block;
+
+  margin-bottom: 3px;
+
+  opacity: 0.65;
+
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.mooma-stock-review-button strong {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+}
+
+
+/* ============================================================
+   REVIEW SHEET
+============================================================ */
+
+.mooma-stock-review {
+  position: relative;
+
+  scroll-margin-top: 90px;
+
+  margin-top: 30px;
+  padding: 30px;
+
+  border: 1px solid var(--ms-red-border);
+  border-radius: 20px;
+
+  background: var(--ms-surface-solid);
+
+  box-shadow: var(--ms-shadow);
+
+  overflow: hidden;
+}
+
+.mooma-stock-review-stamp {
+  position: absolute;
+  right: 35px;
+  top: 24px;
+
+  pointer-events: none;
+}
+
+.mooma-stock-review-stamp > div {
+  padding: 8px 14px;
+
+  border: 2px solid rgba(181, 34, 48, 0.22);
+  border-radius: 6px;
+
+  color: rgba(181, 34, 48, 0.22);
+
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.mooma-stock-review-head {
+  padding-right: 150px;
+  margin-bottom: 25px;
+
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.mooma-stock-review-head span {
+  color: var(--ms-red);
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.mooma-stock-review-head h2 {
+  margin: 5px 0;
+
+  font-size: 25px;
+}
+
+.mooma-stock-review-head p {
+  margin: 0;
+
+  color: var(--ms-muted);
+
+  font-size: 11px;
+}
+
+.mooma-stock-review-head > div:last-child {
+  text-align: right;
+}
+
+.mooma-stock-review-head small {
+  display: block;
+
+  color: var(--ms-red);
+
+  font-weight: 900;
+}
+
+.mooma-stock-review-list {
+  border: 1px solid var(--ms-border);
+  border-radius: 12px;
+
+  overflow: hidden;
+}
+
+.mooma-stock-review-list > div {
+  min-height: 58px;
+
+  padding: 10px 14px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  border-bottom: 1px solid var(--ms-border);
+}
+
+.mooma-stock-review-list > div:last-child {
+  border-bottom: 0;
+}
+
+.mooma-stock-review-list strong {
+  display: block;
+
+  font-size: 11px;
+}
+
+.mooma-stock-review-list small {
+  display: block;
+
+  margin-top: 3px;
+
+  color: var(--ms-muted);
+
+  font-size: 8px;
+}
+
+.mooma-stock-review-list > div > span {
+  color: var(--ms-red);
+
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mooma-stock-review-actions {
+  margin-top: 20px;
+
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 10px;
+}
+
+.mooma-stock-review-actions button {
+  min-height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 10px;
+
+  background: var(--ms-surface-2);
+
+  color: var(--ms-text-soft);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+
+  cursor: pointer;
+}
+
+.mooma-stock-review-actions button.submit {
+  border-color: var(--ms-red);
+
+  background:
+    linear-gradient(
+      125deg,
+      var(--ms-red-dark),
+      var(--ms-red)
+    );
+
+  color: #fff;
+}
+
+
+/* ============================================================
+   MODAL OVERLAYS
+============================================================ */
+
+.mooma-stock-modal-overlay,
+.mooma-stock-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+
+  padding: 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(10, 10, 12, 0.52);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  overflow: hidden;
+}
+
+
+/* ============================================================
+   ALERT ORB
+============================================================ */
+
+.mooma-stock-alert-orb {
+  width: min(460px, 100%);
+
+  padding: 27px;
+
+  border: 1px solid var(--ms-red-border);
+  border-radius: 22px;
+
+  background: var(--ms-surface-solid);
+
+  color: var(--ms-text);
+
+  box-shadow:
+    0 35px 100px rgba(0, 0, 0, 0.25);
+
+  overflow: hidden;
+}
+
+.mooma-stock-alert-content {
+  text-align: center;
+}
+
+.mooma-stock-alert-icon {
+  width: 58px;
+  height: 58px;
+
+  margin: 0 auto 18px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid var(--ms-red-border);
+  border-radius: 50%;
+
+  background: rgba(181, 34, 48, 0.08);
+
+  color: var(--ms-red);
+}
+
+.mooma-stock-alert-content > span {
+  color: var(--ms-red);
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.mooma-stock-alert-content h3 {
+  margin: 7px 0 8px;
+
+  font-size: 22px;
+}
+
+.mooma-stock-alert-content p {
+  margin: 0;
+
+  color: var(--ms-muted);
+
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.mooma-stock-missing-list {
+  margin-top: 17px;
+
+  max-height: 170px;
+
+  padding: 10px;
+
+  border: 1px solid var(--ms-border);
+  border-radius: 10px;
+
+  background: var(--ms-surface-2);
+
+  overflow-y: auto;
+
+  text-align: left;
+}
+
+.mooma-stock-missing-list > div {
+  padding: 6px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: var(--ms-text-soft);
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mooma-stock-missing-list span {
+  width: 5px;
+  height: 5px;
+
+  flex: 0 0 5px;
+
+  border-radius: 50%;
+
+  background: var(--ms-red);
+}
+
+.mooma-stock-alert-content > button {
+  width: 100%;
+
+  margin-top: 18px;
+  padding: 12px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+
+  border: 1px solid var(--ms-red);
+  border-radius: 9px;
+
+  background: var(--ms-red);
+
+  color: white;
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   FULL-PAGE LOADER
+   FOUR INVENTORY BOXES ASSEMBLE
+============================================================ */
+
+.mooma-stock-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+
+  display: grid;
+  place-items: center;
+
+  background: #1b1b1e;
+
+  color: #fff;
+
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: light) {
+  .mooma-stock-loading {
+    background: #f3f2f0;
+    color: #242427;
+  }
+}
+
+.mooma-stock-loading-grid {
+  position: absolute;
+  inset: 0;
+
+  opacity: 0.04;
+
+  background-image:
+    linear-gradient(
+      rgba(130, 130, 130, 0.8) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(130, 130, 130, 0.8) 1px,
+      transparent 1px
+    );
+
+  background-size: 42px 42px;
+}
+
+.mooma-stock-crate-loader {
+  position: relative;
+  z-index: 2;
+
+  width: min(420px, calc(100% - 40px));
+
+  text-align: center;
+}
+
+.mooma-stock-loader-boxes {
+  position: relative;
+
+  width: 132px;
+  height: 132px;
+
+  margin: 0 auto 35px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.mooma-stock-loader-box {
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(210, 56, 70, 0.32);
+  border-radius: 10px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #b52230,
+      #6f1119
+    );
+
+  color: rgba(255, 255, 255, 0.86);
+
+  font-size: 17px;
+  font-weight: 950;
+
+  box-shadow:
+    0 10px 30px rgba(181, 34, 48, 0.15);
+}
+
+.mooma-stock-loader-scan {
+  position: absolute;
+
+  left: calc(50% - 82px);
+  top: 55px;
+
+  width: 164px;
+  height: 2px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      #e54754,
+      transparent
+    );
+
+  box-shadow:
+    0 0 14px rgba(229, 71, 84, 0.8);
+}
+
+.mooma-stock-loader-copy span {
+  color: #c92f3d;
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+}
+
+.mooma-stock-loader-copy h2 {
+  margin: 8px 0 5px;
+
+  font-size: 23px;
+}
+
+.mooma-stock-loader-copy p {
+  margin: 0;
+
+  opacity: 0.55;
+
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+
+/* ============================================================
+   CONNECTION ERROR
+============================================================ */
+
+.mooma-stock-error-page {
+  min-height: 100vh;
+
+  padding: 30px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+}
+
+.mooma-stock-error-page > div {
+  width: 70px;
+  height: 70px;
+
+  margin-bottom: 20px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  background: rgba(181, 34, 48, 0.08);
+
+  color: var(--ms-red);
+}
+
+.mooma-stock-error-page > span {
+  color: var(--ms-red);
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.mooma-stock-error-page h2 {
+  margin: 8px 0;
+
+  font-size: 28px;
+}
+
+.mooma-stock-error-page p {
+  max-width: 450px;
+
+  margin: 0;
+
+  color: var(--ms-muted);
+
+  font-size: 12px;
+}
+
+.mooma-stock-error-page button {
+  margin-top: 20px;
+  padding: 11px 17px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  border: 1px solid var(--ms-red);
+  border-radius: 9px;
+
+  background: var(--ms-red);
+
+  color: #fff;
+
+  font-size: 9px;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   SUCCESS CRATE
+============================================================ */
+
+.mooma-stock-success-crate {
+  width: min(500px, 100%);
+
+  text-align: center;
+
+  color: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  .mooma-stock-success-crate {
+    color: #242427;
+  }
+}
+
+.mooma-stock-success-box {
+  position: relative;
+
+  width: 130px;
+  height: 105px;
+
+  margin: 0 auto 22px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 9px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #8f1924,
+      #5f1017
+    );
+
+  box-shadow:
+    0 25px 60px rgba(181, 34, 48, 0.28);
+}
+
+.mooma-stock-success-box > span {
+  color: white;
+
+  font-size: 38px;
+  font-weight: 950;
+}
+
+.mooma-stock-success-lid {
+  position: absolute;
+
+  left: -5px;
+  top: -15px;
+
+  width: 140px;
+  height: 23px;
+
+  border-radius: 6px;
+
+  background: #ba2936;
+
+  transform-origin: bottom center;
+}
+
+.mooma-stock-success-stamp {
+  width: fit-content;
+
+  margin: -7px auto 25px;
+  padding: 7px 12px;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  border: 2px solid #cf3946;
+  border-radius: 6px;
+
+  color: #cf3946;
+
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+}
+
+.mooma-stock-success-copy > svg {
+  color: #cf3946;
+}
+
+.mooma-stock-success-copy > span {
+  display: block;
+
+  margin-top: 8px;
+
+  color: #cf3946;
+
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.mooma-stock-success-copy h2 {
+  margin: 7px 0;
+
+  font-size: 30px;
+}
+
+.mooma-stock-success-copy p {
+  margin: 0 auto;
+
+  max-width: 420px;
+
+  opacity: 0.62;
+
+  font-size: 12px;
+}
+
+.mooma-stock-success-copy > div {
+  width: fit-content;
+
+  margin: 15px auto;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  opacity: 0.55;
+
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.mooma-stock-success-copy button {
+  margin-top: 8px;
+  padding: 12px 22px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  border: 1px solid #b52230;
+  border-radius: 9px;
+
+  background:
+    linear-gradient(
+      125deg,
+      #76141d,
+      #b52230
+    );
+
+  color: #fff;
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   SPINNER — ONLY TINY INLINE OPERATIONS
+============================================================ */
+
+.mooma-stock-spin,
+.mooma-spinner {
+  animation:
+    mooma-stock-spin 0.75s linear infinite;
+}
+
+@keyframes mooma-stock-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (max-width: 900px) {
+  .mooma-stock-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mooma-stock-items {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .mooma-stock-header {
+    min-height: 62px;
+
+    padding: 0 14px;
+
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .mooma-stock-header-title span {
+    display: none;
+  }
+
+  .mooma-stock-header-title strong {
+    font-size: 10px;
+  }
+
+  .mooma-stock-back {
+    padding: 8px;
+  }
+
+  .mooma-stock-back {
+    font-size: 0;
+  }
+
+  .mooma-stock-header-branch small {
+    display: none;
+  }
+
+  .mooma-stock-main {
+    width: min(100% - 22px, 1280px);
+
+    padding-top: 20px;
+  }
+
+  .mooma-stock-hero {
+    min-height: 0;
+
+    padding: 23px;
+
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mooma-stock-hero h1 {
+    font-size: 38px;
+  }
+
+  .mooma-stock-date-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mooma-stock-workspace {
+    padding: 17px;
+  }
+
+  .mooma-stock-workspace-head {
+    align-items: start;
+  }
+
+  .mooma-stock-item {
+    grid-template-columns: 32px 1fr;
+  }
+
+  .mooma-stock-item-input {
+    grid-column: 1 / -1;
+  }
+
+  .mooma-stock-review {
+    padding: 18px;
+  }
+
+  .mooma-stock-review-stamp {
+    display: none;
+  }
+
+  .mooma-stock-review-head {
+    padding-right: 0;
+
+    flex-direction: column;
+  }
+
+  .mooma-stock-review-head > div:last-child {
+    text-align: left;
+  }
+
+  .mooma-stock-review-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================================
+   REDUCED MOTION
+============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .mooma-stock-page *,
+  .mooma-stock-loading *,
+  .mooma-stock-modal-overlay *,
+  .mooma-stock-success-overlay * {
+    scroll-behavior: auto !important;
+  }
+}
