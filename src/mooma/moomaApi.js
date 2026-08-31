@@ -32,9 +32,9 @@ export const MOOMA_API = {
 
   createTransfer: "/api/mooma/transfer/create",
 
-  pendingTransfers: "/api/mooma/transfer/pending",
+  pendingTransfers: "/api/mooma/pending-transfers",
 
-  transferAction: "/api/mooma/transfer/action",
+  transferAction: "/api/mooma/transfer/respond",
 
   transferHistory: "/api/mooma/transfer/history",
 
@@ -210,11 +210,6 @@ export async function moomaPost(
 
 /* ============================================================
    UNIVERSAL ACTIVE SECTION
-   ------------------------------------------------------------
-   IMPORTANT MOOMA RULE:
-
-   Whenever the user performs an action,
-   move them to the newly active section.
 ============================================================ */
 
 export function activeScroll(
@@ -423,8 +418,6 @@ export async function createMoomaTransfer({
 
 /* ============================================================
    PENDING / INCOMING TRANSFERS
-
-   USED DIRECTLY BY MOOMA DASHBOARD.
 ============================================================ */
 
 export async function getMoomaPendingTransfers(
@@ -433,7 +426,8 @@ export async function getMoomaPendingTransfers(
   return moomaGet(
     MOOMA_API.pendingTransfers,
     {
-      branchCode,
+      branch:
+        branchCode,
     }
   );
 }
@@ -445,15 +439,21 @@ export async function getMoomaPendingTransfers(
 
 export async function acceptMoomaTransfer({
   transferId,
-  branchCode,
 }) {
+  if (!transferId) {
+    throw new Error(
+      "Transfer ID is required."
+    );
+  }
+
+
   return moomaPost(
     MOOMA_API.transferAction,
     {
       transferId,
-      branchCode,
+
       action:
-        "ACCEPT",
+        "accept",
     }
   );
 }
@@ -465,15 +465,21 @@ export async function acceptMoomaTransfer({
 
 export async function rejectMoomaTransfer({
   transferId,
-  branchCode,
 }) {
+  if (!transferId) {
+    throw new Error(
+      "Transfer ID is required."
+    );
+  }
+
+
   return moomaPost(
     MOOMA_API.transferAction,
     {
       transferId,
-      branchCode,
+
       action:
-        "REJECT",
+        "reject",
     }
   );
 }
