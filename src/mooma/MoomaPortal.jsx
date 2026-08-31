@@ -14,7 +14,6 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
   Eye,
   EyeOff,
   LoaderCircle,
@@ -25,32 +24,29 @@ import {
 } from "lucide-react";
 
 import "./Mooma.css";
-import MoomaLaunch from "./MoomaLaunch.jsx";
-import MoomaDashboard from "./MoomaDashboard.jsx";
 
+
+/* ============================================================
+   MOOMA API
+============================================================ */
 
 const API = {
-  branches:
-    "/api/mooma/branches",
-
-  login:
-    "/api/mooma/login",
+  branches: "/api/mooma/branches",
+  login: "/api/mooma/login",
 };
 
 
-const [
-  launching,
-  setLaunching,
-] = useState(false);
-
-const [
-  activeModule,
-  setActiveModule,
-] = useState(null);
+/* ============================================================
+   MOOMA PORTAL
+============================================================ */
 
 export default function MoomaPortal({
   onBack,
 }) {
+  /* ----------------------------------------------------------
+     STATE
+  ---------------------------------------------------------- */
+
   const [
     branches,
     setBranches,
@@ -106,15 +102,22 @@ export default function MoomaPortal({
     useRef(null);
 
 
-  /* =========================================================
-     LOAD BRANCHES
-  ========================================================= */
+  /* ============================================================
+     LOAD MOOMA BRANCHES
+  ============================================================ */
 
   async function loadBranches() {
     setLoading(true);
+
     setError("");
 
     try {
+      console.log(
+        "[MOOMA] Loading branches:",
+        API.branches
+      );
+
+
       const response =
         await fetch(
           API.branches,
@@ -132,33 +135,91 @@ export default function MoomaPortal({
         );
 
 
-      const data =
-        await response.json();
+      console.log(
+        "[MOOMA] Branch API HTTP:",
+        response.status
+      );
+
+
+      const raw =
+        await response.text();
+
+
+      console.log(
+        "[MOOMA] Branch API RAW:",
+        raw
+      );
+
+
+      let data;
+
+
+      try {
+        data =
+          JSON.parse(raw);
+      } catch (parseError) {
+        console.error(
+          "[MOOMA] JSON PARSE ERROR:",
+          parseError
+        );
+
+
+        throw new Error(
+          `MOOMA API returned invalid data. HTTP ${response.status}`
+        );
+      }
+
+
+      console.log(
+        "[MOOMA] Branch API JSON:",
+        data
+      );
+
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            `MOOMA API failed. HTTP ${response.status}`
+        );
+      }
+
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message ||
+            "MOOMA backend returned success: false."
+        );
+      }
 
 
       if (
-        !response.ok ||
-        !data.success
+        !Array.isArray(
+          data.branches
+        )
       ) {
         throw new Error(
-          data.message ||
-            "Unable to load MOOMA branches."
+          "MOOMA branch list is missing from API response."
         );
       }
 
 
       setBranches(
-        Array.isArray(
-          data.branches
-        )
-          ? data.branches
-          : []
+        data.branches
+      );
+
+
+      console.log(
+        `[MOOMA] CONNECTED — ${data.branches.length} branches loaded`
       );
     } catch (err) {
       console.error(
-        "MOOMA branch error:",
+        "[MOOMA] CONNECTION ERROR:",
         err
       );
+
+
+      setBranches([]);
+
 
       setError(
         err?.message ||
@@ -170,14 +231,18 @@ export default function MoomaPortal({
   }
 
 
+  /* ============================================================
+     INITIAL CONNECTION
+  ============================================================ */
+
   useEffect(() => {
     loadBranches();
   }, []);
 
 
-  /* =========================================================
-     FILTER
-  ========================================================= */
+  /* ============================================================
+     SEARCH / FILTER
+  ============================================================ */
 
   const filteredBranches =
     useMemo(() => {
@@ -193,10 +258,30 @@ export default function MoomaPortal({
 
 
       return branches.filter(
-        (branch) =>
-          `${branch.code} ${branch.name}`
-            .toLowerCase()
-            .includes(query)
+        (branch) => {
+          const code =
+            String(
+              branch?.code ||
+                ""
+            ).toLowerCase();
+
+
+          const name =
+            String(
+              branch?.name ||
+                ""
+            ).toLowerCase();
+
+
+          return (
+            code.includes(
+              query
+            ) ||
+            name.includes(
+              query
+            )
+          );
+        }
       );
     }, [
       branches,
@@ -204,9 +289,9 @@ export default function MoomaPortal({
     ]);
 
 
-  /* =========================================================
+  /* ============================================================
      SELECT BRANCH
-  ========================================================= */
+  ============================================================ */
 
   function selectBranch(
     branch
@@ -215,9 +300,16 @@ export default function MoomaPortal({
       branch
     );
 
+
     setPassword("");
 
+
     setLoginError("");
+
+
+    setShowPassword(
+      false
+    );
 
 
     window.requestAnimationFrame(
@@ -241,16 +333,32 @@ export default function MoomaPortal({
   }
 
 
-  /* =========================================================
-     LOGIN
-  ========================================================= */
+  /* ============================================================
+     BRANCH LOGIN
+  ============================================================ */
 
   async function login() {
+    if (!selected) {
+      setLoginError(
+        "Please select a branch."
+      );
+
+      return;
+    }
+
+
     if (
-      !selected ||
-      !password.trim() ||
-      loginBusy
+      !password.trim()
     ) {
+      setLoginError(
+        "Enter the branch password."
+      );
+
+      return;
+    }
+
+
+    if (loginBusy) {
       return;
     }
 
@@ -261,11 +369,18 @@ export default function MoomaPortal({
 
 
     try {
+      console.log(
+        "[MOOMA] Authenticating:",
+        selected.code
+      );
+
+
       const response =
         await fetch(
           API.login,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -281,48 +396,111 @@ export default function MoomaPortal({
                   branchCode:
                     selected.code,
 
-                  password,
+                  password:
+                    password.trim(),
                 }
               ),
           }
         );
 
 
-      const data =
-        await response.json();
+      console.log(
+        "[MOOMA] Login HTTP:",
+        response.status
+      );
 
 
-      if (
-        !response.ok ||
-        !data.success
-      ) {
+      const raw =
+        await response.text();
+
+
+      console.log(
+        "[MOOMA] Login RAW:",
+        raw
+      );
+
+
+      let data;
+
+
+      try {
+        data =
+          JSON.parse(raw);
+      } catch (parseError) {
+        console.error(
+          "[MOOMA] LOGIN JSON ERROR:",
+          parseError
+        );
+
+
         throw new Error(
-          data.message ||
-            "Unable to authenticate."
+          `MOOMA login returned invalid data. HTTP ${response.status}`
         );
       }
 
 
-      setAuthenticated(
-        data.branch
+      console.log(
+        "[MOOMA] Login JSON:",
+        data
       );
 
 
-      setLaunching(true);
-      window.setTimeout(() => {
-        setLaunching(false);
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            `MOOMA login failed. HTTP ${response.status}`
+        );
+      }
 
-      }, 1800);
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message ||
+            "Incorrect branch password."
+        );
+      }
+
+
+      /*
+       * Some backend versions return:
+       *
+       * data.branch
+       *
+       * Other versions may only return success.
+       *
+       * So we safely fall back to the selected branch.
+       */
+
+      const verifiedBranch =
+        data?.branch &&
+        typeof data.branch ===
+          "object"
+          ? data.branch
+          : selected;
+
+
+      setAuthenticated(
+        verifiedBranch
+      );
+
+
+      setPassword("");
+
+
+      console.log(
+        "[MOOMA] AUTHENTICATED:",
+        verifiedBranch
+      );
     } catch (err) {
       console.error(
-        "MOOMA login error:",
+        "[MOOMA] LOGIN ERROR:",
         err
       );
 
 
       setLoginError(
         err?.message ||
-          "Incorrect branch password."
+          "Unable to authenticate this branch."
       );
 
 
@@ -333,45 +511,106 @@ export default function MoomaPortal({
   }
 
 
-  /* =========================================================
-     TEMP AUTH SUCCESS SCREEN
+  /* ============================================================
+     TEMPORARY LOGIN SUCCESS
 
-     Next step we replace this with MoomaDashboard.
-  ========================================================= */
+     We keep this simple until branch connection is confirmed.
 
-if (launching && authenticated) {
-  return (
-    <MoomaLaunch
-      branch={authenticated}
-    />
-  );
-}
+     Next:
+     MoomaDashboard.jsx will replace this screen.
+  ============================================================ */
 
-if (authenticated) {
-  return (
-    <MoomaDashboard
-      branch={authenticated}
+  if (authenticated) {
+    return (
+      <motion.div
+        className="mooma-auth-screen"
+        initial={{
+          opacity: 0,
+        }}
+        animate={{
+          opacity: 1,
+        }}
+        transition={{
+          duration: 0.3,
+        }}
+      >
+        <motion.div
+          className="mooma-auth-card"
+          initial={{
+            opacity: 0,
+            y: 25,
+            scale: 0.97,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+            scale: 1,
+          }}
+          transition={{
+            duration: 0.4,
+          }}
+        >
+          <div className="mooma-auth-icon">
+            M
+          </div>
 
-      onBack={() => {
-        setAuthenticated(null);
-        setSelected(null);
-        setPassword("");
-      }}
 
-      onModule={(module) => {
-        setActiveModule(module);
+          <small>
+            MOOMA BRANCH VERIFIED
+          </small>
 
-        console.log(
-          "MOOMA MODULE:",
-          module
-        );
-      }}
-    />
-  );
-}
-  /* =========================================================
-     PORTAL
-  ========================================================= */
+
+          <h1>
+            {authenticated?.name ||
+              selected?.name ||
+              "MOOMA"}
+          </h1>
+
+
+          <p>
+            {authenticated?.code ||
+              selected?.code ||
+              ""}
+          </p>
+
+
+          <strong>
+            MOOMA OPERATIONS
+            CONNECTION READY
+          </strong>
+
+
+          <button
+            type="button"
+            onClick={() => {
+              setAuthenticated(
+                null
+              );
+
+              setSelected(
+                null
+              );
+
+              setPassword("");
+
+              setLoginError("");
+            }}
+          >
+            <ArrowLeft
+              size={16}
+            />
+
+            CHANGE BRANCH
+          </button>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+
+  /* ============================================================
+     MOOMA PORTAL
+  ============================================================ */
 
   return (
     <motion.div
@@ -389,7 +628,9 @@ if (authenticated) {
         duration: 0.28,
       }}
     >
-      {/* BACKGROUND */}
+      {/* ======================================================
+          BACKGROUND
+      ====================================================== */}
 
       <div className="mooma-world-bg" />
 
@@ -402,13 +643,16 @@ if (authenticated) {
       <div className="mooma-red-glow mooma-red-glow-two" />
 
 
-      {/* TOP NAV */}
+      {/* ======================================================
+          TOP NAVIGATION
+      ====================================================== */}
 
       <nav className="mooma-branch-nav">
         <div className="mooma-dam-logo">
           <div className="mooma-dam-mark">
             M
           </div>
+
 
           <div className="mooma-dam-copy">
             <strong>
@@ -430,17 +674,27 @@ if (authenticated) {
       </nav>
 
 
-      {/* MAIN */}
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
 
       <main className="mooma-branch-main">
-        {/* BACK */}
+        {/* ALL BRANDS */}
 
         <motion.button
           type="button"
           className="mooma-all-brands"
-          onClick={
-            onBack
-          }
+          onClick={() => {
+            setSelected(
+              null
+            );
+
+            setPassword("");
+
+            setLoginError("");
+
+            onBack?.();
+          }}
           initial={{
             opacity: 0,
             x: -10,
@@ -448,6 +702,9 @@ if (authenticated) {
           animate={{
             opacity: 1,
             x: 0,
+          }}
+          whileHover={{
+            x: -3,
           }}
         >
           <ArrowLeft
@@ -458,7 +715,9 @@ if (authenticated) {
         </motion.button>
 
 
-        {/* HERO */}
+        {/* ====================================================
+            TITLE
+        ==================================================== */}
 
         <motion.div
           className="mooma-branch-title"
@@ -497,7 +756,9 @@ if (authenticated) {
         </motion.div>
 
 
-        {/* SELECTOR */}
+        {/* ====================================================
+            BRANCH SELECTOR
+        ==================================================== */}
 
         <motion.section
           className="mooma-branch-selector"
@@ -514,7 +775,9 @@ if (authenticated) {
             duration: 0.55,
           }}
         >
-          {/* SEARCH */}
+          {/* ==================================================
+              SEARCH
+          ================================================== */}
 
           <div className="mooma-search-row">
             <div className="mooma-search-box">
@@ -531,24 +794,18 @@ if (authenticated) {
 
 
               <input
-                value={
-                  search
-                }
-                disabled={
-                  loading
-                }
+                value={search}
+                disabled={loading}
                 placeholder={
                   loading
-                    ? "Loading MOOMA branches..."
+                    ? "Connecting MOOMA network..."
                     : "Search MOOMA branches"
                 }
                 onChange={(
                   event
                 ) =>
                   setSearch(
-                    event
-                      .target
-                      .value
+                    event.target.value
                   )
                 }
               />
@@ -556,7 +813,7 @@ if (authenticated) {
 
               <span>
                 {loading
-                  ? "LOADING"
+                  ? "CONNECTING"
                   : `${filteredBranches.length} LOCATIONS`}
               </span>
             </div>
@@ -571,6 +828,7 @@ if (authenticated) {
               disabled={
                 loading
               }
+              title="Refresh MOOMA branches"
             >
               <RefreshCcw
                 size={15}
@@ -584,13 +842,16 @@ if (authenticated) {
           </div>
 
 
-          {/* LOADING */}
+          {/* ==================================================
+              LOADING
+          ================================================== */}
 
           <AnimatePresence
             mode="wait"
           >
             {loading && (
               <motion.div
+                key="loading"
                 className="mooma-loading-area"
                 initial={{
                   opacity: 0,
@@ -611,7 +872,8 @@ if (authenticated) {
                       duration: 2,
                       repeat:
                         Infinity,
-                      ease: "linear",
+                      ease:
+                        "linear",
                     }}
                   />
 
@@ -659,22 +921,37 @@ if (authenticated) {
           </AnimatePresence>
 
 
-          {/* ERROR */}
+          {/* ==================================================
+              CONNECTION ERROR
+          ================================================== */}
 
           {!loading &&
             error && (
-              <div className="mooma-error-area">
+              <motion.div
+                className="mooma-error-area"
+                initial={{
+                  opacity: 0,
+                  y: 10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+              >
                 <AlertCircle
-                  size={26}
+                  size={27}
                 />
+
 
                 <strong>
                   CONNECTION FAILED
                 </strong>
 
+
                 <p>
                   {error}
                 </p>
+
 
                 <button
                   type="button"
@@ -686,13 +963,15 @@ if (authenticated) {
                     size={14}
                   />
 
-                  RETRY
+                  RETRY CONNECTION
                 </button>
-              </div>
+              </motion.div>
             )}
 
 
-          {/* BRANCHES */}
+          {/* ==================================================
+              BRANCHES
+          ================================================== */}
 
           {!loading &&
             !error && (
@@ -712,7 +991,8 @@ if (authenticated) {
                         <motion.button
                           type="button"
                           key={
-                            branch.code
+                            branch.code ||
+                            index
                           }
                           className={`mooma-branch-item ${
                             active
@@ -725,25 +1005,18 @@ if (authenticated) {
                             )
                           }
                           initial={{
-                            opacity:
-                              0,
-
-                            x:
-                              -14,
+                            opacity: 0,
+                            x: -14,
                           }}
                           animate={{
-                            opacity:
-                              1,
-
-                            x:
-                              0,
+                            opacity: 1,
+                            x: 0,
                           }}
                           transition={{
                             delay:
                               Math.min(
                                 index *
                                   0.05,
-
                                 0.3
                               ),
                           }}
@@ -775,15 +1048,11 @@ if (authenticated) {
 
                           <div className="mooma-branch-info">
                             <strong>
-                              {
-                                branch.name
-                              }
+                              {branch.name}
                             </strong>
 
                             <small>
-                              {
-                                branch.code
-                              }
+                              {branch.code}
                             </small>
                           </div>
 
@@ -798,6 +1067,8 @@ if (authenticated) {
                 </div>
 
 
+                {/* NO RESULTS */}
+
                 {!filteredBranches.length && (
                   <div className="mooma-empty">
                     No MOOMA branches
@@ -806,7 +1077,9 @@ if (authenticated) {
                 )}
 
 
-                {/* LOGIN */}
+                {/* ============================================
+                    LOGIN PANEL
+                ============================================ */}
 
                 <AnimatePresence>
                   {selected && (
@@ -816,22 +1089,19 @@ if (authenticated) {
                       }
                       className="mooma-ready-panel"
                       initial={{
-                        opacity:
-                          0,
-
-                        y:
-                          18,
+                        opacity: 0,
+                        y: 18,
                       }}
                       animate={{
-                        opacity:
-                          1,
-
-                        y:
-                          0,
+                        opacity: 1,
+                        y: 0,
                       }}
                       exit={{
-                        opacity:
-                          0,
+                        opacity: 0,
+                        y: 10,
+                      }}
+                      transition={{
+                        duration: 0.25,
                       }}
                     >
                       <div className="mooma-ready-copy">
@@ -839,19 +1109,18 @@ if (authenticated) {
                           READY TO ENTER
                         </small>
 
+
                         <strong>
-                          {
-                            selected.code
-                          }
+                          {selected.code}
                           {" • "}
-                          {
-                            selected.name
-                          }
+                          {selected.name}
                         </strong>
                       </div>
 
 
                       <div className="mooma-login-area">
+                        {/* PASSWORD */}
+
                         <div className="mooma-password-box">
                           <LockKeyhole
                             size={16}
@@ -867,14 +1136,13 @@ if (authenticated) {
                             value={
                               password
                             }
+                            autoComplete="off"
                             placeholder="Branch password"
                             onChange={(
                               event
                             ) => {
                               setPassword(
-                                event
-                                  .target
-                                  .value
+                                event.target.value
                               );
 
                               setLoginError(
@@ -898,8 +1166,16 @@ if (authenticated) {
                             type="button"
                             onClick={() =>
                               setShowPassword(
-                                !showPassword
+                                (
+                                  current
+                                ) =>
+                                  !current
                               )
+                            }
+                            title={
+                              showPassword
+                                ? "Hide password"
+                                : "Show password"
                             }
                           >
                             {showPassword ? (
@@ -914,6 +1190,8 @@ if (authenticated) {
                           </button>
                         </div>
 
+
+                        {/* CONTINUE */}
 
                         <button
                           type="button"
@@ -948,16 +1226,26 @@ if (authenticated) {
                       </div>
 
 
+                      {/* LOGIN ERROR */}
+
                       {loginError && (
-                        <div className="mooma-login-error">
+                        <motion.div
+                          className="mooma-login-error"
+                          initial={{
+                            opacity: 0,
+                            y: -4,
+                          }}
+                          animate={{
+                            opacity: 1,
+                            y: 0,
+                          }}
+                        >
                           <AlertCircle
                             size={14}
                           />
 
-                          {
-                            loginError
-                          }
-                        </div>
+                          {loginError}
+                        </motion.div>
                       )}
                     </motion.div>
                   )}
@@ -968,7 +1256,9 @@ if (authenticated) {
       </main>
 
 
-      {/* GIANT WORD */}
+      {/* ======================================================
+          GIANT BACKGROUND WORD
+      ====================================================== */}
 
       <div className="mooma-giant-word">
         MOOMA
