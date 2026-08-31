@@ -2040,6 +2040,81 @@ function chooseBrand(brand) {
           />
         )}
 
+
+
+
+
+
+      {/* ==========================================================
+    MOOMA BRAND MODULE
+========================================================== */}
+
+{page === "mooma" &&
+  selectedBrand?.id ===
+    "mooma" && (
+    <Suspense
+      fallback={
+        <div
+          style={{
+            minHeight:
+              "100vh",
+
+            display:
+              "grid",
+
+            placeItems:
+              "center",
+
+            background:
+              "#ffffff",
+
+            color:
+              "#8a315b",
+
+            fontFamily:
+              "Inter, sans-serif",
+
+            fontWeight:
+              800,
+
+            letterSpacing:
+              "0.12em",
+
+            fontSize:
+              "10px",
+          }}
+        >
+          OPENING MOOMA
+        </div>
+      }
+    >
+      <MoomaShell
+        onBack={() => {
+          setSelectedBrand(
+            null
+          );
+
+          setSelectedBranch(
+            null
+          );
+
+          setAuthenticatedBranch(
+            null
+          );
+
+          setPage(
+            "brands"
+          );
+
+          window.scrollTo({
+            top: 0,
+            behavior:
+              "smooth",
+          });
+        }}
+      />
+    </Suspense>
+  )}
       {/* REAL PASSWORD */}
 
       {page ===
