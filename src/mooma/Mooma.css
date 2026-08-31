@@ -5132,3 +5132,1156 @@
     justify-content: center;
   }
 }
+
+
+
+
+
+/* ============================================================
+   MOOMA — INCOMING TRANSFER POPUP
+============================================================ */
+
+.mooma-transfer-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+
+  padding: 24px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background:
+    rgba(10, 10, 11, 0.78);
+
+  backdrop-filter:
+    blur(13px);
+
+  -webkit-backdrop-filter:
+    blur(13px);
+}
+
+
+/* ============================================================
+   POPUP
+============================================================ */
+
+.mooma-transfer-popup {
+  width: min(
+    780px,
+    100%
+  );
+
+  max-height:
+    calc(100vh - 48px);
+
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  border:
+    1px solid
+    rgba(180, 35, 47, 0.25);
+
+  border-radius: 22px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #202022 0%,
+      #171719 45%,
+      #111113 100%
+    );
+
+  color: #fff;
+
+  box-shadow:
+    0 45px 130px
+      rgba(0, 0, 0, 0.65),
+    0 0 0 1px
+      rgba(255, 255, 255, 0.025),
+    0 0 70px
+      rgba(180, 35, 47, 0.08);
+}
+
+
+/* ============================================================
+   TOP
+============================================================ */
+
+.mooma-transfer-popup-top {
+  padding:
+    22px 24px 19px;
+
+  display: grid;
+
+  grid-template-columns:
+    46px
+    minmax(0, 1fr)
+    38px;
+
+  align-items: start;
+
+  gap: 14px;
+}
+
+.mooma-transfer-popup-alert-icon {
+  width: 46px;
+  height: 46px;
+
+  display: grid;
+  place-items: center;
+
+  border:
+    1px solid
+    rgba(180, 35, 47, 0.28);
+
+  border-radius: 12px;
+
+  background:
+    rgba(180, 35, 47, 0.1);
+
+  color: #d03b48;
+}
+
+.mooma-transfer-popup-title {
+  min-width: 0;
+}
+
+.mooma-transfer-popup-title > span {
+  color: #d03b48;
+
+  font-size: 7px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.15em;
+}
+
+.mooma-transfer-popup-title h2 {
+  margin:
+    5px 0 4px;
+
+  color: #fff;
+
+  font-size: 23px;
+  font-weight: 850;
+
+  letter-spacing:
+    -0.035em;
+}
+
+.mooma-transfer-popup-title p {
+  margin: 0;
+
+  color: #88888d;
+
+  font-size: 9px;
+}
+
+.mooma-transfer-popup-close {
+  width: 36px;
+  height: 36px;
+
+  display: grid;
+  place-items: center;
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.07);
+
+  border-radius: 9px;
+
+  background:
+    rgba(255, 255, 255, 0.035);
+
+  color: #888;
+
+  cursor: pointer;
+
+  transition:
+    0.2s ease;
+}
+
+.mooma-transfer-popup-close:hover {
+  color: white;
+
+  border-color:
+    rgba(180, 35, 47, 0.3);
+
+  background:
+    rgba(180, 35, 47, 0.1);
+}
+
+
+/* ============================================================
+   COUNT BAR
+============================================================ */
+
+.mooma-transfer-popup-countbar {
+  min-height: 42px;
+
+  padding:
+    0 24px;
+
+  display: flex;
+  align-items: center;
+  justify-content:
+    space-between;
+
+  gap: 20px;
+
+  border-top:
+    1px solid
+    rgba(255, 255, 255, 0.055);
+
+  border-bottom:
+    1px solid
+    rgba(255, 255, 255, 0.055);
+
+  background:
+    rgba(255, 255, 255, 0.018);
+}
+
+.mooma-transfer-popup-countbar > div {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+}
+
+.mooma-transfer-popup-live {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #c52c39;
+
+  box-shadow:
+    0 0 12px
+      rgba(197, 44, 57, 0.7);
+}
+
+.mooma-transfer-popup-countbar strong {
+  color: #d64a55;
+
+  font-size: 7px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.09em;
+}
+
+.mooma-transfer-popup-countbar > span {
+  color: #77777d;
+
+  font-size: 7px;
+  font-weight: 800;
+
+  letter-spacing:
+    0.08em;
+}
+
+
+/* ============================================================
+   INFO
+============================================================ */
+
+.mooma-transfer-popup-info {
+  padding: 20px 24px 0;
+
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      4,
+      minmax(0, 1fr)
+    );
+
+  gap: 8px;
+}
+
+.mooma-transfer-popup-info > div {
+  min-height: 68px;
+
+  padding: 11px 12px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  gap: 5px;
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.055);
+
+  border-radius: 10px;
+
+  background:
+    rgba(255, 255, 255, 0.022);
+}
+
+.mooma-transfer-popup-info small {
+  color: #69696f;
+
+  font-size: 6px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.09em;
+}
+
+.mooma-transfer-popup-info strong {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  overflow: hidden;
+
+  color: #d7d7da;
+
+  font-size: 8px;
+  font-weight: 800;
+
+  text-overflow: ellipsis;
+}
+
+
+/* ============================================================
+   ITEMS
+============================================================ */
+
+.mooma-transfer-popup-items {
+  padding:
+    21px 24px 0;
+}
+
+.mooma-transfer-popup-items-heading {
+  margin-bottom: 10px;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content:
+    space-between;
+
+  gap: 15px;
+}
+
+.mooma-transfer-popup-items-heading span {
+  color: #a82a35;
+
+  font-size: 6px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.12em;
+}
+
+.mooma-transfer-popup-items-heading h3 {
+  margin:
+    3px 0 0;
+
+  color: #e5e5e7;
+
+  font-size: 14px;
+}
+
+.mooma-transfer-popup-items-heading > strong {
+  padding:
+    6px 8px;
+
+  border-radius: 6px;
+
+  background:
+    rgba(180, 35, 47, 0.09);
+
+  color: #c93b47;
+
+  font-size: 6px;
+  font-weight: 950;
+}
+
+
+/* ============================================================
+   TABLE
+============================================================ */
+
+.mooma-transfer-popup-table-wrap {
+  overflow: hidden;
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.06);
+
+  border-radius: 11px;
+}
+
+.mooma-transfer-popup-table-head,
+.mooma-transfer-popup-table-row {
+  display: grid;
+
+  grid-template-columns:
+    minmax(180px, 1fr)
+    110px
+    70px
+    70px;
+
+  align-items: center;
+
+  gap: 10px;
+}
+
+.mooma-transfer-popup-table-head {
+  min-height: 34px;
+
+  padding:
+    0 12px;
+
+  background:
+    rgba(255, 255, 255, 0.035);
+
+  color: #66666c;
+
+  font-size: 6px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.08em;
+}
+
+.mooma-transfer-popup-table-body {
+  max-height: 235px;
+
+  overflow-y: auto;
+}
+
+.mooma-transfer-popup-table-row {
+  min-height: 43px;
+
+  padding:
+    8px 12px;
+
+  border-top:
+    1px solid
+    rgba(255, 255, 255, 0.045);
+
+  font-size: 8px;
+}
+
+.mooma-transfer-popup-table-row strong {
+  color: #d0d0d3;
+}
+
+.mooma-transfer-popup-table-row span {
+  color: #77777d;
+}
+
+.mooma-transfer-popup-table-row .mooma-transfer-popup-qty {
+  color: #e6e6e8;
+
+  font-size: 10px;
+}
+
+.mooma-transfer-popup-no-items {
+  padding: 35px;
+
+  color: #777;
+
+  text-align: center;
+
+  font-size: 8px;
+}
+
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+
+.mooma-transfer-popup-navigation {
+  padding:
+    15px 24px 0;
+
+  display: grid;
+
+  grid-template-columns:
+    auto
+    1fr
+    auto;
+
+  align-items: center;
+
+  gap: 14px;
+}
+
+.mooma-transfer-popup-navigation > button {
+  min-height: 31px;
+
+  padding:
+    0 9px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 4px;
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.06);
+
+  border-radius: 7px;
+
+  background:
+    rgba(255, 255, 255, 0.025);
+
+  color: #777;
+
+  cursor: pointer;
+
+  font-size: 6px;
+  font-weight: 900;
+}
+
+.mooma-transfer-popup-navigation > button:disabled {
+  opacity: 0.3;
+
+  cursor: default;
+}
+
+.mooma-transfer-popup-navigation > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 5px;
+}
+
+.mooma-transfer-popup-navigation > div button {
+  width: 6px;
+  height: 6px;
+
+  padding: 0;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: #46464b;
+
+  cursor: pointer;
+
+  transition:
+    0.2s ease;
+}
+
+.mooma-transfer-popup-navigation > div button.active {
+  width: 18px;
+
+  border-radius: 5px;
+
+  background: #b4232f;
+}
+
+
+/* ============================================================
+   ACTIONS
+============================================================ */
+
+.mooma-transfer-popup-actions {
+  padding:
+    21px 24px 24px;
+
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 9px;
+}
+
+.mooma-transfer-popup-actions > button {
+  min-height: 57px;
+
+  padding:
+    0 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 10px;
+
+  border-radius: 11px;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.mooma-transfer-popup-actions > button:hover {
+  transform:
+    translateY(-2px);
+}
+
+.mooma-transfer-popup-actions > button div {
+  display: flex;
+  flex-direction: column;
+
+  gap: 2px;
+
+  text-align: left;
+}
+
+.mooma-transfer-popup-actions small {
+  font-size: 5px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.09em;
+}
+
+.mooma-transfer-popup-actions strong {
+  font-size: 9px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.06em;
+}
+
+.mooma-transfer-popup-reject {
+  border:
+    1px solid
+    rgba(180, 35, 47, 0.22);
+
+  background:
+    rgba(180, 35, 47, 0.055);
+
+  color: #c53b46;
+}
+
+.mooma-transfer-popup-accept {
+  border:
+    1px solid
+    rgba(195, 43, 55, 0.55);
+
+  background:
+    linear-gradient(
+      135deg,
+      #841722,
+      #b4232f
+    );
+
+  color: #fff;
+
+  box-shadow:
+    0 12px 30px
+      rgba(180, 35, 47, 0.15);
+}
+
+
+/* ============================================================
+   CONFIRMATION
+============================================================ */
+
+.mooma-transfer-popup-confirm {
+  margin:
+    20px 24px 24px;
+
+  padding: 16px;
+
+  border:
+    1px solid
+    rgba(180, 35, 47, 0.2);
+
+  border-radius: 12px;
+
+  background:
+    rgba(180, 35, 47, 0.055);
+}
+
+.mooma-transfer-popup-confirm-copy {
+  display: flex;
+
+  gap: 11px;
+}
+
+.mooma-transfer-popup-confirm-copy > svg {
+  flex: 0 0 auto;
+
+  color: #ca3743;
+}
+
+.mooma-transfer-popup-confirm-copy span {
+  color: #a92b35;
+
+  font-size: 6px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.1em;
+}
+
+.mooma-transfer-popup-confirm-copy h4 {
+  margin:
+    3px 0 4px;
+
+  color: #eee;
+
+  font-size: 13px;
+}
+
+.mooma-transfer-popup-confirm-copy p {
+  margin: 0;
+
+  color: #85858b;
+
+  font-size: 8px;
+
+  line-height: 1.55;
+}
+
+.mooma-transfer-popup-confirm-actions {
+  margin-top: 15px;
+
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 8px;
+}
+
+.mooma-transfer-popup-confirm-actions button {
+  min-height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 7px;
+
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  font-size: 7px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.07em;
+}
+
+.mooma-transfer-confirm-cancel {
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.07);
+
+  background:
+    rgba(255, 255, 255, 0.025);
+
+  color: #888;
+}
+
+.mooma-transfer-confirm-accept {
+  border: 0;
+
+  background: #b4232f;
+
+  color: white;
+}
+
+.mooma-transfer-confirm-reject {
+  border: 0;
+
+  background: #29292c;
+
+  color: #e4e4e6;
+}
+
+
+/* ============================================================
+   RESULT
+============================================================ */
+
+.mooma-transfer-popup-result {
+  min-height: 400px;
+
+  padding:
+    55px 30px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+}
+
+.mooma-transfer-result-icon {
+  width: 72px;
+  height: 72px;
+
+  margin-bottom: 18px;
+
+  display: grid;
+  place-items: center;
+
+  border:
+    1px solid
+    rgba(180, 35, 47, 0.25);
+
+  border-radius: 50%;
+
+  background:
+    rgba(180, 35, 47, 0.08);
+
+  color: #cf3d49;
+
+  box-shadow:
+    0 0 40px
+      rgba(180, 35, 47, 0.08);
+}
+
+.mooma-transfer-popup-result > span {
+  color: #a62a34;
+
+  font-size: 6px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.14em;
+}
+
+.mooma-transfer-popup-result h3 {
+  margin:
+    7px 0;
+
+  color: #eee;
+
+  font-size: 24px;
+
+  letter-spacing:
+    -0.035em;
+}
+
+.mooma-transfer-popup-result p {
+  max-width: 420px;
+
+  margin: 0;
+
+  color: #85858b;
+
+  font-size: 9px;
+
+  line-height: 1.6;
+}
+
+.mooma-transfer-result-remaining {
+  margin-top: 17px;
+
+  padding:
+    7px 10px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  border-radius: 7px;
+
+  background:
+    rgba(180, 35, 47, 0.07);
+
+  color: #bd3540;
+
+  font-size: 7px;
+  font-weight: 950;
+}
+
+.mooma-transfer-popup-result > button {
+  min-height: 43px;
+
+  margin-top: 24px;
+
+  padding:
+    0 18px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  border: 0;
+  border-radius: 9px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #8e1924,
+      #b4232f
+    );
+
+  color: #fff;
+
+  cursor: pointer;
+
+  font-size: 7px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.07em;
+}
+
+
+/* ============================================================
+   SMALL DASHBOARD TRANSFER STATUS
+============================================================ */
+
+.mooma-dash-pending-mini {
+  margin-top: 55px;
+
+  padding: 17px 19px;
+
+  display: flex;
+  align-items: center;
+  justify-content:
+    space-between;
+
+  gap: 20px;
+
+  scroll-margin-top: 90px;
+
+  border:
+    1px solid
+    rgba(20, 20, 20, 0.07);
+
+  border-radius: 14px;
+
+  background:
+    rgba(255, 255, 255, 0.65);
+}
+
+.mooma-dash-pending-mini-copy {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+}
+
+.mooma-dash-pending-mini-icon {
+  width: 40px;
+  height: 40px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 10px;
+
+  background:
+    rgba(180, 35, 47, 0.07);
+
+  color: #b4232f;
+}
+
+.mooma-dash-pending-mini-copy span {
+  color: #b4232f;
+
+  font-size: 6px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.1em;
+}
+
+.mooma-dash-pending-mini-copy h3 {
+  margin:
+    3px 0 0;
+
+  color: #444;
+
+  font-size: 10px;
+}
+
+.mooma-dash-pending-mini-copy p {
+  margin:
+    3px 0 0;
+
+  color: #a52631;
+
+  font-size: 7px;
+}
+
+.mooma-dash-pending-mini-actions {
+  display: flex;
+
+  gap: 7px;
+}
+
+.mooma-dash-pending-mini-actions button {
+  min-height: 35px;
+
+  padding:
+    0 11px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  font-size: 6px;
+  font-weight: 950;
+}
+
+.mooma-dash-mini-refresh {
+  border:
+    1px solid
+    rgba(20, 20, 20, 0.08);
+
+  background: white;
+
+  color: #777;
+}
+
+.mooma-dash-mini-process {
+  border: 0;
+
+  background: #a91f2b;
+
+  color: white;
+}
+
+
+/* ============================================================
+   SPINNER
+============================================================ */
+
+.mooma-spinner {
+  animation:
+    mooma-spinner-rotate
+    0.8s linear infinite;
+}
+
+@keyframes mooma-spinner-rotate {
+  to {
+    transform:
+      rotate(360deg);
+  }
+}
+
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (max-width: 720px) {
+  .mooma-transfer-popup-overlay {
+    padding: 10px;
+
+    align-items: flex-end;
+  }
+
+  .mooma-transfer-popup {
+    width: 100%;
+
+    max-height:
+      calc(100vh - 20px);
+
+    border-radius:
+      19px 19px 10px 10px;
+  }
+
+  .mooma-transfer-popup-top {
+    padding:
+      18px 16px 15px;
+
+    grid-template-columns:
+      40px
+      minmax(0, 1fr)
+      34px;
+
+    gap: 10px;
+  }
+
+  .mooma-transfer-popup-alert-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mooma-transfer-popup-title h2 {
+    font-size: 18px;
+  }
+
+  .mooma-transfer-popup-countbar {
+    padding:
+      0 16px;
+  }
+
+  .mooma-transfer-popup-info {
+    padding:
+      16px 16px 0;
+
+    grid-template-columns:
+      1fr 1fr;
+  }
+
+  .mooma-transfer-popup-items {
+    padding:
+      18px 16px 0;
+  }
+
+  .mooma-transfer-popup-table-wrap {
+    overflow-x: auto;
+  }
+
+  .mooma-transfer-popup-table-head,
+  .mooma-transfer-popup-table-row {
+    min-width: 500px;
+  }
+
+  .mooma-transfer-popup-navigation {
+    padding:
+      14px 16px 0;
+  }
+
+  .mooma-transfer-popup-actions {
+    padding:
+      18px 16px 18px;
+
+    grid-template-columns:
+      1fr;
+  }
+
+  .mooma-transfer-popup-confirm {
+    margin:
+      18px 16px;
+  }
+
+  .mooma-transfer-popup-confirm-actions {
+    grid-template-columns:
+      1fr;
+  }
+
+  .mooma-dash-pending-mini {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mooma-dash-pending-mini-actions {
+    display: grid;
+
+    grid-template-columns:
+      1fr 1fr;
+  }
+
+  .mooma-dash-pending-mini-actions button {
+    justify-content: center;
+  }
+}
