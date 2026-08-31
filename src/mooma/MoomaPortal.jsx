@@ -631,103 +631,75 @@ export default function MoomaPortal({
   /* ==========================================================
      OPEN MODULE
   ========================================================== */
-/* ==========================================================
-   OPEN MODULE
-========================================================== */
 
-function handleModule(moduleId) {
-
-  console.log(
-    "[MOOMA] MODULE CLICK:",
+  function handleModule(
     moduleId
-  );
-
-
-  /* ==========================================================
-     STOCK RECORD
-  ========================================================== */
-
-  if (
-    moduleId ===
-    "stock-record"
   ) {
 
-    setActiveModule(
+    console.log(
+      "[MOOMA] MODULE CLICK:",
+      moduleId
+    );
+
+
+    /*
+     * STOCK RECORD
+     */
+
+    if (
+      moduleId ===
       "stock-record"
-    );
+    ) {
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+      setActiveModule(
+        "stock-record"
+      );
 
-    return;
-  }
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
+      return;
+    }
 
 
-  /* ==========================================================
-     STOCK VIEW
-  ========================================================== */
+    /*
+     * STOCK VIEW
+     */
 
-  if (
-    moduleId ===
-    "stock-view"
-  ) {
-
-    setActiveModule(
+    if (
+      moduleId ===
       "stock-view"
-    );
+    ) {
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+      setActiveModule(
+        "stock-view"
+      );
 
-    return;
-  }
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
 
-
-  /* ==========================================================
-     STOCK TRANSFER
-     - WILL CONNECT NEXT
-  ========================================================== */
-
-  if (
-    moduleId ===
-    "stock-transfer"
-  ) {
-
-    console.log(
-      "[MOOMA] STOCK TRANSFER NOT CONNECTED YET"
-    );
-
-    return;
-  }
+      return;
+    }
 
 
-  /* ==========================================================
-     STAFF SCHEDULE
-     - WILL CONNECT NEXT
-  ========================================================== */
-
-  if (
-    moduleId ===
-    "staff-schedule"
-  ) {
+    /*
+     * NEXT MODULES
+     *
+     * stock-transfer
+     * staff-schedule
+     */
 
     console.log(
-      "[MOOMA] STAFF SCHEDULE NOT CONNECTED YET"
+      "[MOOMA] MODULE NOT CONNECTED YET:",
+      moduleId
     );
-
-    return;
   }
 
 
-  console.log(
-    "[MOOMA] UNKNOWN MODULE:",
-    moduleId
-  );
-}
   /* ==========================================================
      RETURN TO DASHBOARD
   ========================================================== */
@@ -780,6 +752,30 @@ function handleModule(moduleId) {
 
     return (
       <MoomaStockRecord
+        branch={
+          authenticated
+        }
+
+        onBack={
+          returnToDashboard
+        }
+      />
+    );
+  }
+
+
+  /* ==========================================================
+     STOCK VIEW
+  ========================================================== */
+
+  if (
+    authenticated &&
+    activeModule ===
+      "stock-view"
+  ) {
+
+    return (
+      <MoomaStockView
         branch={
           authenticated
         }
