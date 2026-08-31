@@ -26,6 +26,7 @@ import {
   LogOut,
   PackageCheck,
   RefreshCcw,
+  Rocket,
   Truck,
   X,
   XCircle,
@@ -40,7 +41,7 @@ import {
 
 
 /* ============================================================
-   DASHBOARD MODULES
+   MOOMA DASHBOARD MODULES
 ============================================================ */
 
 const MODULES = [
@@ -87,7 +88,7 @@ const MODULES = [
 
 
 /* ============================================================
-   TRANSFER HELPERS
+   HELPERS
 ============================================================ */
 
 function transferIdOf(transfer) {
@@ -142,7 +143,11 @@ function transferItemsOf(transfer) {
     return transfer.items;
   }
 
-  if (Array.isArray(transfer?.transferItems)) {
+  if (
+    Array.isArray(
+      transfer?.transferItems
+    )
+  ) {
     return transfer.transferItems;
   }
 
@@ -192,7 +197,7 @@ function itemUomOf(item) {
 
 
 /* ============================================================
-   MOOMA DASHBOARD
+   COMPONENT
 ============================================================ */
 
 export default function MoomaDashboard({
@@ -212,7 +217,7 @@ export default function MoomaDashboard({
 
 
   /* ==========================================================
-     STATE
+     TRANSFER STATE
   ========================================================== */
 
   const [
@@ -260,7 +265,7 @@ export default function MoomaDashboard({
 
 
   /* ==========================================================
-     CURRENT POPUP TRANSFER
+     CURRENT TRANSFER
   ========================================================== */
 
   const currentTransfer =
@@ -274,7 +279,8 @@ export default function MoomaDashboard({
       return (
         pendingTransfers[
           currentTransferIndex
-        ] || pendingTransfers[0]
+        ] ||
+        pendingTransfers[0]
       );
     }, [
       pendingTransfers,
@@ -304,11 +310,17 @@ export default function MoomaDashboard({
         );
 
       const transfers =
-        Array.isArray(data?.transfers)
+        Array.isArray(
+          data?.transfers
+        )
           ? data.transfers
-          : Array.isArray(data?.pending)
+          : Array.isArray(
+                data?.pending
+              )
             ? data.pending
-            : Array.isArray(data?.data)
+            : Array.isArray(
+                  data?.data
+                )
               ? data.data
               : [];
 
@@ -320,34 +332,44 @@ export default function MoomaDashboard({
         currentTransferIndex >=
         transfers.length
       ) {
-        setCurrentTransferIndex(0);
+        setCurrentTransferIndex(
+          0
+        );
       }
 
       /*
-       * FIRST DASHBOARD ENTRY:
-       *
-       * Pending transfers exist
-       * -> popup immediately.
+       * Automatically show popup
+       * when dashboard opens AND
+       * pending transfers exist.
        */
 
       if (
         showPopup &&
         transfers.length > 0
       ) {
-        setCurrentTransferIndex(0);
+        setCurrentTransferIndex(
+          0
+        );
+
         setConfirmAction("");
+
         setActionResult(null);
+
         setPopupOpen(true);
       }
 
       /*
-       * No pending transfers.
+       * Nothing pending.
        */
+
       if (
         transfers.length === 0
       ) {
         setPopupOpen(false);
-        setCurrentTransferIndex(0);
+
+        setCurrentTransferIndex(
+          0
+        );
       }
 
       if (moveToSection) {
@@ -361,7 +383,7 @@ export default function MoomaDashboard({
       }
     } catch (error) {
       console.error(
-        "[MOOMA DASHBOARD] Pending transfer error:",
+        "[MOOMA] Pending transfers:",
         error
       );
 
@@ -376,17 +398,10 @@ export default function MoomaDashboard({
 
 
   /* ==========================================================
-     DASHBOARD ENTRY
+     FIRST DASHBOARD OPEN
   ========================================================== */
 
   useEffect(() => {
-    /*
-     * IMPORTANT:
-     *
-     * Every time branch dashboard opens,
-     * immediately check incoming transfers.
-     */
-
     loadPendingTransfers({
       showPopup: true,
     });
@@ -394,7 +409,7 @@ export default function MoomaDashboard({
 
 
   /* ==========================================================
-     BODY SCROLL LOCK
+     LOCK PAGE WHILE POPUP OPEN
   ========================================================== */
 
   useEffect(() => {
@@ -402,7 +417,7 @@ export default function MoomaDashboard({
       return;
     }
 
-    const previous =
+    const oldOverflow =
       document.body.style.overflow;
 
     document.body.style.overflow =
@@ -410,13 +425,13 @@ export default function MoomaDashboard({
 
     return () => {
       document.body.style.overflow =
-        previous;
+        oldOverflow;
     };
   }, [popupOpen]);
 
 
   /* ==========================================================
-     OPEN PENDING POPUP MANUALLY
+     OPEN POPUP MANUALLY
   ========================================================== */
 
   function openPendingPopup() {
@@ -434,14 +449,17 @@ export default function MoomaDashboard({
     }
 
     setCurrentTransferIndex(0);
+
     setConfirmAction("");
+
     setActionResult(null);
+
     setPopupOpen(true);
   }
 
 
   /* ==========================================================
-     CLOSE POPUP
+     CLOSE
   ========================================================== */
 
   function closePopup() {
@@ -450,7 +468,9 @@ export default function MoomaDashboard({
     }
 
     setPopupOpen(false);
+
     setConfirmAction("");
+
     setActionResult(null);
   }
 
@@ -468,10 +488,12 @@ export default function MoomaDashboard({
     }
 
     setConfirmAction("");
+
     setActionResult(null);
 
     setCurrentTransferIndex(
-      (current) => current - 1
+      (current) =>
+        current - 1
     );
   }
 
@@ -483,23 +505,26 @@ export default function MoomaDashboard({
   function nextTransfer() {
     if (
       currentTransferIndex >=
-        pendingTransfers.length - 1 ||
+        pendingTransfers.length -
+          1 ||
       actionBusy
     ) {
       return;
     }
 
     setConfirmAction("");
+
     setActionResult(null);
 
     setCurrentTransferIndex(
-      (current) => current + 1
+      (current) =>
+        current + 1
     );
   }
 
 
   /* ==========================================================
-     ASK ACCEPT / REJECT
+     ASK ACTION
   ========================================================== */
 
   function askAction(action) {
@@ -511,12 +536,15 @@ export default function MoomaDashboard({
     }
 
     setActionResult(null);
-    setConfirmAction(action);
+
+    setConfirmAction(
+      action
+    );
   }
 
 
   /* ==========================================================
-     EXECUTE ACCEPT / REJECT
+     ACCEPT / REJECT
   ========================================================== */
 
   async function executeTransferAction() {
@@ -536,7 +564,10 @@ export default function MoomaDashboard({
     if (!transferId) {
       setActionResult({
         type: "error",
-        title: "ACTION FAILED",
+
+        title:
+          "ACTION FAILED",
+
         message:
           "Transfer ID is missing.",
       });
@@ -548,12 +579,15 @@ export default function MoomaDashboard({
       confirmAction;
 
     setActionBusy(true);
+
     setActionResult(null);
 
     try {
       let response;
 
-      if (action === "accept") {
+      if (
+        action === "accept"
+      ) {
         response =
           await acceptMoomaTransfer({
             transferId,
@@ -565,23 +599,26 @@ export default function MoomaDashboard({
           });
       }
 
+
       /*
-       * Remove processed transfer
-       * immediately from local queue.
+       * Remove completed transfer
+       * from local queue.
        */
 
-      const remainingTransfers =
+      const remaining =
         pendingTransfers.filter(
           (transfer) =>
-            transferIdOf(transfer) !==
-            transferId
+            transferIdOf(
+              transfer
+            ) !== transferId
         );
 
       setPendingTransfers(
-        remainingTransfers
+        remaining
       );
 
       setConfirmAction("");
+
 
       setActionResult({
         type: "success",
@@ -598,38 +635,30 @@ export default function MoomaDashboard({
               ? "Incoming stock transfer has been accepted successfully."
               : "Incoming stock transfer has been rejected successfully."
           ),
-
-        remaining:
-          remainingTransfers.length,
       });
 
-      /*
-       * Keep index valid.
-       */
 
       if (
         currentTransferIndex >=
-          remainingTransfers.length &&
-        remainingTransfers.length > 0
+          remaining.length &&
+        remaining.length > 0
       ) {
         setCurrentTransferIndex(
-          remainingTransfers.length - 1
+          remaining.length - 1
         );
       }
-
-      /*
-       * We deliberately keep popup open
-       * so staff see success first.
-       */
     } catch (error) {
       console.error(
-        "[MOOMA DASHBOARD] Transfer response failed:",
+        "[MOOMA] Transfer action:",
         error
       );
 
       setActionResult({
         type: "error",
-        title: "ACTION FAILED",
+
+        title:
+          "ACTION FAILED",
+
         message:
           error?.message ||
           "Unable to process this transfer.",
@@ -641,7 +670,7 @@ export default function MoomaDashboard({
 
 
   /* ==========================================================
-     CONTINUE AFTER SUCCESS
+     CONTINUE AFTER RESULT
   ========================================================== */
 
   async function continueAfterResult() {
@@ -650,30 +679,32 @@ export default function MoomaDashboard({
       "success"
     ) {
       setActionResult(null);
+
       return;
     }
 
     /*
-     * More pending transfers:
-     * continue inside popup.
+     * More transfers remain.
      */
 
     if (
       pendingTransfers.length > 0
     ) {
       setActionResult(null);
+
       setConfirmAction("");
 
       return;
     }
 
     /*
-     * No transfers remaining.
-     * Close popup and refresh server.
+     * Queue finished.
      */
 
     setPopupOpen(false);
+
     setActionResult(null);
+
     setConfirmAction("");
 
     await loadPendingTransfers();
@@ -681,10 +712,12 @@ export default function MoomaDashboard({
 
 
   /* ==========================================================
-     MODULE
+     OPEN MODULE
   ========================================================== */
 
-  function openModule(moduleId) {
+  function openModule(
+    moduleId
+  ) {
     onModule?.(
       moduleId
     );
@@ -722,12 +755,15 @@ export default function MoomaDashboard({
         ==================================================== */}
 
         <header className="mooma-dash-header">
+
           <div className="mooma-dash-brand">
+
             <div className="mooma-dash-brand-mark">
               M
             </div>
 
             <div className="mooma-dash-brand-copy">
+
               <strong>
                 MOOMA
               </strong>
@@ -735,29 +771,42 @@ export default function MoomaDashboard({
               <span>
                 DAM OPERATIONS
               </span>
+
             </div>
+
           </div>
 
 
           <div className="mooma-dash-header-right">
+
             <div className="mooma-dash-online">
+
               <i />
 
               SYSTEM ONLINE
+
             </div>
+
 
             <button
               type="button"
               className="mooma-dash-logout"
-              onClick={onLogout}
+              onClick={
+                onLogout
+              }
             >
-              <LogOut size={15} />
+              <LogOut
+                size={15}
+              />
 
               <span>
                 CHANGE BRANCH
               </span>
+
             </button>
+
           </div>
+
         </header>
 
 
@@ -766,7 +815,11 @@ export default function MoomaDashboard({
         ==================================================== */}
 
         <main className="mooma-dash-main">
-          {/* HERO */}
+
+
+          {/* ==================================================
+              HERO
+          ================================================== */}
 
           <motion.section
             className="mooma-dash-hero"
@@ -785,31 +838,40 @@ export default function MoomaDashboard({
               duration: 0.5,
             }}
           >
+
             <div className="mooma-dash-hero-copy">
+
               <div className="mooma-dash-eyebrow">
                 MOOMA / STAFF OPERATIONS
               </div>
+
 
               <div className="mooma-dash-branch-code">
                 {branchCode}
               </div>
 
+
               <h1>
                 {branchName}
               </h1>
 
+
               <p>
-                Branch operations are connected
-                and ready. Select an operation
-                below to continue.
+                Branch operations are
+                connected and ready.
+                Select an operation below
+                to continue.
               </p>
 
 
               <div className="mooma-dash-connection-row">
+
                 <div>
+
                   <span className="mooma-dash-live-dot" />
 
                   <div>
+
                     <small>
                       BRANCH NETWORK
                     </small>
@@ -817,7 +879,9 @@ export default function MoomaDashboard({
                     <strong>
                       CONNECTED
                     </strong>
+
                   </div>
+
                 </div>
 
 
@@ -836,31 +900,46 @@ export default function MoomaDashboard({
                     openPendingPopup
                   }
                 >
-                  <Inbox size={16} />
+
+                  <Inbox
+                    size={16}
+                  />
 
                   <div>
+
                     <small>
                       INCOMING TRANSFERS
                     </small>
 
                     <strong>
+
                       {pendingLoading
                         ? "CHECKING..."
                         : pendingTransfers.length
                           ? `${pendingTransfers.length} PENDING`
                           : "NO PENDING"}
+
                     </strong>
+
                   </div>
 
-                  <ArrowRight size={14} />
+                  <ArrowRight
+                    size={14}
+                  />
+
                 </button>
+
               </div>
+
             </div>
 
 
-            {/* CORE */}
+            {/* ==================================================
+                CORE ANIMATION
+            ================================================== */}
 
             <div className="mooma-dash-core-wrap">
+
               <motion.div
                 className="mooma-dash-core-ring mooma-dash-core-ring-one"
 
@@ -875,6 +954,7 @@ export default function MoomaDashboard({
                 }}
               />
 
+
               <motion.div
                 className="mooma-dash-core-ring mooma-dash-core-ring-two"
 
@@ -888,6 +968,7 @@ export default function MoomaDashboard({
                   ease: "linear",
                 }}
               />
+
 
               <motion.div
                 className="mooma-dash-core"
@@ -908,7 +989,9 @@ export default function MoomaDashboard({
               >
                 M
               </motion.div>
+
             </div>
+
           </motion.section>
 
 
@@ -917,8 +1000,11 @@ export default function MoomaDashboard({
           ================================================== */}
 
           <section className="mooma-dash-workspace">
+
             <div className="mooma-dash-section-heading">
+
               <div>
+
                 <span>
                   STAFF WORKSPACE
                 </span>
@@ -926,20 +1012,24 @@ export default function MoomaDashboard({
                 <h2>
                   Choose an operation
                 </h2>
+
               </div>
 
               <small>
                 04 MODULES AVAILABLE
               </small>
+
             </div>
 
 
             <div className="mooma-dash-module-grid">
+
               {MODULES.map(
                 (
                   module,
                   index
                 ) => {
+
                   const Icon =
                     module.icon;
 
@@ -953,11 +1043,11 @@ export default function MoomaDashboard({
 
                       className="mooma-dash-module"
 
-                      onClick={() => {
+                      onClick={() =>
                         openModule(
                           module.id
-                        );
-                      }}
+                        )
+                      }
 
                       initial={{
                         opacity: 0,
@@ -972,7 +1062,8 @@ export default function MoomaDashboard({
                       transition={{
                         delay:
                           0.08 +
-                          index * 0.07,
+                          index *
+                            0.07,
                       }}
 
                       whileHover={{
@@ -980,69 +1071,109 @@ export default function MoomaDashboard({
                       }}
 
                       whileTap={{
-                        scale: 0.985,
+                        scale:
+                          0.985,
                       }}
                     >
+
                       <div className="mooma-dash-module-top">
+
                         <div className="mooma-dash-module-icon">
-                          <Icon size={21} />
+
+                          <Icon
+                            size={21}
+                          />
+
                         </div>
 
                         <span>
-                          {module.number}
+                          {
+                            module.number
+                          }
                         </span>
+
                       </div>
 
+
                       <div className="mooma-dash-module-copy">
+
                         <small>
-                          {module.label}
+                          {
+                            module.label
+                          }
                         </small>
 
                         <h3>
-                          {module.title}
+                          {
+                            module.title
+                          }
                         </h3>
 
                         <p>
-                          {module.description}
+                          {
+                            module.description
+                          }
                         </p>
+
                       </div>
 
+
                       <div className="mooma-dash-module-open">
+
                         <span>
                           OPEN MODULE
                         </span>
 
-                        <ArrowRight size={16} />
+                        <ArrowRight
+                          size={16}
+                        />
+
                       </div>
+
                     </motion.button>
                   );
                 }
               )}
+
             </div>
+
           </section>
 
 
           {/* ==================================================
-              SMALL DASHBOARD TRANSFER STATUS
+              TRANSFER QUEUE STATUS
           ================================================== */}
 
           <section
-            ref={pendingSectionRef}
+            ref={
+              pendingSectionRef
+            }
+
             className="mooma-dash-pending-mini"
           >
+
             <div className="mooma-dash-pending-mini-copy">
+
               <div className="mooma-dash-pending-mini-icon">
-                <ArrowLeftRight size={20} />
+
+                <ArrowLeftRight
+                  size={20}
+                />
+
               </div>
 
+
               <div>
+
                 <span>
-                  INCOMING STOCK TRANSFERS
+                  LIVE TRANSFER QUEUE
                 </span>
 
+
                 <h3>
+
                   {pendingLoading
-                    ? "Checking transfer queue..."
+                    ? "Checking incoming transfers..."
                     : pendingTransfers.length
                       ? `${pendingTransfers.length} transfer${
                           pendingTransfers.length > 1
@@ -1050,31 +1181,42 @@ export default function MoomaDashboard({
                             : ""
                         } waiting for action`
                       : "No pending transfers"}
+
                 </h3>
+
 
                 {pendingError && (
                   <p>
-                    {pendingError}
+                    {
+                      pendingError
+                    }
                   </p>
                 )}
+
               </div>
+
             </div>
 
 
             <div className="mooma-dash-pending-mini-actions">
+
               <button
                 type="button"
 
                 className="mooma-dash-mini-refresh"
 
-                disabled={pendingLoading}
+                disabled={
+                  pendingLoading
+                }
 
                 onClick={() => {
                   loadPendingTransfers({
-                    moveToSection: true,
+                    moveToSection:
+                      true,
                   });
                 }}
               >
+
                 <RefreshCcw
                   size={14}
 
@@ -1086,10 +1228,13 @@ export default function MoomaDashboard({
                 />
 
                 REFRESH
+
               </button>
 
 
-              {pendingTransfers.length > 0 && (
+              {pendingTransfers.length >
+                0 && (
+
                 <button
                   type="button"
 
@@ -1099,20 +1244,34 @@ export default function MoomaDashboard({
                     openPendingPopup
                   }
                 >
+
                   PROCESS NOW
 
-                  <ArrowRight size={14} />
+                  <ArrowRight
+                    size={14}
+                  />
+
                 </button>
+
               )}
+
             </div>
+
           </section>
 
 
+          {/* ==================================================
+              FOOTER
+          ================================================== */}
+
           <footer className="mooma-dash-footer">
+
             <div>
+
               <span />
 
               MOOMA OPERATIONS NETWORK
+
             </div>
 
             <p>
@@ -1120,70 +1279,269 @@ export default function MoomaDashboard({
               {" / "}
               {branchName}
             </p>
+
           </footer>
+
         </main>
+
       </motion.div>
 
 
       {/* ======================================================
-          PENDING TRANSFER POPUP
+          TRANSFER POPUP SYSTEM
       ====================================================== */}
 
       <AnimatePresence>
+
         {popupOpen &&
           currentTransfer && (
+
+          <motion.div
+            className="mooma-transfer-popup-overlay"
+
+            initial={{
+              opacity: 0,
+            }}
+
+            animate={{
+              opacity: 1,
+            }}
+
+            exit={{
+              opacity: 0,
+            }}
+
+            transition={{
+              duration: 0.3,
+            }}
+          >
+
+
+            {/* =================================================
+                BALL -> 3 BOUNCES -> FLOWER -> CARD
+            ================================================= */}
+
             <motion.div
-              className="mooma-transfer-popup-overlay"
+              className="mooma-transfer-popup mooma-transfer-flower"
 
               initial={{
                 opacity: 0,
+
+                x: "58vw",
+
+                y: -120,
+
+                scale: 0.055,
+
+                borderRadius:
+                  "50%",
               }}
 
               animate={{
-                opacity: 1,
+                opacity: [
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                ],
+
+                x: [
+                  "58vw",
+                  "37vw",
+                  "23vw",
+                  "12vw",
+                  "5vw",
+                  "2vw",
+                  0,
+                  0,
+                ],
+
+                /*
+                 * Three physical-looking
+                 * decreasing bounces.
+                 */
+
+                y: [
+                  -120,
+                  180,
+                  -125,
+                  115,
+                  -65,
+                  45,
+                  -12,
+                  0,
+                ],
+
+                /*
+                 * Keep it looking like
+                 * a ball during bounces.
+                 * Then flower open.
+                 */
+
+                scale: [
+                  0.055,
+                  0.062,
+                  0.067,
+                  0.072,
+                  0.078,
+                  0.09,
+                  0.17,
+                  1,
+                ],
+
+                borderRadius: [
+                  "50%",
+                  "50%",
+                  "50%",
+                  "50%",
+                  "50%",
+                  "50%",
+                  "44%",
+                  "22px",
+                ],
               }}
 
               exit={{
                 opacity: 0,
+
+                scale: 0.82,
+
+                y: 25,
+
+                borderRadius:
+                  "45%",
+              }}
+
+              transition={{
+                duration: 2.15,
+
+                times: [
+                  0,
+                  0.12,
+                  0.27,
+                  0.41,
+                  0.55,
+                  0.67,
+                  0.78,
+                  1,
+                ],
+
+                ease:
+                  "easeInOut",
               }}
             >
+
+
+              {/* =================================================
+                  FLOWER PETALS
+              ================================================= */}
+
               <motion.div
-                className="mooma-transfer-popup"
+                className="mooma-transfer-petals"
 
                 initial={{
                   opacity: 0,
-                  scale: 0.94,
-                  y: 28,
+                  scale: 0,
+                  rotate: -35,
+                }}
+
+                animate={{
+                  opacity: [
+                    0,
+                    0,
+                    0,
+                    0.8,
+                    0,
+                  ],
+
+                  scale: [
+                    0,
+                    0,
+                    0.4,
+                    1.45,
+                    1.8,
+                  ],
+
+                  rotate: [
+                    -35,
+                    -35,
+                    0,
+                    45,
+                    75,
+                  ],
+                }}
+
+                transition={{
+                  duration: 2.15,
+
+                  times: [
+                    0,
+                    0.68,
+                    0.76,
+                    0.89,
+                    1,
+                  ],
+                }}
+              >
+
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+
+              </motion.div>
+
+
+              {/* =================================================
+                  CONTENT APPEARS AFTER FLOWER OPENS
+              ================================================= */}
+
+              <motion.div
+                className="mooma-transfer-flower-content"
+
+                initial={{
+                  opacity: 0,
+                  y: 18,
+                  scale: 0.96,
                 }}
 
                 animate={{
                   opacity: 1,
-                  scale: 1,
                   y: 0,
-                }}
-
-                exit={{
-                  opacity: 0,
-                  scale: 0.97,
-                  y: 15,
+                  scale: 1,
                 }}
 
                 transition={{
-                  type: "spring",
-                  stiffness: 320,
-                  damping: 28,
+                  delay: 1.82,
+                  duration: 0.42,
+                  ease: "easeOut",
                 }}
               >
-                {/* ============================================
-                    POPUP TOP
-                ============================================ */}
+
+
+                {/* ===============================================
+                    POPUP HEADER
+                =============================================== */}
 
                 <div className="mooma-transfer-popup-top">
+
                   <div className="mooma-transfer-popup-alert-icon">
-                    <Truck size={21} />
+
+                    <Rocket
+                      size={21}
+                    />
+
                   </div>
 
+
                   <div className="mooma-transfer-popup-title">
+
                     <span>
                       ACTION REQUIRED
                     </span>
@@ -1194,9 +1552,12 @@ export default function MoomaDashboard({
 
                     <p>
                       Stock is waiting for
-                      confirmation at this branch.
+                      confirmation at{" "}
+                      {branchName}.
                     </p>
+
                   </div>
+
 
                   <button
                     type="button"
@@ -1211,46 +1572,66 @@ export default function MoomaDashboard({
                       actionBusy
                     }
                   >
-                    <X size={18} />
+
+                    <X
+                      size={18}
+                    />
+
                   </button>
+
                 </div>
 
 
-                {/* ============================================
-                    PENDING COUNT
-                ============================================ */}
+                {/* ===============================================
+                    COUNT
+                =============================================== */}
 
                 <div className="mooma-transfer-popup-countbar">
+
                   <div>
+
                     <span className="mooma-transfer-popup-live" />
 
                     <strong>
+
                       {
                         pendingTransfers.length
                       }{" "}
                       PENDING
+
                     </strong>
+
                   </div>
 
+
                   <span>
+
                     TRANSFER{" "}
+
                     {Math.min(
-                      currentTransferIndex + 1,
+                      currentTransferIndex +
+                        1,
+
                       pendingTransfers.length
                     )}
+
                     {" / "}
+
                     {
                       pendingTransfers.length
                     }
+
                   </span>
+
                 </div>
 
 
-                {/* ============================================
-                    RESULT VIEW
-                ============================================ */}
+                {/* ===============================================
+                    RESULT
+                =============================================== */}
 
                 {actionResult ? (
+
                   <motion.div
                     className={
                       `mooma-transfer-popup-result ${
@@ -1260,30 +1641,60 @@ export default function MoomaDashboard({
 
                     initial={{
                       opacity: 0,
-                      y: 15,
+                      scale: 0.95,
+                      y: 14,
                     }}
 
                     animate={{
                       opacity: 1,
+                      scale: 1,
                       y: 0,
                     }}
                   >
-                    <div className="mooma-transfer-result-icon">
+
+                    <motion.div
+                      className="mooma-transfer-result-icon"
+
+                      initial={{
+                        scale: 0,
+                      }}
+
+                      animate={{
+                        scale: [
+                          0,
+                          1.18,
+                          1,
+                        ],
+                      }}
+
+                      transition={{
+                        duration:
+                          0.45,
+                      }}
+                    >
+
                       {actionResult.type ===
                       "success" ? (
+
                         <CheckCircle2
                           size={35}
                         />
+
                       ) : (
+
                         <AlertCircle
                           size={35}
                         />
+
                       )}
-                    </div>
+
+                    </motion.div>
+
 
                     <span>
                       MOOMA TRANSFER SYSTEM
                     </span>
+
 
                     <h3>
                       {
@@ -1291,15 +1702,19 @@ export default function MoomaDashboard({
                       }
                     </h3>
 
+
                     <p>
                       {
                         actionResult.message
                       }
                     </p>
 
+
                     {actionResult.type ===
                       "success" && (
+
                       <div className="mooma-transfer-result-remaining">
+
                         {pendingTransfers.length >
                         0 ? (
                           <>
@@ -1321,8 +1736,11 @@ export default function MoomaDashboard({
                             QUEUE CLEARED
                           </>
                         )}
+
                       </div>
+
                     )}
+
 
                     <button
                       type="button"
@@ -1331,6 +1749,7 @@ export default function MoomaDashboard({
                         continueAfterResult
                       }
                     >
+
                       {actionResult.type ===
                       "error"
                         ? "BACK TO TRANSFER"
@@ -1342,16 +1761,24 @@ export default function MoomaDashboard({
                       <ArrowRight
                         size={16}
                       />
+
                     </button>
+
                   </motion.div>
+
                 ) : (
+
                   <>
-                    {/* ========================================
+
+
+                    {/* ===========================================
                         TRANSFER INFORMATION
-                    ======================================== */}
+                    =========================================== */}
 
                     <div className="mooma-transfer-popup-info">
+
                       <div>
+
                         <small>
                           FROM BRANCH
                         </small>
@@ -1361,57 +1788,80 @@ export default function MoomaDashboard({
                             currentTransfer
                           )}
                         </strong>
+
                       </div>
 
+
                       <div>
+
                         <small>
                           BRANCH CODE
                         </small>
 
                         <strong>
+
                           {transferFromCodeOf(
                             currentTransfer
-                          ) || "—"}
+                          ) ||
+                            "—"}
+
                         </strong>
+
                       </div>
 
+
                       <div>
+
                         <small>
                           DATE / TIME
                         </small>
 
                         <strong>
+
                           <Clock3
                             size={13}
                           />
 
                           {transferDateOf(
                             currentTransfer
-                          ) || "—"}
+                          ) ||
+                            "—"}
+
                         </strong>
+
                       </div>
 
+
                       <div>
+
                         <small>
                           TRANSFER ID
                         </small>
 
                         <strong>
+
                           {transferIdOf(
                             currentTransfer
-                          ) || "—"}
+                          ) ||
+                            "—"}
+
                         </strong>
+
                       </div>
+
                     </div>
 
 
-                    {/* ========================================
+                    {/* ===========================================
                         ITEMS
-                    ======================================== */}
+                    =========================================== */}
 
                     <div className="mooma-transfer-popup-items">
+
                       <div className="mooma-transfer-popup-items-heading">
+
                         <div>
+
                           <span>
                             TRANSFER CONTENT
                           </span>
@@ -1419,21 +1869,28 @@ export default function MoomaDashboard({
                           <h3>
                             Items Received
                           </h3>
+
                         </div>
 
+
                         <strong>
+
                           {
                             transferItemsOf(
                               currentTransfer
                             ).length
                           }{" "}
                           ITEMS
+
                         </strong>
+
                       </div>
 
 
                       <div className="mooma-transfer-popup-table-wrap">
+
                         <div className="mooma-transfer-popup-table-head">
+
                           <span>
                             ITEM
                           </span>
@@ -1449,19 +1906,26 @@ export default function MoomaDashboard({
                           <span>
                             UOM
                           </span>
+
                         </div>
 
 
                         <div className="mooma-transfer-popup-table-body">
+
                           {transferItemsOf(
                             currentTransfer
                           ).length === 0 ? (
+
                             <div className="mooma-transfer-popup-no-items">
+
                               No item details
                               returned for this
                               transfer.
+
                             </div>
+
                           ) : (
+
                             transferItemsOf(
                               currentTransfer
                             ).map(
@@ -1469,7 +1933,8 @@ export default function MoomaDashboard({
                                 item,
                                 index
                               ) => (
-                                <div
+
+                                <motion.div
                                   className="mooma-transfer-popup-table-row"
 
                                   key={
@@ -1480,7 +1945,29 @@ export default function MoomaDashboard({
                                       "item"
                                     }-${index}`
                                   }
+
+                                  initial={{
+                                    opacity:
+                                      0,
+
+                                    x: 15,
+                                  }}
+
+                                  animate={{
+                                    opacity:
+                                      1,
+
+                                    x: 0,
+                                  }}
+
+                                  transition={{
+                                    delay:
+                                      1.9 +
+                                      index *
+                                        0.035,
+                                  }}
                                 >
+
                                   <strong>
                                     {itemNameOf(
                                       item
@@ -1490,36 +1977,50 @@ export default function MoomaDashboard({
                                   <span>
                                     {itemSkuOf(
                                       item
-                                    ) || "—"}
+                                    ) ||
+                                      "—"}
                                   </span>
 
                                   <strong className="mooma-transfer-popup-qty">
+
                                     {itemQtyOf(
                                       item
                                     )}
+
                                   </strong>
 
                                   <span>
+
                                     {itemUomOf(
                                       item
-                                    ) || "—"}
+                                    ) ||
+                                      "—"}
+
                                   </span>
-                                </div>
+
+                                </motion.div>
+
                               )
                             )
+
                           )}
+
                         </div>
+
                       </div>
+
                     </div>
 
 
-                    {/* ========================================
-                        MULTIPLE TRANSFER NAVIGATION
-                    ======================================== */}
+                    {/* ===========================================
+                        MULTIPLE TRANSFERS
+                    =========================================== */}
 
                     {pendingTransfers.length >
                       1 && (
+
                       <div className="mooma-transfer-popup-navigation">
+
                         <button
                           type="button"
 
@@ -1533,19 +2034,24 @@ export default function MoomaDashboard({
                             actionBusy
                           }
                         >
+
                           <ChevronLeft
                             size={15}
                           />
 
                           PREVIOUS
+
                         </button>
 
+
                         <div>
+
                           {pendingTransfers.map(
                             (
                               transfer,
                               index
                             ) => (
+
                               <button
                                 type="button"
 
@@ -1556,9 +2062,12 @@ export default function MoomaDashboard({
                                   index
                                 }
 
-                                aria-label={`Open transfer ${
-                                  index + 1
-                                }`}
+                                aria-label={
+                                  `Open transfer ${
+                                    index +
+                                    1
+                                  }`
+                                }
 
                                 className={
                                   index ===
@@ -1568,6 +2077,7 @@ export default function MoomaDashboard({
                                 }
 
                                 onClick={() => {
+
                                   if (
                                     actionBusy
                                   ) {
@@ -1585,11 +2095,15 @@ export default function MoomaDashboard({
                                   setCurrentTransferIndex(
                                     index
                                   );
+
                                 }}
                               />
+
                             )
                           )}
+
                         </div>
+
 
                         <button
                           type="button"
@@ -1605,42 +2119,60 @@ export default function MoomaDashboard({
                             actionBusy
                           }
                         >
+
                           NEXT
 
                           <ChevronRight
                             size={15}
                           />
+
                         </button>
+
                       </div>
+
                     )}
 
 
-                    {/* ========================================
-                        NORMAL ACTION BUTTONS
-                    ======================================== */}
+                    {/* ===========================================
+                        ACTION BUTTONS
+                    =========================================== */}
 
                     {!confirmAction && (
+
                       <div className="mooma-transfer-popup-actions">
-                        <button
+
+
+                        <motion.button
                           type="button"
 
                           className="mooma-transfer-popup-reject"
 
-                          onClick={() => {
+                          onClick={() =>
                             askAction(
                               "reject"
-                            );
-                          }}
+                            )
+                          }
 
                           disabled={
                             actionBusy
                           }
+
+                          whileHover={{
+                            y: -2,
+                          }}
+
+                          whileTap={{
+                            scale:
+                              0.98,
+                          }}
                         >
+
                           <XCircle
                             size={18}
                           />
 
                           <div>
+
                             <small>
                               RETURN TRANSFER
                             </small>
@@ -1648,30 +2180,43 @@ export default function MoomaDashboard({
                             <strong>
                               REJECT
                             </strong>
+
                           </div>
-                        </button>
+
+                        </motion.button>
 
 
-                        <button
+                        <motion.button
                           type="button"
 
                           className="mooma-transfer-popup-accept"
 
-                          onClick={() => {
+                          onClick={() =>
                             askAction(
                               "accept"
-                            );
-                          }}
+                            )
+                          }
 
                           disabled={
                             actionBusy
                           }
+
+                          whileHover={{
+                            y: -2,
+                          }}
+
+                          whileTap={{
+                            scale:
+                              0.98,
+                          }}
                         >
+
                           <Check
                             size={18}
                           />
 
                           <div>
+
                             <small>
                               STOCK RECEIVED
                             </small>
@@ -1679,18 +2224,24 @@ export default function MoomaDashboard({
                             <strong>
                               ACCEPT
                             </strong>
+
                           </div>
-                        </button>
+
+                        </motion.button>
+
                       </div>
+
                     )}
 
 
-                    {/* ========================================
+                    {/* ===========================================
                         CONFIRM ACTION
-                    ======================================== */}
+                    =========================================== */}
 
                     <AnimatePresence>
+
                       {confirmAction && (
+
                         <motion.div
                           className={
                             `mooma-transfer-popup-confirm ${
@@ -1701,11 +2252,14 @@ export default function MoomaDashboard({
                           initial={{
                             opacity: 0,
                             y: 12,
+                            scale:
+                              0.98,
                           }}
 
                           animate={{
                             opacity: 1,
                             y: 0,
+                            scale: 1,
                           }}
 
                           exit={{
@@ -1713,41 +2267,58 @@ export default function MoomaDashboard({
                             y: 8,
                           }}
                         >
+
                           <div className="mooma-transfer-popup-confirm-copy">
+
                             {confirmAction ===
                             "accept" ? (
+
                               <CheckCircle2
                                 size={23}
                               />
+
                             ) : (
+
                               <AlertCircle
                                 size={23}
                               />
+
                             )}
 
+
                             <div>
+
                               <span>
                                 CONFIRM ACTION
                               </span>
 
+
                               <h4>
+
                                 {confirmAction ===
                                 "accept"
                                   ? "Accept this stock transfer?"
                                   : "Reject this stock transfer?"}
+
                               </h4>
 
+
                               <p>
+
                                 {confirmAction ===
                                 "accept"
                                   ? "Confirm that this branch has received the listed items and quantities."
                                   : "Confirm that this incoming transfer should be rejected."}
+
                               </p>
+
                             </div>
+
                           </div>
 
 
                           <div className="mooma-transfer-popup-confirm-actions">
+
                             <button
                               type="button"
 
@@ -1757,14 +2328,17 @@ export default function MoomaDashboard({
                                 actionBusy
                               }
 
-                              onClick={() => {
+                              onClick={() =>
                                 setConfirmAction(
                                   ""
-                                );
-                              }}
+                                )
+                              }
                             >
+
                               CANCEL
+
                             </button>
+
 
                             <button
                               type="button"
@@ -1784,43 +2358,71 @@ export default function MoomaDashboard({
                                 executeTransferAction
                               }
                             >
+
                               {actionBusy ? (
+
                                 <>
+
                                   <LoaderCircle
                                     size={16}
                                     className="mooma-spinner"
                                   />
 
                                   PROCESSING...
+
                                 </>
+
                               ) : (
+
                                 <>
+
                                   {confirmAction ===
                                   "accept" ? (
+
                                     <Check
                                       size={16}
                                     />
+
                                   ) : (
+
                                     <X
                                       size={16}
                                     />
+
                                   )}
 
                                   CONFIRM{" "}
+
                                   {confirmAction.toUpperCase()}
+
                                 </>
+
                               )}
+
                             </button>
+
                           </div>
+
                         </motion.div>
+
                       )}
+
                     </AnimatePresence>
+
                   </>
+
                 )}
+
               </motion.div>
+
             </motion.div>
-          )}
+
+          </motion.div>
+
+        )}
+
       </AnimatePresence>
+
     </>
   );
 }
