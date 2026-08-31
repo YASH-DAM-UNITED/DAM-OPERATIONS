@@ -1802,16 +1802,45 @@ function App() {
      BRAND
   ======================================================= */
 function chooseBrand(brand) {
-  setSelectedBrand(brand);
-  setSelectedBranch(null);
-  setAuthenticatedBranch(null);
+  setSelectedBrand(
+    brand
+  );
 
-  if (brand.id === "mooma") {
-    window.location.href = "/mooma/";
+  setSelectedBranch(
+    null
+  );
+
+  setAuthenticatedBranch(
+    null
+  );
+
+
+  /* ======================================================
+     MOOMA
+     No href.
+     No reload.
+     Stay inside React.
+  ====================================================== */
+
+  if (
+    brand.id === "mooma"
+  ) {
+    setPage(
+      "mooma"
+    );
+
     return;
   }
 
-  setPage("branches");
+
+  /* ======================================================
+     EXISTING FLOW
+     Leave BART exactly as before.
+  ====================================================== */
+
+  setPage(
+    "branches"
+  );
 }
   /* =======================================================
      BRANCH
