@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 
 import "./Mooma.css";
+import MoomaLaunch from "./MoomaLaunch.jsx";
+import MoomaDashboard from "./MoomaDashboard.jsx";
 
 
 const API = {
@@ -35,6 +37,16 @@ const API = {
     "/api/mooma/login",
 };
 
+
+const [
+  launching,
+  setLaunching,
+] = useState(false);
+
+const [
+  activeModule,
+  setActiveModule,
+] = useState(null);
 
 export default function MoomaPortal({
   onBack,
@@ -294,6 +306,13 @@ export default function MoomaPortal({
       setAuthenticated(
         data.branch
       );
+
+
+      setLaunching(true);
+      window.setTimeout(() => {
+        setLaunching(false);
+
+      }, 1800);
     } catch (err) {
       console.error(
         "MOOMA login error:",
@@ -320,71 +339,36 @@ export default function MoomaPortal({
      Next step we replace this with MoomaDashboard.
   ========================================================= */
 
-  if (authenticated) {
-    return (
-      <motion.div
-        className="mooma-auth-screen"
-        initial={{
-          opacity: 0,
-        }}
-        animate={{
-          opacity: 1,
-        }}
-      >
-        <div className="mooma-auth-card">
-          <div className="mooma-auth-icon">
-            <CheckCircle2
-              size={28}
-            />
-          </div>
+if (launching && authenticated) {
+  return (
+    <MoomaLaunch
+      branch={authenticated}
+    />
+  );
+}
 
-          <small>
-            MOOMA BRANCH VERIFIED
-          </small>
+if (authenticated) {
+  return (
+    <MoomaDashboard
+      branch={authenticated}
 
-          <h1>
-            {
-              authenticated.name
-            }
-          </h1>
+      onBack={() => {
+        setAuthenticated(null);
+        setSelected(null);
+        setPassword("");
+      }}
 
-          <p>
-            {
-              authenticated.code
-            }
-          </p>
+      onModule={(module) => {
+        setActiveModule(module);
 
-          <strong>
-            MOOMA OPERATIONS
-            CONNECTION READY
-          </strong>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAuthenticated(
-                null
-              );
-
-              setSelected(
-                null
-              );
-
-              setPassword("");
-            }}
-          >
-            <ArrowLeft
-              size={16}
-            />
-
-            CHANGE BRANCH
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
-
-
+        console.log(
+          "MOOMA MODULE:",
+          module
+        );
+      }}
+    />
+  );
+}
   /* =========================================================
      PORTAL
   ========================================================= */
