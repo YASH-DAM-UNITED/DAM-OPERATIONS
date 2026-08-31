@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import {
@@ -26,6 +31,14 @@ import {
 import "./index.css";
 import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
+
+const MoomaShell =
+  lazy(
+    () =>
+      import(
+        "./brands/mooma/MoomaShell.jsx"
+      )
+  );
 
 
 /* =========================================================
