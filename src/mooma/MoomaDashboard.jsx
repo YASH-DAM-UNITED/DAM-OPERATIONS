@@ -4,237 +4,324 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
+  ClipboardList,
   Eye,
+  LogOut,
   PackageCheck,
-  RefreshCcw,
   Truck,
 } from "lucide-react";
 
-const modules = [
+const MODULES = [
   {
     id: "stock-record",
     number: "01",
+    label: "INVENTORY ENTRY",
     title: "Stock Record",
-    subtitle: "STOCK ENTRY",
     description:
-      "Record daily, weekly and bakery stock for this branch.",
+      "Record daily, weekly and bakery stock for your MOOMA branch.",
     icon: PackageCheck,
   },
-
   {
     id: "stock-view",
     number: "02",
+    label: "INVENTORY CONTROL",
     title: "Stock View",
-    subtitle: "STOCK CONTROL",
     description:
-      "Review recorded stock values and branch inventory data.",
+      "Review submitted stock records and branch inventory information.",
     icon: Eye,
   },
-
   {
     id: "stock-transfer",
     number: "03",
+    label: "INTERNAL MOVEMENT",
     title: "Stock Transfer",
-    subtitle: "BRANCH TRANSFER",
     description:
-      "Transfer stock between MOOMA branches securely.",
+      "Transfer stock securely between MOOMA branches.",
     icon: Truck,
   },
-
   {
     id: "staff-schedule",
     number: "04",
+    label: "TEAM OPERATIONS",
     title: "Staff Schedule",
-    subtitle: "PEOPLE OPERATIONS",
     description:
-      "Manage weekly staff shifts, OT and employee schedules.",
+      "View and manage weekly staff schedules and shift information.",
     icon: CalendarDays,
   },
 ];
 
 export default function MoomaDashboard({
   branch,
-  onBack,
+  onLogout,
   onModule,
 }) {
+  const branchCode =
+    branch?.code || "MOOMA";
+
+  const branchName =
+    branch?.name || "MOOMA BRANCH";
+
   return (
     <motion.div
-      className="mooma-dashboard"
+      className="mooma-dash-root"
       initial={{
         opacity: 0,
-        scale: 1.015,
-        filter: "blur(12px)",
       }}
       animate={{
         opacity: 1,
-        scale: 1,
-        filter: "blur(0px)",
       }}
       transition={{
-        duration: 0.55,
-        ease: [0.22, 1, 0.36, 1],
+        duration: 0.35,
       }}
     >
-      <div className="mooma-dashboard-bg" />
+      {/* BACKGROUND */}
 
-      <nav className="mooma-dashboard-nav">
-        <button
-          type="button"
-          className="mooma-dashboard-back"
-          onClick={onBack}
-        >
-          <ArrowLeft size={15} />
-          CHANGE BRANCH
-        </button>
+      <div className="mooma-dash-background" />
+      <div className="mooma-dash-grid-background" />
 
-        <div className="mooma-dashboard-brand">
-          <div className="mooma-dashboard-logo">
+      {/* HEADER */}
+
+      <header className="mooma-dash-header">
+        <div className="mooma-dash-brand">
+          <div className="mooma-dash-brand-mark">
             M
           </div>
 
-          <div>
+          <div className="mooma-dash-brand-copy">
             <strong>MOOMA</strong>
-            <span>STAFF OPERATIONS</span>
+            <span>DAM OPERATIONS</span>
           </div>
         </div>
 
-        <button
-          type="button"
-          className="mooma-dashboard-refresh"
-        >
-          <RefreshCcw size={15} />
-        </button>
-      </nav>
+        <div className="mooma-dash-header-right">
+          <div className="mooma-dash-online">
+            <i />
+            SYSTEM ONLINE
+          </div>
 
-      <main className="mooma-dashboard-main">
-        <section className="mooma-dashboard-hero">
-          <div>
-            <small>
-              MOOMA / BRANCH OPERATIONS
-            </small>
+          <button
+            type="button"
+            className="mooma-dash-logout"
+            onClick={onLogout}
+          >
+            <LogOut size={15} />
+            <span>CHANGE BRANCH</span>
+          </button>
+        </div>
+      </header>
+
+      {/* MAIN */}
+
+      <main className="mooma-dash-main">
+        {/* BRANCH INFORMATION */}
+
+        <motion.section
+          className="mooma-dash-hero"
+          initial={{
+            opacity: 0,
+            y: 25,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            duration: 0.5,
+          }}
+        >
+          <div className="mooma-dash-hero-copy">
+            <div className="mooma-dash-eyebrow">
+              MOOMA / STAFF OPERATIONS
+            </div>
+
+            <div className="mooma-dash-branch-code">
+              {branchCode}
+            </div>
 
             <h1>
-              {branch?.name}
+              {branchName}
             </h1>
 
             <p>
-              {branch?.code}
-              {" · "}
-              Select the operation you want to continue with.
+              Branch operations are connected and ready.
+              Select an operation below to continue.
             </p>
 
-            <div className="mooma-dashboard-status">
-              <span>
-                <i />
-                SYSTEM ONLINE
-              </span>
+            <div className="mooma-dash-connection-row">
+              <div>
+                <span className="mooma-dash-live-dot" />
 
-              <span>
-                GOOGLE SHEETS CONNECTED
-              </span>
+                <div>
+                  <small>BRANCH NETWORK</small>
+                  <strong>CONNECTED</strong>
+                </div>
+              </div>
+
+              <div>
+                <ClipboardList size={16} />
+
+                <div>
+                  <small>AVAILABLE MODULES</small>
+                  <strong>04 OPERATIONS</strong>
+                </div>
+              </div>
             </div>
           </div>
 
-          <motion.div
-            className="mooma-dashboard-orbit"
-            animate={{
-              rotate: 360,
-            }}
-            transition={{
-              duration: 18,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-          >
-            <div className="orbit-one" />
-            <div className="orbit-two" />
+          {/* DECORATIVE CORE */}
 
-            <div className="orbit-core">
+          <div className="mooma-dash-core-wrap">
+            <motion.div
+              className="mooma-dash-core-ring mooma-dash-core-ring-one"
+              animate={{
+                rotate: 360,
+              }}
+              transition={{
+                duration: 22,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+            />
+
+            <motion.div
+              className="mooma-dash-core-ring mooma-dash-core-ring-two"
+              animate={{
+                rotate: -360,
+              }}
+              transition={{
+                duration: 15,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+            />
+
+            <motion.div
+              className="mooma-dash-core"
+              animate={{
+                y: [0, -6, 0],
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            >
               M
-            </div>
-          </motion.div>
-        </section>
+            </motion.div>
+          </div>
+        </motion.section>
 
-        <section className="mooma-dashboard-modules">
-          <div className="mooma-dashboard-heading">
+        {/* MODULE HEADER */}
+
+        <section className="mooma-dash-workspace">
+          <div className="mooma-dash-section-heading">
             <div>
-              <small>
+              <span>
                 STAFF WORKSPACE
-              </small>
+              </span>
 
               <h2>
                 Choose an operation
               </h2>
             </div>
 
-            <span>
-              4 LIVE MODULES
-            </span>
+            <small>
+              04 MODULES AVAILABLE
+            </small>
           </div>
 
-          <div className="mooma-dashboard-grid">
-            {modules.map((module, index) => {
-              const Icon = module.icon;
+          {/* MODULES */}
 
-              return (
-                <motion.button
-                  type="button"
-                  key={module.id}
-                  className="mooma-dashboard-card"
-                  onClick={() =>
-                    onModule?.(module.id)
-                  }
-                  initial={{
-                    opacity: 0,
-                    y: 30,
-                  }}
-                  animate={{
-                    opacity: 1,
-                    y: 0,
-                  }}
-                  transition={{
-                    delay: 0.08 * index,
-                  }}
-                  whileHover={{
-                    y: -6,
-                  }}
-                  whileTap={{
-                    scale: 0.985,
-                  }}
-                >
-                  <div className="mooma-dashboard-card-top">
-                    <div className="mooma-dashboard-card-icon">
-                      <Icon size={22} />
+          <div className="mooma-dash-module-grid">
+            {MODULES.map(
+              (module, index) => {
+                const Icon =
+                  module.icon;
+
+                return (
+                  <motion.button
+                    type="button"
+                    key={module.id}
+                    className="mooma-dash-module"
+                    onClick={() =>
+                      onModule?.(
+                        module.id
+                      )
+                    }
+                    initial={{
+                      opacity: 0,
+                      y: 25,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    transition={{
+                      delay:
+                        0.08 +
+                        index * 0.07,
+                    }}
+                    whileHover={{
+                      y: -5,
+                    }}
+                    whileTap={{
+                      scale: 0.985,
+                    }}
+                  >
+                    <div className="mooma-dash-module-top">
+                      <div className="mooma-dash-module-icon">
+                        <Icon size={21} />
+                      </div>
+
+                      <span>
+                        {module.number}
+                      </span>
                     </div>
 
-                    <small>
-                      {module.number}
-                    </small>
-                  </div>
+                    <div className="mooma-dash-module-copy">
+                      <small>
+                        {module.label}
+                      </small>
 
-                  <div className="mooma-dashboard-card-copy">
-                    <span>
-                      {module.subtitle}
-                    </span>
+                      <h3>
+                        {module.title}
+                      </h3>
 
-                    <h3>
-                      {module.title}
-                    </h3>
+                      <p>
+                        {module.description}
+                      </p>
+                    </div>
 
-                    <p>
-                      {module.description}
-                    </p>
-                  </div>
+                    <div className="mooma-dash-module-open">
+                      <span>
+                        OPEN MODULE
+                      </span>
 
-                  <div className="mooma-dashboard-open">
-                    OPEN MODULE
-                    <ArrowRight size={15} />
-                  </div>
-                </motion.button>
-              );
-            })}
+                      <ArrowRight
+                        size={16}
+                      />
+                    </div>
+                  </motion.button>
+                );
+              }
+            )}
           </div>
         </section>
+
+        {/* FOOTER */}
+
+        <footer className="mooma-dash-footer">
+          <div>
+            <span />
+            MOOMA OPERATIONS NETWORK
+          </div>
+
+          <p>
+            {branchCode}
+            {" / "}
+            {branchName}
+          </p>
+        </footer>
       </main>
     </motion.div>
   );
