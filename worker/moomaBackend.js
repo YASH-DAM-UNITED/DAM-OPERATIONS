@@ -2180,7 +2180,7 @@ export async function handleMoomaRequest(
 
     if (
       p ===
-      "/api/mooma/stock-transfer/init"
+        "/api/mooma/stock-transfer/init"
     ) {
       const c = String(
         u.searchParams.get(
@@ -2200,13 +2200,28 @@ export async function handleMoomaRequest(
         );
       }
 
-      const s = structure(
-        await read(
-          env,
-          br.sheetId,
-          `${STOCK}!A:ZZ`
-        )
+      const stockRows = await read(
+        env,
+        br.sheetId,
+        `${STOCK}!A:ZZ`
       );
+
+      const s = structure(stockRows);
+      const stockDate = jedYesterday();
+      const ci = (stockRows[0] || []).indexOf(stockDate);
+
+      const withAvailable = (list) =>
+        list.map((x) => ({
+          ...x,
+          available:
+            ci >= 0
+              ? Number(
+                  String(
+                    stockRows[x.row - 1]?.[ci] ?? 0
+                  ).replace(/,/g, "")
+                ) || 0
+              : 0,
+        }));
 
       return J({
         success: true,
@@ -2215,6 +2230,9 @@ export async function handleMoomaRequest(
           code: br.code,
           name: br.name,
         },
+
+        stockDate,
+        stockDateFound: ci >= 0,
 
         destinations:
           all
@@ -2227,16 +2245,10 @@ export async function handleMoomaRequest(
               name: x.name,
             })),
 
-        items: [
-          ...s.daily,
-          ...s.weekly,
-        ].filter(
-          (x, i, a) =>
-            a.findIndex(
-              (y) =>
-                y.row === x.row
-            ) === i
-        ),
+        items: {
+          daily: withAvailable(s.daily),
+          weekly: withAvailable(s.weekly),
+        },
       });
     }
 
@@ -2509,4 +2521,3 @@ export async function handleMoomaRequest(
     );
   }
 }
-
