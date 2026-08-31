@@ -26,6 +26,7 @@ import {
 import MoomaDashboard from "./MoomaDashboard.jsx";
 import MoomaLaunch from "./MoomaLaunch.jsx";
 import MoomaStockRecord from "./MoomaStockRecord.jsx";
+import MoomaStockView from "./MoomaStockView.jsx";
 
 import "./Mooma.css";
 
@@ -630,56 +631,103 @@ export default function MoomaPortal({
   /* ==========================================================
      OPEN MODULE
   ========================================================== */
+/* ==========================================================
+   OPEN MODULE
+========================================================== */
 
-  function handleModule(
+function handleModule(moduleId) {
+
+  console.log(
+    "[MOOMA] MODULE CLICK:",
     moduleId
+  );
+
+
+  /* ==========================================================
+     STOCK RECORD
+  ========================================================== */
+
+  if (
+    moduleId ===
+    "stock-record"
   ) {
 
-    console.log(
-      "[MOOMA] MODULE CLICK:",
-      moduleId
-    );
-
-
-    /*
-     * STOCK RECORD
-     */
-
-    if (
-      moduleId ===
+    setActiveModule(
       "stock-record"
-    ) {
-
-      setActiveModule(
-        "stock-record"
-      );
-
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-
-
-      return;
-    }
-
-
-    /*
-     * NEXT MODULES
-     *
-     * stock-view
-     * stock-transfer
-     * staff-schedule
-     */
-
-    console.log(
-      "[MOOMA] MODULE NOT CONNECTED YET:",
-      moduleId
     );
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+
+    return;
   }
 
 
+  /* ==========================================================
+     STOCK VIEW
+  ========================================================== */
+
+  if (
+    moduleId ===
+    "stock-view"
+  ) {
+
+    setActiveModule(
+      "stock-view"
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+
+    return;
+  }
+
+
+  /* ==========================================================
+     STOCK TRANSFER
+     - WILL CONNECT NEXT
+  ========================================================== */
+
+  if (
+    moduleId ===
+    "stock-transfer"
+  ) {
+
+    console.log(
+      "[MOOMA] STOCK TRANSFER NOT CONNECTED YET"
+    );
+
+    return;
+  }
+
+
+  /* ==========================================================
+     STAFF SCHEDULE
+     - WILL CONNECT NEXT
+  ========================================================== */
+
+  if (
+    moduleId ===
+    "staff-schedule"
+  ) {
+
+    console.log(
+      "[MOOMA] STAFF SCHEDULE NOT CONNECTED YET"
+    );
+
+    return;
+  }
+
+
+  console.log(
+    "[MOOMA] UNKNOWN MODULE:",
+    moduleId
+  );
+}
   /* ==========================================================
      RETURN TO DASHBOARD
   ========================================================== */
