@@ -1790,29 +1790,16 @@ function App() {
   ======================================================= */
 function chooseBrand(brand) {
   setSelectedBrand(brand);
-
   setSelectedBranch(null);
-
   setAuthenticatedBranch(null);
 
-  /*
-    MOOMA IS NOW ITS OWN
-    INDEPENDENT FRONTEND SYSTEM.
-  */
   if (brand.id === "mooma") {
     window.location.href = "/mooma/";
-    
-
     return;
   }
 
-  /*
-    KEEP EXISTING BART / OTHER
-    FLOW UNCHANGED.
-  */
   setPage("branches");
 }
-
   /* =======================================================
      BRANCH
   ======================================================= */
