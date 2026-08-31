@@ -110,16 +110,11 @@ export default function MoomaPortal({
   ] = useState(false);
 
   /*
-   * ACTIVE MODULE
+   * Controls which MOOMA module
+   * is currently open.
    *
    * null = dashboard
-   *
-   * stock-record
-   * stock-view
-   * stock-transfer
-   * staff-schedule
    */
-
   const [
     activeModule,
     setActiveModule,
@@ -291,7 +286,6 @@ export default function MoomaPortal({
 
 
       if (!query) {
-
         return branches;
       }
 
@@ -397,7 +391,6 @@ export default function MoomaPortal({
 
 
     if (loginBusy) {
-
       return;
     }
 
@@ -501,8 +494,9 @@ export default function MoomaPortal({
 
 
       /*
-       * Merge verified branch information
-       * returned from backend.
+       * If backend gives us
+       * verified branch information,
+       * merge it with selected branch.
        */
 
       const verifiedBranch =
@@ -517,7 +511,7 @@ export default function MoomaPortal({
 
 
       /*
-       * Always enter dashboard first.
+       * Clear previous module.
        */
 
       setActiveModule(
@@ -540,7 +534,7 @@ export default function MoomaPortal({
 
 
       /*
-       * Start MOOMA rocket animation.
+       * Start rocket animation.
        */
 
       setLaunching(
@@ -549,7 +543,7 @@ export default function MoomaPortal({
 
 
       /*
-       * Rocket animation duration:
+       * Rocket animation:
        * 2.2 seconds
        */
 
@@ -603,9 +597,9 @@ export default function MoomaPortal({
       false
     );
 
-
     /*
-     * Close any active operation.
+     * IMPORTANT:
+     * Close any active module.
      */
 
     setActiveModule(
@@ -695,12 +689,22 @@ export default function MoomaPortal({
 
     /*
      * STOCK TRANSFER
+     *
+     * Accept both IDs because some dashboard
+     * versions send "transfer" while others
+     * send "stock-transfer".
      */
 
     if (
       moduleId ===
-      "stock-transfer"
+        "stock-transfer" ||
+      moduleId ===
+        "transfer"
     ) {
+
+      console.log(
+        "[MOOMA] OPENING STOCK TRANSFER"
+      );
 
       setActiveModule(
         "stock-transfer"
@@ -718,12 +722,15 @@ export default function MoomaPortal({
     /*
      * STAFF SCHEDULE
      *
-     * Will be connected next.
+     * Accept both IDs now so the route is
+     * ready when the page is connected.
      */
 
     if (
       moduleId ===
-      "staff-schedule"
+        "staff-schedule" ||
+      moduleId ===
+        "schedule"
     ) {
 
       console.log(
@@ -735,7 +742,7 @@ export default function MoomaPortal({
 
 
     console.log(
-      "[MOOMA] UNKNOWN MODULE:",
+      "[MOOMA] MODULE NOT CONNECTED YET:",
       moduleId
     );
   }
@@ -763,7 +770,7 @@ export default function MoomaPortal({
      ROCKET LAUNCH SCREEN
 
      IMPORTANT:
-     Must stay before dashboard/modules.
+     This stays BEFORE dashboard/modules.
   ========================================================== */
 
   if (
@@ -908,22 +915,14 @@ export default function MoomaPortal({
       ====================================================== */}
 
       <div className="mooma-world-bg" />
+
       <div className="mooma-world-grid" />
+
       <div className="mooma-world-noise" />
 
-      <div
-        className="
-          mooma-red-glow
-          mooma-red-glow-one
-        "
-      />
+      <div className="mooma-red-glow mooma-red-glow-one" />
 
-      <div
-        className="
-          mooma-red-glow
-          mooma-red-glow-two
-        "
-      />
+      <div className="mooma-red-glow mooma-red-glow-two" />
 
 
       {/* ======================================================
