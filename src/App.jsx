@@ -1800,7 +1800,8 @@ function chooseBrand(brand) {
     INDEPENDENT FRONTEND SYSTEM.
   */
   if (brand.id === "mooma") {
-    setPage("mooma");
+    window.location.href = "/mooma/";
+    
 
     return;
   }
