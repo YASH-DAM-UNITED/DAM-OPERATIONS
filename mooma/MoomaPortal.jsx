@@ -11,7 +11,7 @@ export default function MoomaPortal({ onBack }) {
   const [password,setPassword]=useState(""), [showPassword,setShowPassword]=useState(false), [loginBusy,setLoginBusy]=useState(false), [loginError,setLoginError]=useState("");
   const readyRef=useRef(null), errorRef=useRef(null);
 
-  async function loadBranches(){ try{setLoading(true);setError("");const r=await moomaFetch("/api/mooma/branches");setBranches(r.branches||[])}catch(e){setError(e.message);setTimeout(()=>activeScroll(errorRef),30)}finally{setLoading(false)} }
+  async function loadBranches(){ try{setLoading(true);setError("");const r=await moomaFetch("/api/mooma/branches");setBranches(r.branches||[])}catch(e){setError(e.message);setTimeout(()=>activeScroll(errorRef),5)}finally{setLoading(false)} }
   useEffect(()=>{loadBranches()},[]);
   const filtered=useMemo(()=>{const q=search.trim().toLowerCase();return q?branches.filter(b=>`${b.code} ${b.name}`.toLowerCase().includes(q)):branches},[branches,search]);
   function choose(branch){setSelected(branch);setPassword("");setLoginError("");setTimeout(()=>activeScroll(readyRef),40)}
