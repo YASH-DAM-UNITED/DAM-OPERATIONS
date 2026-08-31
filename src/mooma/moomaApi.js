@@ -1,153 +1,99 @@
 /* ============================================================
-   MOOMA API CLIENT
-   ------------------------------------------------------------
-   Shared API layer for:
-   - Branches
-   - Login
-   - Stock Record
-   - Stock View
-   - Stock Transfer
-   - Pending Transfers
-   - Accept / Reject
-   - Staff Schedule
-   ============================================================ */
+   DAM OPERATIONS — MOOMA API
+   Frontend API Layer
+
+   Matches:
+   worker/moomaBackend.js
+============================================================ */
 
 
 /* ============================================================
-   API ROUTES
+   API BASE
+============================================================ */
+
+/*
+ * Keep empty if frontend + Worker are served
+ * from the same domain.
+ *
+ * Example final request:
+ * /api/mooma/branches
+ */
+const API_BASE = "";
+
+
+/* ============================================================
+   MOOMA ROUTES
 ============================================================ */
 
 export const MOOMA_API = {
+  /* SYSTEM */
+  test: "/api/mooma/test",
   branches: "/api/mooma/branches",
-
   login: "/api/mooma/login",
+  databaseStatus: "/api/mooma/database-status",
+  sync: "/api/mooma/sync",
 
-  stockItems: "/api/mooma/stock/items",
+  /* STOCK VIEW */
+  stockView: "/api/mooma/stock-view",
 
-  stockRecord: "/api/mooma/stock/record",
+  /* STOCK RECORD */
+  stockRecordInit:
+    "/api/mooma/stock-record/init",
 
-  stockView: "/api/mooma/stock/view",
+  stockRecordDraft:
+    "/api/mooma/stock-record/draft",
 
-  transferItems: "/api/mooma/transfer/items",
+  stockRecordSubmit:
+    "/api/mooma/stock-record/submit",
 
-  createTransfer: "/api/mooma/transfer/create",
+  /* STOCK TRANSFER */
+  stockTransferInit:
+    "/api/mooma/stock-transfer/init",
 
-  pendingTransfers: "/api/mooma/transfer/pending",
+  stockTransferCreate:
+    "/api/mooma/stock-transfer/create",
 
-  transferAction: "/api/mooma/transfer/action",
+  stockTransferHistory:
+    "/api/mooma/stock-transfer/history",
 
-  transferHistory: "/api/mooma/transfer/history",
+  /* DASHBOARD TRANSFERS */
+  pendingTransfers:
+    "/api/mooma/pending-transfers",
 
-  schedule: "/api/mooma/schedule",
+  transferRespond:
+    "/api/mooma/transfer/respond",
 
-  saveSchedule: "/api/mooma/schedule/save",
+  /* STAFF SCHEDULE */
+  scheduleInit:
+    "/api/mooma/schedule/init",
+
+  scheduleSubmit:
+    "/api/mooma/schedule/submit",
+
+  employeeAdd:
+    "/api/mooma/schedule/employee/add",
+
+  employeeRemove:
+    "/api/mooma/schedule/employee/remove",
+
+  employeeVacation:
+    "/api/mooma/schedule/employee/vacation",
 };
 
 
 /* ============================================================
-   GENERIC REQUEST
+   URL BUILDER
 ============================================================ */
 
-export async function moomaRequest(
-  url,
-  options = {}
-) {
-  let response;
-
-  try {
-    response = await fetch(
-      url,
-      {
-        cache: "no-store",
-
-        ...options,
-
-        headers: {
-          Accept:
-            "application/json",
-
-          ...(options.body
-            ? {
-                "Content-Type":
-                  "application/json",
-              }
-            : {}),
-
-          ...(options.headers ||
-            {}),
-        },
-      }
-    );
-  } catch (error) {
-    console.error(
-      "[MOOMA API] Network error:",
-      error
-    );
-
-    throw new Error(
-      "Unable to connect to MOOMA network."
-    );
-  }
-
-
-  const raw =
-    await response.text();
-
-
-  let data = null;
-
-
-  try {
-    data =
-      raw
-        ? JSON.parse(raw)
-        : {};
-  } catch {
-    console.error(
-      "[MOOMA API] Invalid JSON:",
-      raw
-    );
-
-    throw new Error(
-      `MOOMA server returned invalid data. HTTP ${response.status}`
-    );
-  }
-
-
-  if (!response.ok) {
-    throw new Error(
-      data?.message ||
-        `MOOMA request failed. HTTP ${response.status}`
-    );
-  }
-
-
-  if (
-    data &&
-    data.success === false
-  ) {
-    throw new Error(
-      data.message ||
-        "MOOMA operation failed."
-    );
-  }
-
-
-  return data;
-}
-
-
-/* ============================================================
-   GET REQUEST
-============================================================ */
-
-export async function moomaGet(
-  url,
+function buildUrl(
+  path,
   params = {}
 ) {
-  const query =
-    new URLSearchParams();
-
+  const url =
+    new URL(
+      `${API_BASE}${path}`,
+      window.location.origin
+    );
 
   Object.entries(
     params
@@ -158,7 +104,7 @@ export async function moomaGet(
         value !== null &&
         value !== ""
       ) {
-        query.set(
+        url.searchParams.set(
           key,
           String(value)
         );
@@ -166,128 +112,171 @@ export async function moomaGet(
     }
   );
 
-
-  const queryString =
-    query.toString();
-
-
-  const finalUrl =
-    queryString
-      ? `${url}?${queryString}`
-      : url;
+  return url.toString();
+}
 
 
-  return moomaRequest(
-    finalUrl,
-    {
-      method: "GET",
-    }
+/* ============================================================
+   RESPONSE PARSER
+============================================================ */
+
+async function parseResponse(
+  response
+) {
+  let data;
+
+  try {
+    data =
+      await response.json();
+  } catch {
+    throw new Error(
+      `Invalid server response (${response.status}).`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data?.message ||
+        `MOOMA request failed (${response.status}).`
+    );
+  }
+
+  /*
+   * Some backend routes deliberately
+   * return success:false with status
+   * codes such as 409.
+   *
+   * If a success:false somehow arrives
+   * with HTTP 200, still treat it as
+   * an application error.
+   */
+  if (
+    data?.success === false
+  ) {
+    throw new Error(
+      data?.message ||
+        "MOOMA operation failed."
+    );
+  }
+
+  return data;
+}
+
+
+/* ============================================================
+   GENERIC GET
+============================================================ */
+
+export async function moomaGet(
+  path,
+  params = {}
+) {
+  const url =
+    buildUrl(
+      path,
+      params
+    );
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: "GET",
+
+        headers: {
+          Accept:
+            "application/json",
+        },
+
+        cache:
+          "no-store",
+      }
+    );
+
+  return parseResponse(
+    response
   );
 }
 
 
 /* ============================================================
-   POST REQUEST
+   GENERIC POST
 ============================================================ */
 
 export async function moomaPost(
-  url,
+  path,
   body = {}
 ) {
-  return moomaRequest(
-    url,
-    {
-      method: "POST",
+  const response =
+    await fetch(
+      buildUrl(path),
+      {
+        method: "POST",
 
-      body:
-        JSON.stringify(
-          body
-        ),
-    }
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Accept:
+            "application/json",
+        },
+
+        body:
+          JSON.stringify(
+            body
+          ),
+      }
+    );
+
+  return parseResponse(
+    response
   );
 }
 
 
 /* ============================================================
-   UNIVERSAL ACTIVE SECTION
-   ------------------------------------------------------------
-   IMPORTANT MOOMA RULE:
-
-   Whenever the user performs an action,
-   move them to the newly active section.
+   GENERIC DELETE
 ============================================================ */
 
-export function activeScroll(
-  target,
-  options = {}
+export async function moomaDelete(
+  path,
+  body = {}
 ) {
-  const {
-    delay = 100,
-    block = "center",
-  } = options;
+  const response =
+    await fetch(
+      buildUrl(path),
+      {
+        method:
+          "DELETE",
 
+        headers: {
+          "Content-Type":
+            "application/json",
 
-  window.requestAnimationFrame(
-    () => {
-      window.setTimeout(
-        () => {
-          let element = null;
-
-
-          if (
-            target?.current
-          ) {
-            element =
-              target.current;
-          } else if (
-            target instanceof
-            HTMLElement
-          ) {
-            element =
-              target;
-          } else if (
-            typeof target ===
-            "string"
-          ) {
-            element =
-              document.querySelector(
-                target
-              );
-          }
-
-
-          if (!element) {
-            return;
-          }
-
-
-          element.scrollIntoView(
-            {
-              behavior:
-                "smooth",
-
-              block,
-            }
-          );
-
-
-          element.classList.add(
-            "mooma-active-focus"
-          );
-
-
-          window.setTimeout(
-            () => {
-              element?.classList.remove(
-                "mooma-active-focus"
-              );
-            },
-            1100
-          );
+          Accept:
+            "application/json",
         },
-        delay
-      );
-    }
+
+        body:
+          JSON.stringify(
+            body
+          ),
+      }
+    );
+
+  return parseResponse(
+    response
+  );
+}
+
+
+/* ============================================================
+   TEST CONNECTION
+============================================================ */
+
+export async function testMoomaConnection() {
+  return moomaGet(
+    MOOMA_API.test
   );
 }
 
@@ -307,10 +296,10 @@ export async function getMoomaBranches() {
    LOGIN
 ============================================================ */
 
-export async function loginMoomaBranch(
+export async function loginMoomaBranch({
   branchCode,
-  password
-) {
+  password,
+}) {
   return moomaPost(
     MOOMA_API.login,
     {
@@ -322,43 +311,24 @@ export async function loginMoomaBranch(
 
 
 /* ============================================================
-   STOCK ITEMS
+   DATABASE STATUS
 ============================================================ */
 
-export async function getMoomaStockItems({
-  branchCode,
-  type,
-  date,
-}) {
+export async function getMoomaDatabaseStatus() {
   return moomaGet(
-    MOOMA_API.stockItems,
-    {
-      branchCode,
-      type,
-      date,
-    }
+    MOOMA_API.databaseStatus
   );
 }
 
 
 /* ============================================================
-   SAVE STOCK RECORD
+   SYNC
 ============================================================ */
 
-export async function saveMoomaStockRecord({
-  branchCode,
-  type,
-  date,
-  items,
-}) {
+export async function syncMoomaDatabase() {
   return moomaPost(
-    MOOMA_API.stockRecord,
-    {
-      branchCode,
-      type,
-      date,
-      items,
-    }
+    MOOMA_API.sync,
+    {}
   );
 }
 
@@ -367,16 +337,37 @@ export async function saveMoomaStockRecord({
    STOCK VIEW
 ============================================================ */
 
-export async function getMoomaStockView({
-  branchCode,
-  type,
-  date,
-}) {
+export async function getMoomaStockView(
+  branchCode
+) {
   return moomaGet(
     MOOMA_API.stockView,
     {
-      branchCode,
-      type,
+      /*
+       * Backend expects:
+       * ?branch=M001
+       */
+      branch:
+        branchCode,
+    }
+  );
+}
+
+
+/* ============================================================
+   STOCK RECORD — INITIALIZE
+============================================================ */
+
+export async function getMoomaStockRecordInit({
+  branchCode,
+  date,
+}) {
+  return moomaGet(
+    MOOMA_API.stockRecordInit,
+    {
+      branch:
+        branchCode,
+
       date,
     }
   );
@@ -384,47 +375,139 @@ export async function getMoomaStockView({
 
 
 /* ============================================================
-   TRANSFER ITEMS
+   STOCK RECORD — SAVE DRAFT
 ============================================================ */
 
-export async function getMoomaTransferItems({
+export async function saveMoomaStockDraft({
   branchCode,
-}) {
-  return moomaGet(
-    MOOMA_API.transferItems,
-    {
-      branchCode,
-    }
-  );
-}
-
-
-/* ============================================================
-   CREATE STOCK TRANSFER
-============================================================ */
-
-export async function createMoomaTransfer({
-  fromBranch,
-  toBranch,
-  items,
-  note = "",
+  date,
+  mode,
+  values,
 }) {
   return moomaPost(
-    MOOMA_API.createTransfer,
+    MOOMA_API.stockRecordDraft,
     {
-      fromBranch,
-      toBranch,
-      items,
-      note,
+      branchCode,
+      date,
+      mode,
+      values:
+        values || {},
     }
   );
 }
 
 
 /* ============================================================
-   PENDING / INCOMING TRANSFERS
+   STOCK RECORD — DELETE DRAFT
+============================================================ */
 
-   USED DIRECTLY BY MOOMA DASHBOARD.
+export async function deleteMoomaStockDraft({
+  branchCode,
+  date,
+  mode,
+}) {
+  return moomaDelete(
+    MOOMA_API.stockRecordDraft,
+    {
+      branchCode,
+      date,
+      mode,
+    }
+  );
+}
+
+
+/* ============================================================
+   STOCK RECORD — SUBMIT
+============================================================ */
+
+export async function submitMoomaStockRecord({
+  branchCode,
+  date,
+  mode,
+  values,
+}) {
+  return moomaPost(
+    MOOMA_API.stockRecordSubmit,
+    {
+      branchCode,
+      date,
+      mode,
+
+      values:
+        values || {},
+    }
+  );
+}
+
+
+/* ============================================================
+   STOCK TRANSFER — INITIALIZE
+============================================================ */
+
+export async function getMoomaStockTransferInit(
+  branchCode
+) {
+  return moomaGet(
+    MOOMA_API.stockTransferInit,
+    {
+      branch:
+        branchCode,
+    }
+  );
+}
+
+
+/* ============================================================
+   STOCK TRANSFER — CREATE
+============================================================ */
+
+export async function createMoomaStockTransfer({
+  originBranch,
+  destinationBranch,
+  items,
+  reason,
+}) {
+  return moomaPost(
+    MOOMA_API.stockTransferCreate,
+    {
+      originBranch,
+      destinationBranch,
+
+      items:
+        Array.isArray(items)
+          ? items
+          : [],
+
+      reason:
+        reason || "",
+    }
+  );
+}
+
+
+/* ============================================================
+   STOCK TRANSFER — HISTORY
+============================================================ */
+
+export async function getMoomaStockTransferHistory(
+  branchCode,
+  limit = 10
+) {
+  return moomaGet(
+    MOOMA_API.stockTransferHistory,
+    {
+      branch:
+        branchCode,
+
+      limit,
+    }
+  );
+}
+
+
+/* ============================================================
+   DASHBOARD — PENDING INCOMING TRANSFERS
 ============================================================ */
 
 export async function getMoomaPendingTransfers(
@@ -433,267 +516,390 @@ export async function getMoomaPendingTransfers(
   return moomaGet(
     MOOMA_API.pendingTransfers,
     {
-      branchCode,
+      /*
+       * IMPORTANT:
+       *
+       * Backend expects:
+       *
+       * /api/mooma/pending-transfers
+       * ?branch=M001
+       */
+      branch:
+        branchCode,
     }
   );
 }
 
 
 /* ============================================================
-   ACCEPT TRANSFER
+   DASHBOARD — ACCEPT TRANSFER
 ============================================================ */
 
 export async function acceptMoomaTransfer({
   transferId,
-  branchCode,
 }) {
+  if (!transferId) {
+    throw new Error(
+      "Transfer ID is required."
+    );
+  }
+
   return moomaPost(
-    MOOMA_API.transferAction,
+    MOOMA_API.transferRespond,
     {
       transferId,
-      branchCode,
+
+      /*
+       * Backend expects lowercase
+       * "accept"
+       */
       action:
-        "ACCEPT",
+        "accept",
     }
   );
 }
 
 
 /* ============================================================
-   REJECT TRANSFER
+   DASHBOARD — REJECT TRANSFER
 ============================================================ */
 
 export async function rejectMoomaTransfer({
   transferId,
-  branchCode,
 }) {
+  if (!transferId) {
+    throw new Error(
+      "Transfer ID is required."
+    );
+  }
+
   return moomaPost(
-    MOOMA_API.transferAction,
+    MOOMA_API.transferRespond,
     {
       transferId,
-      branchCode,
+
+      /*
+       * Backend expects lowercase
+       * "reject"
+       */
       action:
-        "REJECT",
+        "reject",
     }
   );
 }
 
 
 /* ============================================================
-   TRANSFER HISTORY
+   GENERIC TRANSFER RESPONSE
 ============================================================ */
 
-export async function getMoomaTransferHistory(
-  branchCode
-) {
-  return moomaGet(
-    MOOMA_API.transferHistory,
-    {
-      branchCode,
-    }
-  );
-}
-
-
-/* ============================================================
-   STAFF SCHEDULE
-============================================================ */
-
-export async function getMoomaSchedule({
-  branchCode,
-  week,
+export async function respondMoomaTransfer({
+  transferId,
+  action,
 }) {
-  return moomaGet(
-    MOOMA_API.schedule,
-    {
-      branchCode,
-      week,
-    }
-  );
-}
-
-
-/* ============================================================
-   SAVE STAFF SCHEDULE
-============================================================ */
-
-export async function saveMoomaSchedule({
-  branchCode,
-  week,
-  schedule,
-}) {
-  return moomaPost(
-    MOOMA_API.saveSchedule,
-    {
-      branchCode,
-      week,
-      schedule,
-    }
-  );
-}
-
-
-/* ============================================================
-   DATE HELPERS
-============================================================ */
-
-export function getTodayISO() {
-  const now =
-    new Date();
-
-
-  const year =
-    now.getFullYear();
-
-
-  const month =
-    String(
-      now.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
+  if (!transferId) {
+    throw new Error(
+      "Transfer ID is required."
     );
-
-
-  const day =
-    String(
-      now.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  return `${year}-${month}-${day}`;
-}
-
-
-/* ============================================================
-   NUMBER HELPERS
-============================================================ */
-
-export function cleanQuantity(
-  value
-) {
-  if (
-    value === "" ||
-    value === null ||
-    value === undefined
-  ) {
-    return 0;
   }
 
-
-  const number =
-    Number(value);
-
-
-  if (
-    !Number.isFinite(
-      number
-    )
-  ) {
-    return 0;
-  }
-
-
-  return number;
-}
-
-
-/* ============================================================
-   TRANSFER STATUS
-============================================================ */
-
-export function normalizeTransferStatus(
-  value
-) {
-  const status =
+  const normalizedAction =
     String(
-      value || ""
+      action || ""
     )
       .trim()
-      .toUpperCase();
-
-
-  if (
-    status ===
-    "ACCEPTED"
-  ) {
-    return "ACCEPTED";
-  }
-
+      .toLowerCase();
 
   if (
-    status ===
-    "REJECTED"
+    normalizedAction !==
+      "accept" &&
+    normalizedAction !==
+      "reject"
   ) {
-    return "REJECTED";
+    throw new Error(
+      "Transfer action must be accept or reject."
+    );
   }
 
-
-  return "PENDING";
+  return moomaPost(
+    MOOMA_API.transferRespond,
+    {
+      transferId,
+      action:
+        normalizedAction,
+    }
+  );
 }
 
 
 /* ============================================================
-   TRANSFER ID
+   STAFF SCHEDULE — INITIALIZE
 ============================================================ */
 
-export function makeTransferId(
-  branchCode = "M"
-) {
-  const now =
-    new Date();
+export async function getMoomaScheduleInit({
+  branchCode,
+  date,
+}) {
+  return moomaGet(
+    MOOMA_API.scheduleInit,
+    {
+      branch:
+        branchCode,
 
-
-  const stamp =
-    [
-      now.getFullYear(),
-
-      String(
-        now.getMonth() + 1
-      ).padStart(
-        2,
-        "0"
-      ),
-
-      String(
-        now.getDate()
-      ).padStart(
-        2,
-        "0"
-      ),
-
-      String(
-        now.getHours()
-      ).padStart(
-        2,
-        "0"
-      ),
-
-      String(
-        now.getMinutes()
-      ).padStart(
-        2,
-        "0"
-      ),
-
-      String(
-        now.getSeconds()
-      ).padStart(
-        2,
-        "0"
-      ),
-    ].join("");
-
-
-  const random =
-    Math.random()
-      .toString(36)
-      .slice(2, 6)
-      .toUpperCase();
-
-
-  return `MOOMA-${branchCode}-${stamp}-${random}`;
+      date,
+    }
+  );
 }
+
+
+/* ============================================================
+   STAFF SCHEDULE — SUBMIT
+============================================================ */
+
+export async function submitMoomaSchedule({
+  branchCode,
+  selectedDate,
+  employees,
+}) {
+  return moomaPost(
+    MOOMA_API.scheduleSubmit,
+    {
+      branchCode,
+      selectedDate,
+
+      employees:
+        Array.isArray(
+          employees
+        )
+          ? employees
+          : [],
+    }
+  );
+}
+
+
+/* ============================================================
+   STAFF SCHEDULE — ADD EMPLOYEE
+============================================================ */
+
+export async function addMoomaEmployee({
+  branchCode,
+  employeeId,
+  name,
+  role,
+}) {
+  return moomaPost(
+    MOOMA_API.employeeAdd,
+    {
+      branchCode,
+
+      employeeId:
+        employeeId || "",
+
+      name,
+
+      role:
+        role ||
+        "Team-Member",
+    }
+  );
+}
+
+
+/* ============================================================
+   STAFF SCHEDULE — REMOVE / TRANSFER EMPLOYEE
+============================================================ */
+
+export async function removeMoomaEmployee({
+  branchCode,
+  employeeId,
+  name,
+  reason,
+  destinationBranch,
+}) {
+  return moomaPost(
+    MOOMA_API.employeeRemove,
+    {
+      branchCode,
+
+      employeeId:
+        employeeId || "",
+
+      name:
+        name || "",
+
+      reason,
+
+      destinationBranch:
+        destinationBranch ||
+        "",
+    }
+  );
+}
+
+
+/* ============================================================
+   STAFF SCHEDULE — VACATION
+============================================================ */
+
+export async function setMoomaEmployeeVacation({
+  branchCode,
+  employeeId,
+  name,
+  selectedDate,
+}) {
+  return moomaPost(
+    MOOMA_API.employeeVacation,
+    {
+      branchCode,
+
+      employeeId:
+        employeeId || "",
+
+      name:
+        name || "",
+
+      selectedDate,
+    }
+  );
+}
+
+
+/* ============================================================
+   ACTIVE SECTION AUTO-SCROLL
+============================================================ */
+
+/*
+ * Universal helper:
+ *
+ * Whenever the user opens something,
+ * submits something, accepts/rejects,
+ * or activates a section, call:
+ *
+ * activeScroll(ref)
+ *
+ * This keeps the active operation
+ * visible automatically.
+ */
+
+export function activeScroll(
+  target,
+  options = {}
+) {
+  const {
+    delay = 80,
+    block = "start",
+    behavior = "smooth",
+  } = options;
+
+  window.setTimeout(
+    () => {
+      let element =
+        null;
+
+      /*
+       * React ref
+       */
+      if (
+        target?.current
+      ) {
+        element =
+          target.current;
+      }
+
+      /*
+       * Direct DOM element
+       */
+      else if (
+        target instanceof
+        HTMLElement
+      ) {
+        element =
+          target;
+      }
+
+      /*
+       * CSS selector
+       */
+      else if (
+        typeof target ===
+        "string"
+      ) {
+        element =
+          document.querySelector(
+            target
+          );
+      }
+
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        behavior,
+        block,
+        inline:
+          "nearest",
+      });
+    },
+    delay
+  );
+}
+
+
+/* ============================================================
+   SCROLL TO TOP
+============================================================ */
+
+export function moomaScrollTop(
+  behavior = "smooth"
+) {
+  window.scrollTo({
+    top: 0,
+    left: 0,
+    behavior,
+  });
+}
+
+
+/* ============================================================
+   EXPORT DEFAULT
+============================================================ */
+
+export default {
+  MOOMA_API,
+
+  testMoomaConnection,
+
+  getMoomaBranches,
+  loginMoomaBranch,
+
+  getMoomaDatabaseStatus,
+  syncMoomaDatabase,
+
+  getMoomaStockView,
+
+  getMoomaStockRecordInit,
+  saveMoomaStockDraft,
+  deleteMoomaStockDraft,
+  submitMoomaStockRecord,
+
+  getMoomaStockTransferInit,
+  createMoomaStockTransfer,
+  getMoomaStockTransferHistory,
+
+  getMoomaPendingTransfers,
+  acceptMoomaTransfer,
+  rejectMoomaTransfer,
+  respondMoomaTransfer,
+
+  getMoomaScheduleInit,
+  submitMoomaSchedule,
+
+  addMoomaEmployee,
+  removeMoomaEmployee,
+  setMoomaEmployeeVacation,
+
+  activeScroll,
+  moomaScrollTop,
+};s
