@@ -27,6 +27,7 @@ import MoomaDashboard from "./MoomaDashboard.jsx";
 import MoomaLaunch from "./MoomaLaunch.jsx";
 import MoomaStockRecord from "./MoomaStockRecord.jsx";
 import MoomaStockView from "./MoomaStockView.jsx";
+import MoomaStockTransfer from "./MoomaStockTransfer.jsx";
 
 import "./Mooma.css";
 
@@ -109,11 +110,16 @@ export default function MoomaPortal({
   ] = useState(false);
 
   /*
-   * Controls which MOOMA module
-   * is currently open.
+   * ACTIVE MODULE
    *
    * null = dashboard
+   *
+   * stock-record
+   * stock-view
+   * stock-transfer
+   * staff-schedule
    */
+
   const [
     activeModule,
     setActiveModule,
@@ -285,6 +291,7 @@ export default function MoomaPortal({
 
 
       if (!query) {
+
         return branches;
       }
 
@@ -390,6 +397,7 @@ export default function MoomaPortal({
 
 
     if (loginBusy) {
+
       return;
     }
 
@@ -493,9 +501,8 @@ export default function MoomaPortal({
 
 
       /*
-       * If backend gives us
-       * verified branch information,
-       * merge it with selected branch.
+       * Merge verified branch information
+       * returned from backend.
        */
 
       const verifiedBranch =
@@ -510,7 +517,7 @@ export default function MoomaPortal({
 
 
       /*
-       * Clear previous module.
+       * Always enter dashboard first.
        */
 
       setActiveModule(
@@ -533,7 +540,7 @@ export default function MoomaPortal({
 
 
       /*
-       * Start rocket animation.
+       * Start MOOMA rocket animation.
        */
 
       setLaunching(
@@ -542,7 +549,7 @@ export default function MoomaPortal({
 
 
       /*
-       * Rocket animation:
+       * Rocket animation duration:
        * 2.2 seconds
        */
 
@@ -596,9 +603,9 @@ export default function MoomaPortal({
       false
     );
 
+
     /*
-     * IMPORTANT:
-     * Close any active module.
+     * Close any active operation.
      */
 
     setActiveModule(
@@ -687,14 +694,48 @@ export default function MoomaPortal({
 
 
     /*
-     * NEXT MODULES
-     *
-     * stock-transfer
-     * staff-schedule
+     * STOCK TRANSFER
      */
 
+    if (
+      moduleId ===
+      "stock-transfer"
+    ) {
+
+      setActiveModule(
+        "stock-transfer"
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
+      return;
+    }
+
+
+    /*
+     * STAFF SCHEDULE
+     *
+     * Will be connected next.
+     */
+
+    if (
+      moduleId ===
+      "staff-schedule"
+    ) {
+
+      console.log(
+        "[MOOMA] STAFF SCHEDULE NOT CONNECTED YET"
+      );
+
+      return;
+    }
+
+
     console.log(
-      "[MOOMA] MODULE NOT CONNECTED YET:",
+      "[MOOMA] UNKNOWN MODULE:",
       moduleId
     );
   }
@@ -722,7 +763,7 @@ export default function MoomaPortal({
      ROCKET LAUNCH SCREEN
 
      IMPORTANT:
-     This stays BEFORE dashboard/modules.
+     Must stay before dashboard/modules.
   ========================================================== */
 
   if (
@@ -776,6 +817,30 @@ export default function MoomaPortal({
 
     return (
       <MoomaStockView
+        branch={
+          authenticated
+        }
+
+        onBack={
+          returnToDashboard
+        }
+      />
+    );
+  }
+
+
+  /* ==========================================================
+     STOCK TRANSFER
+  ========================================================== */
+
+  if (
+    authenticated &&
+    activeModule ===
+      "stock-transfer"
+  ) {
+
+    return (
+      <MoomaStockTransfer
         branch={
           authenticated
         }
@@ -843,14 +908,22 @@ export default function MoomaPortal({
       ====================================================== */}
 
       <div className="mooma-world-bg" />
-
       <div className="mooma-world-grid" />
-
       <div className="mooma-world-noise" />
 
-      <div className="mooma-red-glow mooma-red-glow-one" />
+      <div
+        className="
+          mooma-red-glow
+          mooma-red-glow-one
+        "
+      />
 
-      <div className="mooma-red-glow mooma-red-glow-two" />
+      <div
+        className="
+          mooma-red-glow
+          mooma-red-glow-two
+        "
+      />
 
 
       {/* ======================================================
