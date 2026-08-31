@@ -1795,6 +1795,7 @@ function chooseBrand(brand) {
 
   setAuthenticatedBranch(null);
 
+  
   /*
     MOOMA IS NOW ITS OWN
     INDEPENDENT FRONTEND SYSTEM.
