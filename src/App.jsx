@@ -1,9 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import {
@@ -31,15 +26,7 @@ import {
 import "./index.css";
 import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
-
-const MoomaShell =
-  lazy(
-    () =>
-      import(
-        "./brands/mooma/MoomaShell.jsx"
-      )
-  );
-
+import MoomaPortal from "./mooma/MoomaPortal.jsx";
 
 /* =========================================================
    API
@@ -89,7 +76,6 @@ const portals = [
     badge: "RESTRICTED",
   },
 ];
-
 
 /* =========================================================
    BRANDS
@@ -1803,46 +1789,29 @@ function App() {
      BRAND
   ======================================================= */
 function chooseBrand(brand) {
-  setSelectedBrand(
-    brand
-  );
+  setSelectedBrand(brand);
 
-  setSelectedBranch(
-    null
-  );
+  setSelectedBranch(null);
 
-  setAuthenticatedBranch(
-    null
-  );
+  setAuthenticatedBranch(null);
 
-
-  /* ======================================================
-     MOOMA
-     No href.
-     No reload.
-     Stay inside React.
-  ====================================================== */
-
-  if (
-    brand.id === "mooma"
-  ) {
-    setPage(
-      "mooma"
-    );
+  /*
+    MOOMA IS NOW ITS OWN
+    INDEPENDENT FRONTEND SYSTEM.
+  */
+  if (brand.id === "mooma") {
+    setPage("mooma");
 
     return;
   }
 
-
-  /* ======================================================
-     EXISTING FLOW
-     Leave BART exactly as before.
-  ====================================================== */
-
-  setPage(
-    "branches"
-  );
+  /*
+    KEEP EXISTING BART / OTHER
+    FLOW UNCHANGED.
+  */
+  setPage("branches");
 }
+
   /* =======================================================
      BRANCH
   ======================================================= */
@@ -1966,6 +1935,53 @@ function chooseBrand(brand) {
       )}
 
 
+
+
+
+
+
+
+
+
+
+
+      {/* ======================================================
+    MOOMA INDEPENDENT PORTAL
+====================================================== */}
+
+{page === "mooma" &&
+  selectedBrand?.id ===
+    "mooma" && (
+    <motion.div
+      key="mooma-portal"
+      initial={{
+        opacity: 0,
+      }}
+      animate={{
+        opacity: 1,
+      }}
+      exit={{
+        opacity: 0,
+      }}
+    >
+      <MoomaPortal
+        onBack={() => {
+          setSelectedBrand(
+            null
+          );
+
+          setSelectedBranch(
+            null
+          );
+
+          setPage(
+            "brands"
+          );
+        }}
+      />
+    </motion.div>
+  )}
+
       {/* REAL BRANCH LIST */}
 
       {page === "branches" &&
@@ -1994,81 +2010,6 @@ function chooseBrand(brand) {
           />
         )}
 
-
-
-
-
-
-      {/* ==========================================================
-    MOOMA BRAND MODULE
-========================================================== */}
-
-{page === "mooma" &&
-  selectedBrand?.id ===
-    "mooma" && (
-    <Suspense
-      fallback={
-        <div
-          style={{
-            minHeight:
-              "100vh",
-
-            display:
-              "grid",
-
-            placeItems:
-              "center",
-
-            background:
-              "#ffffff",
-
-            color:
-              "#8a315b",
-
-            fontFamily:
-              "Inter, sans-serif",
-
-            fontWeight:
-              800,
-
-            letterSpacing:
-              "0.12em",
-
-            fontSize:
-              "10px",
-          }}
-        >
-          OPENING MOOMA
-        </div>
-      }
-    >
-      <MoomaShell
-        onBack={() => {
-          setSelectedBrand(
-            null
-          );
-
-          setSelectedBranch(
-            null
-          );
-
-          setAuthenticatedBranch(
-            null
-          );
-
-          setPage(
-            "brands"
-          );
-
-          window.scrollTo({
-            top: 0,
-            behavior:
-              "smooth",
-          });
-        }}
-      />
-    </Suspense>
-  )}
       {/* REAL PASSWORD */}
 
       {page ===
