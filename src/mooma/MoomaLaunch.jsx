@@ -1,101 +1,43 @@
 import { motion } from "framer-motion";
 
-export default function MoomaLaunch({
-  branch,
-  label = "LAUNCHING MOOMA OPERATIONS",
-}) {
+export default function MoomaLaunch({ branch }) {
   return (
-    <div className="mooma-launch-screen">
+    <div className="mooma-launch-root">
+      <div className="mooma-launch-background" />
       <div className="mooma-launch-grid" />
 
-      <div className="mooma-launch-glow glow-one" />
-      <div className="mooma-launch-glow glow-two" />
+      {/* SPEED LINES */}
 
-      <motion.div
-        className="mooma-rocket-stage"
-        initial={{
-          opacity: 0,
-          scale: 0.9,
-        }}
-        animate={{
-          opacity: 1,
-          scale: 1,
-        }}
-        transition={{
-          duration: 0.35,
-        }}
-      >
-        <motion.div
-          className="mooma-rocket"
-          initial={{
-            y: 70,
-            scale: 0.86,
-          }}
-          animate={{
-            y: [70, 40, 15, -15, -60],
-            scale: [0.86, 0.9, 0.96, 1, 1.05],
-          }}
-          transition={{
-            duration: 1.65,
-            ease: [0.22, 1, 0.36, 1],
-          }}
-        >
-          <div className="rocket-head" />
-
-          <div className="rocket-body">
-            <span>M</span>
-          </div>
-
-          <div className="rocket-fin fin-left" />
-          <div className="rocket-fin fin-right" />
-
-          <motion.div
-            className="rocket-flame flame-main"
+      <div className="mooma-launch-speed-lines">
+        {Array.from({ length: 14 }).map((_, index) => (
+          <motion.i
+            key={index}
+            style={{
+              left: `${6 + index * 7}%`,
+            }}
+            initial={{
+              y: "110vh",
+              opacity: 0,
+            }}
             animate={{
-              scaleY: [0.7, 1.2, 0.9, 1.4, 1.1],
-              opacity: [0.8, 1, 0.9, 1, 0.9],
+              y: "-120vh",
+              opacity: [0, 0.7, 0],
             }}
             transition={{
-              duration: 0.45,
-              repeat: Infinity,
-              ease: "easeInOut",
+              duration: 0.7 + (index % 4) * 0.12,
+              delay: 0.65 + (index % 5) * 0.04,
+              repeat: 1,
+              ease: "linear",
             }}
           />
+        ))}
+      </div>
 
-          <motion.div
-            className="rocket-flame flame-core"
-            animate={{
-              scaleY: [0.7, 1.4, 0.8, 1.2],
-            }}
-            transition={{
-              duration: 0.28,
-              repeat: Infinity,
-            }}
-          />
-        </motion.div>
+      {/* LAUNCH SYSTEM */}
 
+      <div className="mooma-launch-stage">
         <motion.div
-          className="mooma-launch-smoke"
-          initial={{
-            opacity: 0,
-            scale: 0.7,
-          }}
-          animate={{
-            opacity: [0, 0.7, 0.9, 0.3, 0],
-            scale: [0.7, 1, 1.4, 1.8, 2.1],
-          }}
-          transition={{
-            duration: 1.65,
-          }}
-        >
-          <i />
-          <i />
-          <i />
-          <i />
-        </motion.div>
-
-        <motion.div
-          className="mooma-launch-copy"
+          className="mooma-launch-status"
           initial={{
             opacity: 0,
             y: 15,
@@ -104,27 +46,183 @@ export default function MoomaLaunch({
             opacity: 1,
             y: 0,
           }}
+        >
+          <span>MOOMA / LAUNCH SEQUENCE</span>
+
+          <strong>
+            {branch?.code || "MOOMA"}
+          </strong>
+        </motion.div>
+
+        {/* ROCKET */}
+
+        <motion.div
+          className="mooma-launch-rocket-wrap"
+          initial={{
+            y: 120,
+            scale: 0.85,
+          }}
+          animate={{
+            y: [
+              120,
+              100,
+              85,
+              40,
+              -20,
+              -450,
+            ],
+
+            scale: [
+              0.85,
+              0.87,
+              0.9,
+              0.94,
+              1,
+              1.12,
+            ],
+          }}
           transition={{
-            delay: 0.2,
+            duration: 1.8,
+            times: [
+              0,
+              0.18,
+              0.35,
+              0.55,
+              0.72,
+              1,
+            ],
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        >
+          <motion.div
+            className="mooma-launch-rocket"
+            animate={{
+              x: [
+                0,
+                -1,
+                2,
+                -2,
+                1,
+                0,
+              ],
+            }}
+            transition={{
+              duration: 0.16,
+              repeat: Infinity,
+            }}
+          >
+            <div className="mooma-launch-rocket-nose" />
+
+            <div className="mooma-launch-rocket-body">
+              <div className="mooma-launch-rocket-window">
+                M
+              </div>
+            </div>
+
+            <div className="mooma-launch-rocket-fin-left" />
+
+            <div className="mooma-launch-rocket-fin-right" />
+
+            {/* ENGINE */}
+
+            <div className="mooma-launch-engine">
+              <motion.div
+                className="mooma-launch-flame-outer"
+                animate={{
+                  scaleY: [
+                    0.8,
+                    1.3,
+                    0.95,
+                    1.5,
+                    1,
+                  ],
+                }}
+                transition={{
+                  duration: 0.18,
+                  repeat: Infinity,
+                }}
+              />
+
+              <motion.div
+                className="mooma-launch-flame-inner"
+                animate={{
+                  scaleY: [
+                    1,
+                    1.5,
+                    0.9,
+                    1.3,
+                  ],
+                }}
+                transition={{
+                  duration: 0.13,
+                  repeat: Infinity,
+                }}
+              />
+            </div>
+          </motion.div>
+        </motion.div>
+
+        {/* GROUND GLOW */}
+
+        <motion.div
+          className="mooma-launch-ground"
+          initial={{
+            opacity: 0,
+            scale: 0.5,
+          }}
+          animate={{
+            opacity: [0, 0.4, 1, 0],
+            scale: [0.5, 1, 1.6, 2.3],
+          }}
+          transition={{
+            duration: 1.7,
+          }}
+        />
+
+        {/* TEXT */}
+
+        <motion.div
+          className="mooma-launch-copy"
+          initial={{
+            opacity: 0,
+          }}
+          animate={{
+            opacity: [0, 1, 1, 0],
+          }}
+          transition={{
+            duration: 2,
+            times: [0, 0.15, 0.75, 1],
           }}
         >
           <small>
-            MOOMA / SECURE BRANCH LAUNCH
+            BRANCH AUTHENTICATED
           </small>
 
-          <h2>
-            {branch?.name || "MOOMA"}
-          </h2>
+          <h1>
+            Launching
+            <span> operations.</span>
+          </h1>
 
           <p>
-            {branch?.code || ""}
+            {branch?.name || "MOOMA OPERATIONS"}
           </p>
 
-          <strong>
-            {label}
-          </strong>
+          <div className="mooma-launch-progress">
+            <motion.div
+              initial={{
+                width: "0%",
+              }}
+              animate={{
+                width: "100%",
+              }}
+              transition={{
+                duration: 1.8,
+                ease: "easeInOut",
+              }}
+            />
+          </div>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   );
 }
