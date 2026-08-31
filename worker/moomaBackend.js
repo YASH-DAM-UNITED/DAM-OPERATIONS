@@ -1,4 +1,4 @@
-```javascript
+
 /* DAM OPERATIONS — MOOMA MODULAR BACKEND V3 */
 
 const GT = "https://oauth2.googleapis.com/token";
@@ -2509,4 +2509,4 @@ export async function handleMoomaRequest(
     );
   }
 }
-```
+
