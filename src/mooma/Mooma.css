@@ -3711,3 +3711,457 @@
     gap: 8px;
   }
 }
+
+
+
+
+/* ============================================================
+   MOOMA LAUNCH SEQUENCE
+   ALL CLASSES STRICTLY NAMESPACED
+============================================================ */
+
+.mooma-launch-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  min-height: 100vh;
+
+  overflow: hidden;
+
+  display: grid;
+  place-items: center;
+
+  background: #101010;
+  color: #fff;
+}
+
+.mooma-launch-background {
+  position: absolute;
+  inset: 0;
+
+  background:
+    radial-gradient(
+      circle at 50% 70%,
+      rgba(180, 35, 47, 0.24),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 50% 110%,
+      rgba(215, 51, 63, 0.18),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      #171717,
+      #0b0b0b
+    );
+}
+
+.mooma-launch-grid {
+  position: absolute;
+  inset: 0;
+
+  opacity: 0.12;
+
+  background-image:
+    linear-gradient(
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 1px
+    );
+
+  background-size: 50px 50px;
+}
+
+.mooma-launch-stage {
+  position: relative;
+  z-index: 10;
+
+  width: min(900px, 92vw);
+  height: 90vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mooma-launch-status {
+  position: absolute;
+
+  top: 30px;
+  left: 0;
+  right: 0;
+
+  display: flex;
+  justify-content: space-between;
+
+  color: #777;
+
+  font-size: 7px;
+  font-weight: 900;
+
+  letter-spacing: 0.16em;
+}
+
+.mooma-launch-status strong {
+  color: #b4232f;
+}
+
+.mooma-launch-rocket-wrap {
+  position: absolute;
+
+  left: 50%;
+  bottom: 23%;
+
+  margin-left: -48px;
+}
+
+.mooma-launch-rocket {
+  position: relative;
+
+  width: 96px;
+  height: 215px;
+}
+
+.mooma-launch-rocket-nose {
+  position: absolute;
+
+  top: 0;
+  left: 22px;
+
+  width: 52px;
+  height: 65px;
+
+  border-radius:
+    50% 50% 16px 16px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #4c4c4c,
+      #202020
+    );
+
+  clip-path:
+    polygon(
+      50% 0%,
+      100% 75%,
+      100% 100%,
+      0 100%,
+      0 75%
+    );
+}
+
+.mooma-launch-rocket-body {
+  position: absolute;
+
+  top: 54px;
+  left: 17px;
+
+  width: 62px;
+  height: 112px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 10px 10px 16px 16px;
+
+  background:
+    linear-gradient(
+      90deg,
+      #202020,
+      #444,
+      #1a1a1a
+    );
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.09);
+
+  box-shadow:
+    inset 0 0 25px
+    rgba(255, 255, 255, 0.04);
+}
+
+.mooma-launch-rocket-window {
+  width: 34px;
+  height: 34px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  background:
+    #b4232f;
+
+  color: white;
+
+  box-shadow:
+    0 0 22px
+    rgba(180, 35, 47, 0.4);
+
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.mooma-launch-rocket-fin-left,
+.mooma-launch-rocket-fin-right {
+  position: absolute;
+
+  top: 125px;
+
+  width: 29px;
+  height: 62px;
+
+  background:
+    linear-gradient(
+      to bottom,
+      #9b1d28,
+      #641219
+    );
+}
+
+.mooma-launch-rocket-fin-left {
+  left: 1px;
+
+  clip-path:
+    polygon(
+      100% 0,
+      100% 100%,
+      0 100%,
+      30% 35%
+    );
+}
+
+.mooma-launch-rocket-fin-right {
+  right: 1px;
+
+  clip-path:
+    polygon(
+      0 0,
+      70% 35%,
+      100% 100%,
+      0 100%
+    );
+}
+
+.mooma-launch-engine {
+  position: absolute;
+
+  top: 163px;
+  left: 50%;
+
+  width: 40px;
+
+  transform:
+    translateX(-50%);
+}
+
+.mooma-launch-flame-outer {
+  position: absolute;
+
+  top: 0;
+  left: 3px;
+
+  width: 34px;
+  height: 105px;
+
+  transform-origin:
+    top center;
+
+  border-radius:
+    5px 5px 50% 50%;
+
+  background:
+    linear-gradient(
+      to bottom,
+      #ff4751,
+      #b4232f 40%,
+      rgba(180, 35, 47, 0)
+    );
+
+  filter:
+    blur(3px);
+}
+
+.mooma-launch-flame-inner {
+  position: absolute;
+
+  top: 0;
+  left: 13px;
+
+  width: 14px;
+  height: 70px;
+
+  transform-origin:
+    top center;
+
+  border-radius:
+    5px 5px 50% 50%;
+
+  background:
+    linear-gradient(
+      to bottom,
+      #fff,
+      #ffb8bc 35%,
+      rgba(255, 184, 188, 0)
+    );
+}
+
+.mooma-launch-ground {
+  position: absolute;
+
+  left: 50%;
+  bottom: 14%;
+
+  width: 150px;
+  height: 30px;
+
+  margin-left: -75px;
+
+  border-radius: 50%;
+
+  background:
+    rgba(215, 51, 63, 0.55);
+
+  filter:
+    blur(22px);
+}
+
+.mooma-launch-copy {
+  position: absolute;
+
+  left: 0;
+  bottom: 6%;
+
+  width: 100%;
+
+  text-align: center;
+}
+
+.mooma-launch-copy small {
+  color: #b4232f;
+
+  font-size: 7px;
+  font-weight: 950;
+
+  letter-spacing: 0.18em;
+}
+
+.mooma-launch-copy h1 {
+  margin: 9px 0 4px;
+
+  color: #fff;
+
+  font-size:
+    clamp(
+      28px,
+      4vw,
+      45px
+    );
+
+  letter-spacing: -0.045em;
+}
+
+.mooma-launch-copy h1 span {
+  color: #b4232f;
+}
+
+.mooma-launch-copy p {
+  margin: 0;
+
+  color: #777;
+
+  font-size: 8px;
+  font-weight: 800;
+
+  letter-spacing: 0.11em;
+}
+
+.mooma-launch-progress {
+  width: 180px;
+  height: 2px;
+
+  margin: 18px auto 0;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background:
+    rgba(255, 255, 255, 0.08);
+}
+
+.mooma-launch-progress > div {
+  height: 100%;
+
+  background:
+    linear-gradient(
+      90deg,
+      #7f1821,
+      #d7333f
+    );
+}
+
+.mooma-launch-speed-lines {
+  position: absolute;
+  inset: 0;
+
+  overflow: hidden;
+
+  pointer-events: none;
+}
+
+.mooma-launch-speed-lines i {
+  position: absolute;
+
+  top: 0;
+
+  width: 1px;
+  height: 90px;
+
+  background:
+    linear-gradient(
+      to top,
+      transparent,
+      rgba(255, 255, 255, 0.45),
+      transparent
+    );
+}
+
+
+/* MOBILE */
+
+@media (max-width: 600px) {
+  .mooma-launch-stage {
+    width: 88vw;
+  }
+
+  .mooma-launch-status {
+    top: 20px;
+
+    font-size: 6px;
+  }
+
+  .mooma-launch-rocket-wrap {
+    transform:
+      scale(0.82);
+
+    transform-origin:
+      center bottom;
+  }
+
+  .mooma-launch-copy {
+    bottom: 8%;
+  }
+
+  .mooma-launch-copy h1 {
+    font-size: 30px;
+  }
+}
