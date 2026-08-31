@@ -138,22 +138,73 @@ function transferDateOf(transfer) {
 }
 
 
-function transferItemsOf(transfer) {
-  if (Array.isArray(transfer?.items)) {
-    return transfer.items;
+function safeParseJson(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.error("[MOOMA] JSON parse failed:", value, error);
+    return null;
+  }
+}
+
+function normalizeTransferItems(value) {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    const parsed = safeParseJson(value);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.items)) return parsed.items;
+    if (Array.isArray(parsed?.transferItems)) return parsed.transferItems;
+    if (Array.isArray(parsed?.itemList)) return parsed.itemList;
   }
 
-  if (
-    Array.isArray(
-      transfer?.transferItems
-    )
-  ) {
-    return transfer.transferItems;
+  if (value && typeof value === "object") {
+    if (Array.isArray(value.items)) return value.items;
+    if (Array.isArray(value.transferItems)) return value.transferItems;
+    if (Array.isArray(value.itemList)) return value.itemList;
   }
 
   return [];
 }
 
+function transferItemsOf(transfer) {
+  if (!transfer) return [];
+
+  const candidates = [
+    transfer.items,
+    transfer.transferItems,
+    transfer.itemList,
+    transfer.itemsJson,
+    transfer.items_json,
+  ];
+
+  for (const candidate of candidates) {
+    const items = normalizeTransferItems(candidate);
+    if (items.length) return items;
+  }
+
+  for (const wrapperValue of [transfer.payload, transfer.data]) {
+    let wrapper = wrapperValue;
+    if (typeof wrapper === "string") wrapper = safeParseJson(wrapper);
+    if (!wrapper) continue;
+
+    for (const candidate of [
+      wrapper.items,
+      wrapper.transferItems,
+      wrapper.itemList,
+    ]) {
+      const items = normalizeTransferItems(candidate);
+      if (items.length) return items;
+    }
+  }
+
+  console.warn(
+    "[MOOMA] Transfer found but item list could not be decoded:",
+    transfer
+  );
+  return [];
+}
 
 function itemNameOf(item) {
   return (
@@ -161,36 +212,56 @@ function itemNameOf(item) {
     item?.name ||
     item?.item ||
     item?.description ||
+    item?.Item ||
+    item?.ITEM ||
+    item?.["Item Name"] ||
+    item?.["ITEM NAME"] ||
     "ITEM"
   );
 }
-
 
 function itemSkuOf(item) {
   return (
     item?.sku ||
     item?.SKU ||
     item?.itemCode ||
+    item?.code ||
+    item?.itemSku ||
+    item?.["Item Code"] ||
+    item?.["ITEM CODE"] ||
     ""
   );
 }
 
-
 function itemQtyOf(item) {
-  return (
+  const value =
     item?.qty ??
     item?.quantity ??
     item?.amount ??
-    0
-  );
-}
+    item?.Quantity ??
+    item?.QTY ??
+    item?.Qty ??
+    item?.transferQty ??
+    item?.transferQuantity ??
+    item?.["Transfer Qty"] ??
+    item?.["TRANSFER QTY"] ??
+    0;
 
+  const number = Number(String(value).replace(/,/g, "").trim());
+  return Number.isFinite(number) ? number : value;
+}
 
 function itemUomOf(item) {
   return (
     item?.uom ||
     item?.UOM ||
     item?.unit ||
+    item?.Unit ||
+    item?.UNIT ||
+    item?.["DATE-> UOM"] ||
+    item?.["DATE -> UOM"] ||
+    item?.["Date-> UOM"] ||
+    item?.["Date -> UOM"] ||
     ""
   );
 }
@@ -590,13 +661,15 @@ export default function MoomaDashboard({
       ) {
         response =
           await acceptMoomaTransfer({
-            transferId,
-          });
+             transferId,
+             branchCode,
+           });
       } else {
         response =
           await rejectMoomaTransfer({
-            transferId,
-          });
+             transferId,
+             branchCode,
+           });
       }
 
 
