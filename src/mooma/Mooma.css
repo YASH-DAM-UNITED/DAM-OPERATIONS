@@ -8726,3 +8726,327 @@
     scroll-behavior: auto !important;
   }
 }
+
+
+
+/* ============================================================
+   MOOMA SECURITY SCANNER
+============================================================ */
+
+.mooma-security-popup {
+  position: relative;
+  overflow: hidden;
+}
+
+.mooma-security-scanner {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 30px;
+
+  background:
+    radial-gradient(
+      circle at 50% 45%,
+      rgba(190, 20, 35, 0.10),
+      transparent 45%
+    ),
+    rgba(12, 12, 13, 0.98);
+
+  backdrop-filter: blur(14px);
+}
+
+.mooma-security-scan-icon {
+  width: 54px;
+  height: 54px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(220, 35, 50, 0.55);
+  border-radius: 14px;
+
+  color: #ef3340;
+
+  background: rgba(220, 35, 50, 0.08);
+
+  box-shadow:
+    0 0 30px rgba(220, 35, 50, 0.12);
+}
+
+.mooma-security-label {
+  margin-top: 16px;
+
+  font-size: 10px;
+  font-weight: 800;
+
+  color: #ef3340;
+}
+
+.mooma-security-scanner h3 {
+  margin: 7px 0 20px;
+
+  font-size: clamp(18px, 2vw, 27px);
+  font-weight: 800;
+
+  color: var(--mooma-text, #f4f4f4);
+
+  text-align: center;
+}
+
+.mooma-security-scan-field {
+  position: relative;
+
+  width: min(500px, 90%);
+  height: 145px;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(220, 35, 50, 0.2);
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(220, 35, 50, 0.025),
+      rgba(220, 35, 50, 0.07)
+    );
+}
+
+.mooma-security-grid {
+  position: absolute;
+  inset: 0;
+
+  background-image:
+    linear-gradient(
+      rgba(220, 35, 50, 0.06) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(220, 35, 50, 0.06) 1px,
+      transparent 1px
+    );
+
+  background-size: 25px 25px;
+}
+
+.mooma-security-laser {
+  position: absolute;
+  left: 0;
+
+  z-index: 5;
+
+  width: 100%;
+  height: 2px;
+
+  background: #ef3340;
+
+  box-shadow:
+    0 0 5px #ef3340,
+    0 0 16px rgba(239, 51, 64, 0.9),
+    0 0 35px rgba(239, 51, 64, 0.45);
+}
+
+.mooma-security-laser span {
+  position: absolute;
+
+  left: 0;
+  top: -18px;
+
+  width: 100%;
+  height: 38px;
+
+  background:
+    linear-gradient(
+      180deg,
+      transparent,
+      rgba(239, 51, 64, 0.11),
+      transparent
+    );
+}
+
+.mooma-security-transfer-code {
+  position: absolute;
+  inset: 0;
+
+  z-index: 4;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 12px;
+}
+
+.mooma-security-transfer-code small {
+  font-size: 8px;
+  letter-spacing: 0.15em;
+
+  color: var(--mooma-muted, #888);
+}
+
+.mooma-security-transfer-code strong {
+  font-size: 15px;
+  letter-spacing: 0.06em;
+
+  color: var(--mooma-text, #fff);
+}
+
+.mooma-security-transfer-code svg {
+  color: #ef3340;
+}
+
+.mooma-security-corners i {
+  position: absolute;
+
+  width: 18px;
+  height: 18px;
+
+  z-index: 8;
+}
+
+.mooma-security-corners i:nth-child(1) {
+  left: 7px;
+  top: 7px;
+
+  border-left: 2px solid #ef3340;
+  border-top: 2px solid #ef3340;
+}
+
+.mooma-security-corners i:nth-child(2) {
+  right: 7px;
+  top: 7px;
+
+  border-right: 2px solid #ef3340;
+  border-top: 2px solid #ef3340;
+}
+
+.mooma-security-corners i:nth-child(3) {
+  left: 7px;
+  bottom: 7px;
+
+  border-left: 2px solid #ef3340;
+  border-bottom: 2px solid #ef3340;
+}
+
+.mooma-security-corners i:nth-child(4) {
+  right: 7px;
+  bottom: 7px;
+
+  border-right: 2px solid #ef3340;
+  border-bottom: 2px solid #ef3340;
+}
+
+.mooma-security-verifying,
+.mooma-security-verified {
+  margin-top: 15px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  font-size: 9px;
+  font-weight: 800;
+
+  letter-spacing: 0.14em;
+}
+
+.mooma-security-verifying {
+  color: var(--mooma-muted, #999);
+}
+
+.mooma-security-verifying span {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #ef3340;
+
+  box-shadow:
+    0 0 10px rgba(239, 51, 64, 0.8);
+}
+
+.mooma-security-verified {
+  position: absolute;
+
+  bottom: 25px;
+
+  color: #ef3340;
+}
+
+.mooma-security-content {
+  position: relative;
+  z-index: 10;
+}
+
+
+/* ============================================================
+   LIGHT MODE SUPPORT
+============================================================ */
+
+@media (prefers-color-scheme: light) {
+
+  .mooma-security-scanner {
+    background:
+      radial-gradient(
+        circle at 50% 45%,
+        rgba(190, 20, 35, 0.08),
+        transparent 45%
+      ),
+      rgba(246, 246, 246, 0.98);
+  }
+
+  .mooma-security-scanner h3 {
+    color: #171717;
+  }
+
+  .mooma-security-transfer-code strong {
+    color: #181818;
+  }
+
+  .mooma-security-scan-field {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(220, 35, 50, 0.015),
+        rgba(220, 35, 50, 0.045)
+      );
+  }
+}
+
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (max-width: 600px) {
+
+  .mooma-security-scanner {
+    padding: 20px;
+  }
+
+  .mooma-security-scan-field {
+    width: 100%;
+    height: 125px;
+  }
+
+  .mooma-security-transfer-code {
+    gap: 7px;
+  }
+
+  .mooma-security-transfer-code small {
+    display: none;
+  }
+
+  .mooma-security-transfer-code strong {
+    font-size: 13px;
+  }
+
+}
