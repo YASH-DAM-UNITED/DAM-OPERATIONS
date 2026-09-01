@@ -1433,6 +1433,455 @@ async function getBartBranch(
 
 
 /* ============================================================
+   GOOGLE-ONLY SMART CACHE
+   ------------------------------------------------------------
+   Used ONLY by:
+   - Stock Record
+   - Stock Transfer
+
+   D1 is NOT used by these operations.
+
+   Important:
+   Cloudflare Worker module memory is opportunistic cache only.
+   Correctness never depends on it. Submit/create/action operations
+   always force a fresh Google read before changing stock.
+============================================================ */
+
+const BART_GOOGLE_MASTER_CACHE_MS =
+  10 * 60 * 1000;
+
+const BART_GOOGLE_STOCK_CACHE_MS =
+  45 * 1000;
+
+const BART_GOOGLE_TRANSFER_CACHE_MS =
+  8 * 1000;
+
+
+const bartGoogleRuntimeCache = {
+
+  master: {
+    data: null,
+    at: 0,
+    promise: null,
+  },
+
+  transfers: {
+    data: null,
+    at: 0,
+    promise: null,
+  },
+
+  stocks:
+    new Map(),
+};
+
+
+async function readBartMasterSmart(
+  env,
+  force = false
+) {
+
+  const now =
+    Date.now();
+
+
+  if (
+    !force &&
+    bartGoogleRuntimeCache.master.data &&
+    now -
+      bartGoogleRuntimeCache.master.at <
+      BART_GOOGLE_MASTER_CACHE_MS
+  ) {
+
+    return bartGoogleRuntimeCache.master.data;
+  }
+
+
+  if (
+    !force &&
+    bartGoogleRuntimeCache.master.promise
+  ) {
+
+    return await bartGoogleRuntimeCache.master.promise;
+  }
+
+
+  const previous =
+    bartGoogleRuntimeCache.master.data;
+
+
+  const promise =
+    readBartMaster(
+      env
+    );
+
+
+  bartGoogleRuntimeCache.master.promise =
+    promise;
+
+
+  try {
+
+    const rows =
+      await promise;
+
+
+    bartGoogleRuntimeCache.master.data =
+      rows;
+
+    bartGoogleRuntimeCache.master.at =
+      Date.now();
+
+
+    return rows;
+
+  } catch (error) {
+
+    /*
+      Branch metadata changes rarely.
+      For normal read screens, a recently cached branch list is a
+      safer fallback than failing the whole page during a temporary
+      Google API/network issue.
+    */
+    if (
+      !force &&
+      previous
+    ) {
+
+      console.warn(
+        'MASTER GOOGLE READ FAILED - USING MEMORY CACHE',
+        error
+      );
+
+      return previous;
+    }
+
+
+    throw error;
+
+  } finally {
+
+    bartGoogleRuntimeCache.master.promise =
+      null;
+  }
+}
+
+
+async function getBartBranchGoogle(
+  env,
+  branchCode,
+  force = false
+) {
+
+  const code =
+    String(
+      branchCode || ''
+    )
+      .trim()
+      .toUpperCase();
+
+
+  const branches =
+    await readBartMasterSmart(
+      env,
+      force
+    );
+
+
+  const branch =
+    branches.find(
+      (item) =>
+        String(
+          item.code || ''
+        )
+          .trim()
+          .toUpperCase() ===
+        code
+    );
+
+
+  if (!branch) {
+    return null;
+  }
+
+
+  return {
+
+    code:
+      branch.code,
+
+    name:
+      branch.name,
+
+    sheet_id:
+      branch.sheetId,
+
+    password_hash:
+      branch.passwordHash,
+  };
+}
+
+
+async function readBranchStockSmart(
+  env,
+  branch,
+  force = false
+) {
+
+  if (!branch?.sheet_id) {
+
+    throw new Error(
+      'Branch SheetID missing.'
+    );
+  }
+
+
+  const key =
+    branch.sheet_id;
+
+  const now =
+    Date.now();
+
+  const cached =
+    bartGoogleRuntimeCache.stocks.get(
+      key
+    );
+
+
+  if (
+    !force &&
+    cached?.data &&
+    now - cached.at <
+      BART_GOOGLE_STOCK_CACHE_MS
+  ) {
+
+    return cached.data;
+  }
+
+
+  if (
+    !force &&
+    cached?.promise
+  ) {
+
+    return await cached.promise;
+  }
+
+
+  const previous =
+    cached?.data ||
+    null;
+
+
+  const promise =
+    getSheetValues(
+      env,
+      branch.sheet_id,
+      'Stocks!A:ZZ'
+    );
+
+
+  bartGoogleRuntimeCache.stocks.set(
+    key,
+    {
+      data:
+        previous,
+
+      at:
+        cached?.at ||
+        0,
+
+      promise,
+    }
+  );
+
+
+  try {
+
+    const rows =
+      await promise;
+
+
+    bartGoogleRuntimeCache.stocks.set(
+      key,
+      {
+        data:
+          rows,
+
+        at:
+          Date.now(),
+
+        promise:
+          null,
+      }
+    );
+
+
+    return rows;
+
+  } catch (error) {
+
+    /*
+      Never fall back to stale quantities for a write/validation.
+    */
+    if (
+      !force &&
+      previous
+    ) {
+
+      console.warn(
+        `STOCK GOOGLE READ FAILED FOR ${branch.code} - USING MEMORY CACHE`,
+        error
+      );
+
+      return previous;
+    }
+
+
+    throw error;
+
+  } finally {
+
+    const latest =
+      bartGoogleRuntimeCache.stocks.get(
+        key
+      );
+
+
+    if (
+      latest?.promise ===
+      promise
+    ) {
+
+      latest.promise =
+        null;
+
+      bartGoogleRuntimeCache.stocks.set(
+        key,
+        latest
+      );
+    }
+  }
+}
+
+
+function invalidateBranchStockSmart(
+  ...sheetIds
+) {
+
+  for (
+    const sheetId of sheetIds
+  ) {
+
+    if (sheetId) {
+
+      bartGoogleRuntimeCache.stocks.delete(
+        sheetId
+      );
+    }
+  }
+}
+
+
+async function readTransfersGoogleSmart(
+  env,
+  force = false
+) {
+
+  const now =
+    Date.now();
+
+
+  if (
+    !force &&
+    bartGoogleRuntimeCache.transfers.data &&
+    now -
+      bartGoogleRuntimeCache.transfers.at <
+      BART_GOOGLE_TRANSFER_CACHE_MS
+  ) {
+
+    return bartGoogleRuntimeCache.transfers.data;
+  }
+
+
+  if (
+    !force &&
+    bartGoogleRuntimeCache.transfers.promise
+  ) {
+
+    return await bartGoogleRuntimeCache.transfers.promise;
+  }
+
+
+  const previous =
+    bartGoogleRuntimeCache.transfers.data;
+
+
+  const promise =
+    readTransfersGoogle(
+      env
+    );
+
+
+  bartGoogleRuntimeCache.transfers.promise =
+    promise;
+
+
+  try {
+
+    const rows =
+      await promise;
+
+
+    bartGoogleRuntimeCache.transfers.data =
+      rows;
+
+    bartGoogleRuntimeCache.transfers.at =
+      Date.now();
+
+
+    return rows;
+
+  } catch (error) {
+
+    if (
+      !force &&
+      previous
+    ) {
+
+      console.warn(
+        'TRANSFER GOOGLE READ FAILED - USING SHORT MEMORY CACHE',
+        error
+      );
+
+      return previous;
+    }
+
+
+    throw error;
+
+  } finally {
+
+    bartGoogleRuntimeCache.transfers.promise =
+      null;
+  }
+}
+
+
+function invalidateTransfersGoogleSmart() {
+
+  bartGoogleRuntimeCache.transfers.data =
+    null;
+
+  bartGoogleRuntimeCache.transfers.at =
+    0;
+
+  bartGoogleRuntimeCache.transfers.promise =
+    null;
+}
+
+
+/* ============================================================
    MANUAL SYNC AUTH
 ============================================================ */
 
@@ -1620,204 +2069,11 @@ async function readTransfersGoogle(
 
 
 /* ============================================================
-   SAVE TRANSFERS D1
+   TRANSFER D1 MIRROR REMOVED
+   ------------------------------------------------------------
+   Stock Transfer now reads/writes the Google "Transfers" tab
+   directly. There is no DELETE + re-INSERT mirror into D1.
 ============================================================ */
-
-async function saveTransfersToD1(
-  env,
-  transfers
-) {
-
-  const now =
-    new Date()
-      .toISOString();
-
-
-  const statements = [
-
-    env.DB.prepare(`
-      DELETE FROM transfers
-    `),
-  ];
-
-
-  for (
-    const transfer of transfers
-  ) {
-
-    statements.push(
-
-      env.DB.prepare(`
-        INSERT INTO transfers (
-          id,
-          origin,
-          destination,
-          items,
-          quantities,
-          reason,
-          status,
-          updated_at
-        )
-
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .bind(
-
-          transfer.id,
-          transfer.origin,
-          transfer.destination,
-          transfer.items,
-          transfer.quantities,
-          transfer.reason,
-          transfer.status,
-
-          transfer.timestamp ||
-          now
-        )
-    );
-  }
-
-
-  await env.DB.batch(
-    statements
-  );
-
-
-  await setMeta(
-    env,
-    "transfers_last_sync_ms",
-    Date.now()
-  );
-}
-
-
-/* ============================================================
-   LIVE TRANSFER REFRESH
-============================================================ */
-
-async function ensureTransfersFresh(
-  env
-) {
-
-  await ensureDatabase(
-    env
-  );
-
-
-  const lastSync =
-    Number(
-      await getMeta(
-        env,
-        "transfers_last_sync_ms"
-      ) || 0
-    );
-
-
-  if (
-    lastSync &&
-    Date.now() -
-    lastSync <
-    TRANSFER_CACHE_SECONDS *
-    1000
-  ) {
-
-    return {
-
-      source:
-        "D1",
-
-      refreshed:
-        false,
-    };
-  }
-
-
-  const acquired =
-    await acquireLock(
-
-      env,
-
-      "transfer-live-sync",
-
-      20
-    );
-
-
-  if (!acquired) {
-
-    return {
-
-      source:
-        "D1-SYNC-IN-PROGRESS",
-
-      refreshed:
-        false,
-    };
-  }
-
-
-  try {
-
-    const lastAgain =
-      Number(
-        await getMeta(
-          env,
-          "transfers_last_sync_ms"
-        ) || 0
-      );
-
-
-    if (
-      lastAgain &&
-      Date.now() -
-      lastAgain <
-      TRANSFER_CACHE_SECONDS *
-      1000
-    ) {
-
-      return {
-
-        source:
-          "D1",
-
-        refreshed:
-          false,
-      };
-    }
-
-
-    const transfers =
-      await readTransfersGoogle(
-        env
-      );
-
-
-    await saveTransfersToD1(
-      env,
-      transfers
-    );
-
-
-    return {
-
-      source:
-        "GOOGLE->D1",
-
-      refreshed:
-        true,
-
-      count:
-        transfers.length,
-    };
-
-  } finally {
-
-    await releaseLock(
-      env,
-      "transfer-live-sync"
-    );
-  }
-}
 
 
 /* ============================================================
@@ -1912,16 +2168,14 @@ async function syncBartDatabase(
   );
 
 
+  /*
+    Transfer data is now Google-only.
+    Read it only for the admin sync report; do not mirror to D1.
+  */
   const transfers =
     await readTransfersGoogle(
       env
     );
-
-
-  await saveTransfersToD1(
-    env,
-    transfers
-  );
 
 
   await setMeta(
@@ -1960,9 +2214,6 @@ async function bartLogin(
   env
 ) {
 
-  await ensureDatabase(
-    env
-  );
 
 
   const body =
@@ -2053,7 +2304,7 @@ async function bartLogin(
 
 
 /* ============================================================
-   PENDING TRANSFERS
+   PENDING TRANSFERS - GOOGLE ONLY
 ============================================================ */
 
 async function getPendingTransfers(
@@ -2061,14 +2312,8 @@ async function getPendingTransfers(
   branchCode
 ) {
 
-  const freshness =
-    await ensureTransfersFresh(
-      env
-    );
-
-
   const branch =
-    await getBartBranch(
+    await getBartBranchGoogle(
       env,
       branchCode
     );
@@ -2081,7 +2326,13 @@ async function getPendingTransfers(
       transfers:
         [],
 
-      freshness,
+      freshness: {
+        source:
+          'GOOGLE',
+
+        refreshed:
+          true,
+      },
     };
   }
 
@@ -2090,39 +2341,51 @@ async function getPendingTransfers(
     `${branch.code} - ${branch.name}`;
 
 
-  const result =
-    await env.DB.prepare(`
-      SELECT
-        id,
-        origin,
-        destination,
-        items,
-        quantities,
-        reason,
-        status,
-        updated_at
+  const all =
+    await readTransfersGoogleSmart(
+      env
+    );
 
-      FROM transfers
 
-      WHERE
-        destination = ?
-        AND status = 'Pending'
-
-      ORDER BY updated_at DESC
-    `)
-      .bind(
-        destination
+  const transfers =
+    all
+      .filter(
+        (transfer) =>
+          String(
+            transfer.destination || ''
+          ).trim() ===
+            destination &&
+          String(
+            transfer.status || ''
+          )
+            .trim()
+            .toLowerCase() ===
+            'pending'
       )
-      .all();
+      .reverse()
+      .map(
+        (transfer) => ({
+
+          ...transfer,
+
+          updated_at:
+            transfer.timestamp ||
+            '',
+        })
+      );
 
 
   return {
 
-    transfers:
-      result.results ||
-      [],
+    transfers,
 
-    freshness,
+    freshness: {
+      source:
+        'GOOGLE-CACHE',
+
+      refreshed:
+        true,
+    },
   };
 }
 
@@ -2525,18 +2788,13 @@ async function updateTransferStatus(
 
 
 /* ============================================================
-   ACCEPT / REJECT
+   ACCEPT / REJECT - GOOGLE ONLY
 ============================================================ */
 
 async function respondTransfer(
   request,
   env
 ) {
-
-  await ensureDatabase(
-    env
-  );
-
 
   const body =
     await request.json();
@@ -2545,14 +2803,14 @@ async function respondTransfer(
   const transferId =
     String(
       body.transferId ||
-      ""
+      ''
     ).trim();
 
 
   const action =
     String(
       body.action ||
-      ""
+      ''
     )
       .trim()
       .toLowerCase();
@@ -2560,8 +2818,8 @@ async function respondTransfer(
 
   if (
     ![
-      "accept",
-      "reject",
+      'accept',
+      'reject',
     ].includes(
       action
     )
@@ -2569,64 +2827,72 @@ async function respondTransfer(
 
     return jsonResponse(
       {
-
         success:
           false,
 
         message:
-          "Invalid transfer action.",
+          'Invalid transfer action.',
       },
-
       400
     );
   }
 
 
+  /*
+    FORCE a live Google read here.
+    Accept/reject must never act on a stale cached status.
+  */
+  const transfers =
+    await readTransfersGoogleSmart(
+      env,
+      true
+    );
+
+
   const transfer =
-    await env.DB.prepare(`
-      SELECT *
-      FROM transfers
-      WHERE id = ?
-      LIMIT 1
-    `)
-      .bind(
+    transfers.find(
+      (item) =>
+        String(
+          item.id ||
+          ''
+        ).trim() ===
         transferId
-      )
-      .first();
+    );
 
 
   if (!transfer) {
 
     return jsonResponse(
       {
-
         success:
           false,
 
         message:
-          "Transfer not found.",
+          'Transfer not found.',
       },
-
       404
     );
   }
 
 
   if (
-    transfer.status !==
-    "Pending"
+    String(
+      transfer.status ||
+      ''
+    )
+      .trim()
+      .toLowerCase() !==
+    'pending'
   ) {
 
     return jsonResponse(
       {
-
         success:
           false,
 
         message:
-          "Transfer already processed.",
+          'Transfer already processed.',
       },
-
       409
     );
   }
@@ -2634,47 +2900,26 @@ async function respondTransfer(
 
   const status =
     action ===
-    "accept"
+    'accept'
 
-      ? "Accepted"
+      ? 'Accepted'
 
-      : "Rejected";
+      : 'Rejected';
 
 
   await updateTransferStatus(
-
     env,
-
     transferId,
-
     status
   );
 
 
-  await env.DB.prepare(`
-    UPDATE transfers
-
-    SET
-      status = ?,
-      updated_at = ?
-
-    WHERE id = ?
-  `)
-    .bind(
-
-      status,
-
-      new Date()
-        .toISOString(),
-
-      transferId
-    )
-    .run();
+  invalidateTransfersGoogleSmart();
 
 
   if (
     action ===
-    "reject"
+    'reject'
   ) {
 
     const cart =
@@ -2686,75 +2931,74 @@ async function respondTransfer(
     const originCode =
       transfer.origin
         .split(
-          " - "
-        )[0];
+          ' - '
+        )[0]
+        .trim()
+        .toUpperCase();
 
 
     const destinationCode =
       transfer.destination
         .split(
-          " - "
-        )[0];
+          ' - '
+        )[0]
+        .trim()
+        .toUpperCase();
 
 
-    const origin =
-      await getBartBranch(
-        env,
-        originCode
+    const [
+      origin,
+      destination,
+    ] =
+      await Promise.all([
+
+        getBartBranchGoogle(
+          env,
+          originCode
+        ),
+
+        getBartBranchGoogle(
+          env,
+          destinationCode
+        ),
+      ]);
+
+
+    if (
+      !origin?.sheet_id ||
+      !destination?.sheet_id
+    ) {
+
+      throw new Error(
+        'Origin or destination SheetID missing.'
       );
+    }
 
 
-    const destination =
-      await getBartBranch(
-        env,
-        destinationCode
-      );
-
-
+    /*
+      Rejection reverses the transfer exactly as the old logic did:
+      add back to origin and subtract from destination.
+    */
     await modifyBranchStock(
-
       env,
-
       origin.sheet_id,
-
       cart,
-
-      "add"
+      'add'
     );
 
 
     await modifyBranchStock(
-
       env,
-
       destination.sheet_id,
-
       cart,
-
-      "subtract"
+      'subtract'
     );
 
 
-    await env.DB.prepare(`
-      DELETE FROM stock_cache
-      WHERE branch_code IN (?, ?)
-    `)
-      .bind(
-        originCode,
-        destinationCode
-      )
-      .run();
-
-
-    await env.DB.prepare(`
-      DELETE FROM stock_record_cache
-      WHERE branch_code IN (?, ?)
-    `)
-      .bind(
-        originCode,
-        destinationCode
-      )
-      .run();
+    invalidateBranchStockSmart(
+      origin.sheet_id,
+      destination.sheet_id
+    );
   }
 
 
@@ -2763,15 +3007,18 @@ async function respondTransfer(
     success:
       true,
 
+    source:
+      'GOOGLE',
+
     status,
 
     message:
       action ===
-      "accept"
+      'accept'
 
-        ? "Transfer accepted successfully."
+        ? 'Transfer accepted successfully.'
 
-        : "Transfer rejected and stock reversal completed.",
+        : 'Transfer rejected and stock reversal completed.',
   });
 }
 
@@ -3316,7 +3563,7 @@ function buildStockRecordData(
 
 
 /* ============================================================
-   STOCK RECORD STRUCTURE CACHE
+   STOCK RECORD STRUCTURE CACHE - GOOGLE ONLY
 ============================================================ */
 
 async function loadStockRecordStructure(
@@ -3326,7 +3573,7 @@ async function loadStockRecordStructure(
 ) {
 
   const branch =
-    await getBartBranch(
+    await getBartBranchGoogle(
       env,
       branchCode
     );
@@ -3335,100 +3582,17 @@ async function loadStockRecordStructure(
   if (!branch?.sheet_id) {
 
     throw new Error(
-      "Branch SheetID missing."
+      'Branch SheetID missing.'
     );
-  }
-
-
-  const now =
-    Math.floor(
-      Date.now() /
-      1000
-    );
-
-
-  const cached =
-    await env.DB.prepare(`
-      SELECT
-        payload,
-        synced_at
-
-      FROM stock_record_cache
-
-      WHERE branch_code = ?
-
-      LIMIT 1
-    `)
-      .bind(
-        branchCode
-      )
-      .first();
-
-
-  if (
-    !force &&
-    cached &&
-    now -
-    Number(
-      cached.synced_at
-    ) <
-    STOCK_RECORD_CACHE_SECONDS
-  ) {
-
-    return {
-
-      branch,
-
-      source:
-        "D1",
-
-      sheetData:
-        JSON.parse(
-          cached.payload
-        ),
-    };
   }
 
 
   const rows =
-    await getSheetValues(
-
+    await readBranchStockSmart(
       env,
-
-      branch.sheet_id,
-
-      "Stocks!A:ZZ"
+      branch,
+      force
     );
-
-
-  await env.DB.prepare(`
-    INSERT INTO stock_record_cache (
-      branch_code,
-      payload,
-      synced_at
-    )
-
-    VALUES (?, ?, ?)
-
-    ON CONFLICT(branch_code)
-    DO UPDATE SET
-      payload =
-        excluded.payload,
-
-      synced_at =
-        excluded.synced_at
-  `)
-    .bind(
-
-      branchCode,
-
-      JSON.stringify(
-        rows
-      ),
-
-      now
-    )
-    .run();
 
 
   return {
@@ -3436,7 +3600,9 @@ async function loadStockRecordStructure(
     branch,
 
     source:
-      "GOOGLE->D1",
+      force
+        ? 'GOOGLE-LIVE'
+        : 'GOOGLE-SMART-CACHE',
 
     sheetData:
       rows,
@@ -3528,7 +3694,7 @@ function stockAlreadySubmitted(
 
 
 /* ============================================================
-   STOCK RECORD INIT
+   STOCK RECORD INIT - GOOGLE ONLY
 ============================================================ */
 
 async function stockRecordInit(
@@ -3539,9 +3705,7 @@ async function stockRecordInit(
 
   const loaded =
     await loadStockRecordStructure(
-
       env,
-
       branchCode
     );
 
@@ -3552,48 +3716,11 @@ async function stockRecordInit(
     );
 
 
-  const draftRows =
-    await env.DB.prepare(`
-      SELECT
-        mode,
-        payload,
-        updated_at
-
-      FROM stock_drafts
-
-      WHERE
-        branch_code = ?
-        AND stock_date = ?
-    `)
-      .bind(
-        branchCode,
-        date
-      )
-      .all();
-
-
+  /*
+    Server-side D1 drafts are removed.
+    Returning an empty object keeps the existing frontend API shape.
+  */
   const drafts = {};
-
-
-  for (
-    const draft of
-    draftRows.results ||
-    []
-  ) {
-
-    drafts[
-      draft.mode
-    ] = {
-
-      values:
-        JSON.parse(
-          draft.payload
-        ),
-
-      updatedAt:
-        draft.updated_at,
-    };
-  }
 
 
   return {
@@ -3605,7 +3732,6 @@ async function stockRecordInit(
       loaded.source,
 
     branch: {
-
       code:
         loaded.branch.code,
 
@@ -3621,7 +3747,7 @@ async function stockRecordInit(
         stockAlreadySubmitted(
           loaded.sheetData,
           structure,
-          "daily",
+          'daily',
           date
         ),
 
@@ -3629,7 +3755,7 @@ async function stockRecordInit(
         stockAlreadySubmitted(
           loaded.sheetData,
           structure,
-          "weekly",
+          'weekly',
           date
         ),
 
@@ -3655,7 +3781,11 @@ async function stockRecordInit(
 
 
 /* ============================================================
-   DRAFT
+   DRAFT - NO D1 / NO GOOGLE AUTOSAVE
+   ------------------------------------------------------------
+   The existing frontend may call these endpoints frequently.
+   We intentionally make them no-op so autosave cannot consume
+   D1 writes or Google Sheets write quota.
 ============================================================ */
 
 function makeStockDraftKey(
@@ -3677,84 +3807,15 @@ async function saveStockDraft(
   body
 ) {
 
-  const branch =
-    String(
-      body.branchCode ||
-      ""
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const date =
-    String(
-      body.date ||
-      ""
-    );
-
-
-  const mode =
-    String(
-      body.mode ||
-      ""
-    )
-      .trim()
-      .toLowerCase();
-
-
-  const values =
-    body.values ||
-    {};
-
-
-  const key =
-    makeStockDraftKey(
-      branch,
-      date,
-      mode
-    );
-
-
-  await env.DB.prepare(`
-    INSERT INTO stock_drafts (
-      draft_key,
-      branch_code,
-      stock_date,
-      mode,
-      payload,
-      updated_at
-    )
-
-    VALUES (?, ?, ?, ?, ?, ?)
-
-    ON CONFLICT(draft_key)
-    DO UPDATE SET
-      payload =
-        excluded.payload,
-
-      updated_at =
-        excluded.updated_at
-  `)
-    .bind(
-
-      key,
-      branch,
-      date,
-      mode,
-
-      JSON.stringify(
-        values
-      ),
-
-      Date.now()
-    )
-    .run();
-
-
   return {
-
     success:
       true,
+
+    source:
+      'NO-D1',
+
+    storage:
+      'DISABLED',
   };
 }
 
@@ -3766,30 +3827,18 @@ async function deleteStockDraft(
   mode
 ) {
 
-  await env.DB.prepare(`
-    DELETE FROM stock_drafts
-    WHERE draft_key = ?
-  `)
-    .bind(
-      makeStockDraftKey(
-        branch,
-        date,
-        mode
-      )
-    )
-    .run();
-
-
   return {
-
     success:
       true,
+
+    source:
+      'NO-D1',
   };
 }
 
 
 /* ============================================================
-   STOCK RECORD SUBMIT
+   STOCK RECORD SUBMIT - GOOGLE ONLY
 ============================================================ */
 
 async function submitStockRecord(
@@ -3800,7 +3849,7 @@ async function submitStockRecord(
   const branchCode =
     String(
       body.branchCode ||
-      ""
+      ''
     )
       .trim()
       .toUpperCase();
@@ -3809,14 +3858,14 @@ async function submitStockRecord(
   const date =
     String(
       body.date ||
-      ""
+      ''
     );
 
 
   const mode =
     String(
       body.mode ||
-      ""
+      ''
     )
       .trim()
       .toLowerCase();
@@ -3828,20 +3877,34 @@ async function submitStockRecord(
 
 
   const branch =
-    await getBartBranch(
+    await getBartBranchGoogle(
       env,
       branchCode
     );
 
 
+  if (!branch?.sheet_id) {
+
+    return {
+      success:
+        false,
+
+      message:
+        'Branch or SheetID not found.',
+    };
+  }
+
+
+  /*
+    FORCE LIVE READ:
+    this is the final duplicate/validation check before writing.
+    Cached stock is never trusted for submission.
+  */
   const sheet =
-    await getSheetValues(
-
+    await readBranchStockSmart(
       env,
-
-      branch.sheet_id,
-
-      "Stocks!A:ZZ"
+      branch,
+      true
     );
 
 
@@ -3861,7 +3924,6 @@ async function submitStockRecord(
   ) {
 
     return {
-
       success:
         false,
 
@@ -3869,7 +3931,7 @@ async function submitStockRecord(
         true,
 
       message:
-        "Data for this date has already been submitted.",
+        'Data for this date has already been submitted.',
     };
   }
 
@@ -3878,6 +3940,18 @@ async function submitStockRecord(
     structure[
       mode
     ];
+
+
+  if (!Array.isArray(items)) {
+
+    return {
+      success:
+        false,
+
+      message:
+        'Invalid stock mode.',
+    };
+  }
 
 
   const missing = [];
@@ -3892,7 +3966,7 @@ async function submitStockRecord(
         values[
           item.name
         ] ??
-        ""
+        ''
       ).trim()
     ) {
 
@@ -3908,7 +3982,6 @@ async function submitStockRecord(
   ) {
 
     return {
-
       success:
         false,
 
@@ -3916,13 +3989,13 @@ async function submitStockRecord(
         true,
 
       type:
-        "missing",
+        'missing',
 
       items:
         missing,
 
       message:
-        "Some quantities are empty.",
+        'Some quantities are empty.',
     };
   }
 
@@ -3949,16 +4022,15 @@ async function submitStockRecord(
       headers.length;
 
 
-    const letter =
+    const headerLetter =
       columnNumberToLetters(
         dateIndex + 1
       );
 
 
     updates.push({
-
       range:
-        `Stocks!${letter}1`,
+        `Stocks!${headerLetter}1`,
 
       values:
         [[date]],
@@ -3985,7 +4057,7 @@ async function submitStockRecord(
       const name =
         String(
           row?.[0] ||
-          ""
+          ''
         ).trim();
 
 
@@ -4011,13 +4083,11 @@ async function submitStockRecord(
 
 
     if (!row) {
-
       continue;
     }
 
 
     updates.push({
-
       range:
         `Stocks!${letter}${row}`,
 
@@ -4035,58 +4105,41 @@ async function submitStockRecord(
 
 
   await batchWriteSheet(
-
     env,
-
     branch.sheet_id,
-
     updates
   );
 
 
+  invalidateBranchStockSmart(
+    branch.sheet_id
+  );
+
+
+  /*
+    Keep existing frontend compatibility. This is a no-op now.
+  */
   await deleteStockDraft(
-
     env,
-
     branchCode,
-
     date,
-
     mode
   );
 
 
-  await env.DB.prepare(`
-    DELETE FROM stock_cache
-    WHERE branch_code = ?
-  `)
-    .bind(
-      branchCode
-    )
-    .run();
-
-
-  await env.DB.prepare(`
-    DELETE FROM stock_record_cache
-    WHERE branch_code = ?
-  `)
-    .bind(
-      branchCode
-    )
-    .run();
-
-
   return {
-
     success:
       true,
+
+    source:
+      'GOOGLE',
 
     transactionId:
       crypto
         .randomUUID()
         .replace(
           /-/g,
-          ""
+          ''
         )
         .slice(
           0,
@@ -4106,7 +4159,7 @@ async function submitStockRecord(
 
 
 /* ============================================================
-   STOCK TRANSFER INIT
+   STOCK TRANSFER INIT - GOOGLE ONLY
 ============================================================ */
 
 function buildTransferItemsFromSheet(
@@ -4149,18 +4202,18 @@ function buildTransferItemsFromSheet(
               ]?.[
                 dateIndex
               ]
-
             : 0;
 
 
         const available =
           Number(
             String(
-              raw ?? ""
+              raw ??
+              ''
             )
               .replace(
                 /,/g,
-                ""
+                ''
               )
               .trim() ||
             0
@@ -4169,7 +4222,6 @@ function buildTransferItemsFromSheet(
 
 
         return {
-
           name:
             item.name,
 
@@ -4187,7 +4239,6 @@ function buildTransferItemsFromSheet(
 
 
   return {
-
     targetDate,
 
     dateAvailable:
@@ -4212,79 +4263,72 @@ async function stockTransferInit(
 ) {
 
   const origin =
-    await getBartBranch(
+    await getBartBranchGoogle(
       env,
       branchCode
     );
 
 
-  const loaded =
-    await loadStockRecordStructure(
+  if (!origin?.sheet_id) {
 
+    throw new Error(
+      'Origin branch or SheetID not found.'
+    );
+  }
+
+
+  /*
+    Short memory cache is safe for DISPLAY only.
+    Creation always re-checks live stock.
+  */
+  const rows =
+    await readBranchStockSmart(
       env,
-
-      branchCode
+      origin
     );
 
 
   const stock =
     buildTransferItemsFromSheet(
-      loaded.sheetData
+      rows
     );
 
 
   const branchRows =
-    await env.DB.prepare(`
-      SELECT
-        code,
-        name
-
-      FROM branches
-
-      WHERE brand = 'bart'
-
-      ORDER BY code
-    `).all();
-
-
-  const destinations =
-    (
-      branchRows.results ||
-      []
-    )
-
-    /* don't transfer to yourself */
-    .filter(
-      (branch) =>
-        branch.code !==
-        origin.code
-    )
-
-    .map(
-      (branch) => ({
-
-        code:
-          branch.code,
-
-        name:
-          branch.name,
-
-        label:
-          `${branch.code} - ${branch.name}`,
-      })
+    await readBartMasterSmart(
+      env
     );
 
 
-  return {
+  const destinations =
+    branchRows
+      .filter(
+        (branch) =>
+          branch.code !==
+          origin.code
+      )
+      .map(
+        (branch) => ({
+          code:
+            branch.code,
 
+          name:
+            branch.name,
+
+          label:
+            `${branch.code} - ${branch.name}`,
+        })
+      );
+
+
+  return {
     success:
       true,
 
     source:
-      loaded.source,
+      'GOOGLE-SMART-CACHE',
 
     origin: {
-
       code:
         origin.code,
 
@@ -4302,7 +4346,6 @@ async function stockTransferInit(
       stock.dateAvailable,
 
     items: {
-
       daily:
         stock.daily,
 
@@ -4657,7 +4700,7 @@ function generateTransferId() {
 
 
 /* ============================================================
-   CREATE TRANSFER
+   CREATE TRANSFER - GOOGLE ONLY
 ============================================================ */
 
 async function createStockTransfer(
@@ -4668,7 +4711,7 @@ async function createStockTransfer(
   const originCode =
     String(
       body.originBranch ||
-      ""
+      ''
     )
       .trim()
       .toUpperCase();
@@ -4677,7 +4720,7 @@ async function createStockTransfer(
   const destinationCode =
     String(
       body.destinationBranch ||
-      ""
+      ''
     )
       .trim()
       .toUpperCase();
@@ -4686,7 +4729,7 @@ async function createStockTransfer(
   const reason =
     String(
       body.reason ||
-      ""
+      ''
     );
 
 
@@ -4702,12 +4745,11 @@ async function createStockTransfer(
   ) {
 
     return {
-
       success:
         false,
 
       message:
-        "Origin and destination are required.",
+        'Origin and destination are required.',
     };
   }
 
@@ -4718,12 +4760,11 @@ async function createStockTransfer(
   ) {
 
     return {
-
       success:
         false,
 
       message:
-        "Origin and destination cannot be the same branch.",
+        'Origin and destination cannot be the same branch.',
     };
   }
 
@@ -4731,28 +4772,31 @@ async function createStockTransfer(
   if (!cart.length) {
 
     return {
-
       success:
         false,
 
       message:
-        "Transfer cart is empty.",
+        'Transfer cart is empty.',
     };
   }
 
 
-  const origin =
-    await getBartBranch(
-      env,
-      originCode
-    );
+  const [
+    origin,
+    destination,
+  ] =
+    await Promise.all([
 
+      getBartBranchGoogle(
+        env,
+        originCode
+      ),
 
-  const destination =
-    await getBartBranch(
-      env,
-      destinationCode
-    );
+      getBartBranchGoogle(
+        env,
+        destinationCode
+      ),
+    ]);
 
 
   if (
@@ -4761,65 +4805,52 @@ async function createStockTransfer(
   ) {
 
     return {
-
       success:
         false,
 
       message:
-        "Origin or destination SheetID missing.",
+        'Origin or destination SheetID missing.',
     };
   }
 
 
   /*
-    LIVE GOOGLE READS
+    FORCE LIVE READS before changing quantities.
+    The display cache is never trusted for a transfer write.
   */
-
   const [
     originRows,
     destinationRows,
   ] =
     await Promise.all([
 
-      getSheetValues(
-
+      readBranchStockSmart(
         env,
-
-        origin.sheet_id,
-
-        "Stocks!A:ZZ"
+        origin,
+        true
       ),
 
-      getSheetValues(
-
+      readBranchStockSmart(
         env,
-
-        destination.sheet_id,
-
-        "Stocks!A:ZZ"
+        destination,
+        true
       ),
     ]);
 
 
   const originPlan =
     buildStockMovementPlan(
-
       originRows,
-
       cart,
-
-      "subtract"
+      'subtract'
     );
 
 
   const destinationPlan =
     buildStockMovementPlan(
-
       destinationRows,
-
       cart,
-
-      "add"
+      'add'
     );
 
 
@@ -4828,7 +4859,6 @@ async function createStockTransfer(
   ) {
 
     return {
-
       success:
         false,
 
@@ -4839,7 +4869,7 @@ async function createStockTransfer(
         originPlan.shortages,
 
       message:
-        "Insufficient stock.",
+        'Insufficient stock.',
     };
   }
 
@@ -4850,7 +4880,6 @@ async function createStockTransfer(
   ) {
 
     return {
-
       success:
         false,
 
@@ -4864,7 +4893,7 @@ async function createStockTransfer(
         destinationPlan.missing,
 
       message:
-        "Some stock items are missing.",
+        'Some stock items are missing.',
     };
   }
 
@@ -4888,23 +4917,16 @@ async function createStockTransfer(
   let originWritten =
     false;
 
-
   let destinationWritten =
     false;
 
 
   try {
 
-    /*
-      1. SUBTRACT ORIGIN
-    */
-
+    /* 1. SUBTRACT ORIGIN */
     await batchWriteSheet(
-
       env,
-
       origin.sheet_id,
-
       originPlan.updates
     );
 
@@ -4913,16 +4935,10 @@ async function createStockTransfer(
       true;
 
 
-    /*
-      2. ADD DESTINATION
-    */
-
+    /* 2. ADD DESTINATION */
     await batchWriteSheet(
-
       env,
-
       destination.sheet_id,
-
       destinationPlan.updates
     );
 
@@ -4930,10 +4946,6 @@ async function createStockTransfer(
     destinationWritten =
       true;
 
-
-    /*
-      BUILD TRANSFER TEXT
-    */
 
     const itemsText =
       cart
@@ -4943,7 +4955,7 @@ async function createStockTransfer(
             `${entry.item} ` +
             `(${entry.qty} ${entry.uom})`
         )
-        .join("\n");
+        .join('\n');
 
 
     const quantitiesText =
@@ -4954,146 +4966,43 @@ async function createStockTransfer(
               entry.qty
             )
         )
-        .join("\n");
+        .join('\n');
 
 
     /*
-      3. APPEND TO MASTER TRANSFERS
+      3. Google Transfers tab is the ONLY transfer database.
     */
-
     await appendSheetRow(
-
       env,
-
       env.MASTER_SHEET_ID,
-
-      "Transfers!A:H",
-
+      'Transfers!A:H',
       [
-
         transferId,
-
         originLabel,
-
         destinationLabel,
-
         itemsText,
-
         quantitiesText,
-
         reason,
-
-        "Pending",
-
+        'Pending',
         timestamp,
       ]
     );
 
 
-    /*
-      4. IMMEDIATE D1 INSERT
-    */
-
-    await env.DB.prepare(`
-      INSERT INTO transfers (
-        id,
-        origin,
-        destination,
-        items,
-        quantities,
-        reason,
-        status,
-        updated_at
-      )
-
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-
-      ON CONFLICT(id)
-      DO UPDATE SET
-
-        origin =
-          excluded.origin,
-
-        destination =
-          excluded.destination,
-
-        items =
-          excluded.items,
-
-        quantities =
-          excluded.quantities,
-
-        reason =
-          excluded.reason,
-
-        status =
-          excluded.status,
-
-        updated_at =
-          excluded.updated_at
-    `)
-      .bind(
-
-        transferId,
-
-        originLabel,
-
-        destinationLabel,
-
-        itemsText,
-
-        quantitiesText,
-
-        reason,
-
-        "Pending",
-
-        new Date()
-          .toISOString()
-      )
-      .run();
-
-
-    await setMeta(
-
-      env,
-
-      "transfers_last_sync_ms",
-
-      Date.now()
+    invalidateBranchStockSmart(
+      origin.sheet_id,
+      destination.sheet_id
     );
 
-
-    /*
-      INVALIDATE STOCK CACHES
-    */
-
-    await env.DB.prepare(`
-      DELETE FROM stock_cache
-      WHERE branch_code IN (?, ?)
-    `)
-      .bind(
-        originCode,
-        destinationCode
-      )
-      .run();
-
-
-    await env.DB.prepare(`
-      DELETE FROM stock_record_cache
-      WHERE branch_code IN (?, ?)
-    `)
-      .bind(
-        originCode,
-        destinationCode
-      )
-      .run();
+    invalidateTransfersGoogleSmart();
 
 
     return {
-
       success:
         true,
+
+      source:
+        'GOOGLE',
 
       transferId,
 
@@ -5112,21 +5021,18 @@ async function createStockTransfer(
         cart,
 
       message:
-        "Transfer completed successfully.",
+        'Transfer completed successfully.',
     };
 
   } catch (error) {
 
     console.error(
-      "TRANSFER FAILURE:",
+      'TRANSFER FAILURE:',
       error
     );
 
 
-    /*
-      ROLLBACK DESTINATION
-    */
-
+    /* ROLLBACK DESTINATION */
     if (
       destinationWritten
     ) {
@@ -5134,11 +5040,8 @@ async function createStockTransfer(
       try {
 
         await batchWriteSheet(
-
           env,
-
           destination.sheet_id,
-
           destinationPlan.rollback
         );
 
@@ -5147,17 +5050,14 @@ async function createStockTransfer(
       ) {
 
         console.error(
-          "Destination rollback failed:",
+          'Destination rollback failed:',
           rollbackError
         );
       }
     }
 
 
-    /*
-      ROLLBACK ORIGIN
-    */
-
+    /* ROLLBACK ORIGIN */
     if (
       originWritten
     ) {
@@ -5165,11 +5065,8 @@ async function createStockTransfer(
       try {
 
         await batchWriteSheet(
-
           env,
-
           origin.sheet_id,
-
           originPlan.rollback
         );
 
@@ -5178,22 +5075,27 @@ async function createStockTransfer(
       ) {
 
         console.error(
-          "Origin rollback failed:",
+          'Origin rollback failed:',
           rollbackError
         );
       }
     }
 
 
-    return {
+    invalidateBranchStockSmart(
+      origin.sheet_id,
+      destination.sheet_id
+    );
 
+
+    return {
       success:
         false,
 
       message:
         `Transfer failed: ${
           error?.message ||
-          "Unknown error"
+          'Unknown error'
         }`,
     };
   }
@@ -5201,7 +5103,7 @@ async function createStockTransfer(
 
 
 /* ============================================================
-   TRANSFER HISTORY
+   TRANSFER HISTORY - GOOGLE ONLY
 ============================================================ */
 
 async function getTransferHistory(
@@ -5211,86 +5113,82 @@ async function getTransferHistory(
   offset = 0
 ) {
 
-  await ensureTransfersFresh(
-    env
-  );
-
-
   const branch =
-    await getBartBranch(
+    await getBartBranchGoogle(
       env,
       branchCode
     );
+
+
+  if (!branch) {
+
+    return {
+      success:
+        true,
+
+      source:
+        'GOOGLE',
+
+      total:
+        0,
+
+      transfers:
+        [],
+    };
+  }
 
 
   const label =
     `${branch.code} - ${branch.name}`;
 
 
-  const count =
-    await env.DB.prepare(`
-      SELECT
-        COUNT(*) AS total
+  const all =
+    await readTransfersGoogleSmart(
+      env
+    );
 
-      FROM transfers
 
-      WHERE
-        origin = ?
-        OR destination = ?
-    `)
-      .bind(
-        label,
-        label
+  const filtered =
+    all
+      .filter(
+        (transfer) =>
+          transfer.origin ===
+            label ||
+          transfer.destination ===
+            label
       )
-      .first();
+      .reverse();
 
 
-  const rows =
-    await env.DB.prepare(`
-      SELECT
-        id,
-        origin,
-        destination,
-        items,
-        quantities,
-        reason,
-        status,
-        updated_at
-
-      FROM transfers
-
-      WHERE
-        origin = ?
-        OR destination = ?
-
-      ORDER BY updated_at DESC
-
-      LIMIT ?
-      OFFSET ?
-    `)
-      .bind(
-        label,
-        label,
-        limit,
-        offset
+  const transfers =
+    filtered
+      .slice(
+        offset,
+        offset + limit
       )
-      .all();
+      .map(
+        (transfer) => ({
+
+          ...transfer,
+
+          updated_at:
+            transfer.timestamp ||
+            '',
+        })
+      );
 
 
   return {
-
     success:
       true,
 
-    total:
-      Number(
-        count?.total ||
-        0
-      ),
+    source:
+      'GOOGLE-SMART-CACHE',
 
-    transfers:
-      rows.results ||
-      [],
+    total:
+      filtered.length,
+
+    transfers,
   };
 }
 
@@ -6972,9 +6870,14 @@ export default {
 
     try {
 
-      await ensureDatabase(
-        env
-      );
+      /*
+        IMPORTANT:
+        Do NOT run CREATE TABLE / CREATE INDEX on every request.
+        That consumed D1 row writes even for simple staff requests.
+
+        /api/admin/sync-bart still calls ensureDatabase() itself,
+        so D1 can be initialized/maintained deliberately.
+      */
 
 
       /* ======================================================
