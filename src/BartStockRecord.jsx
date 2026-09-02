@@ -68,6 +68,279 @@ function labelMode(
 
 
 /* ============================================================
+   LOCAL DRAFT STORAGE
+
+   Drafts are stored only in this browser/device.
+
+   Key format:
+   bart-stock-draft:B001:2026-09-02:daily
+
+   This gives every:
+   - branch
+   - reporting date
+   - stock mode
+
+   its own independent draft.
+
+   IMPORTANT:
+   This does NOT call Google Sheets.
+   This does NOT call D1.
+============================================================ */
+
+const STOCK_DRAFT_PREFIX =
+  "bart-stock-draft";
+
+
+function stockDraftKey(
+  branchCode,
+  date,
+  mode
+) {
+  return (
+    `${STOCK_DRAFT_PREFIX}:` +
+    `${String(
+      branchCode || ""
+    )
+      .trim()
+      .toUpperCase()}:` +
+    `${String(
+      date || ""
+    ).trim()}:` +
+    `${String(
+      mode || ""
+    )
+      .trim()
+      .toLowerCase()}`
+  );
+}
+
+
+function readLocalDraft(
+  branchCode,
+  date,
+  mode
+) {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return null;
+  }
+
+
+  try {
+    const raw =
+      window.localStorage.getItem(
+        stockDraftKey(
+          branchCode,
+          date,
+          mode
+        )
+      );
+
+
+    if (!raw) {
+      return null;
+    }
+
+
+    const parsed =
+      JSON.parse(
+        raw
+      );
+
+
+    if (
+      !parsed ||
+      typeof parsed !==
+        "object"
+    ) {
+      return null;
+    }
+
+
+    if (
+      !parsed.values ||
+      typeof parsed.values !==
+        "object"
+    ) {
+      return null;
+    }
+
+
+    return parsed;
+
+  } catch (error) {
+    console.error(
+      "Unable to read local stock draft:",
+      error
+    );
+
+    return null;
+  }
+}
+
+
+function writeLocalDraft(
+  branchCode,
+  date,
+  mode,
+  values
+) {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return null;
+  }
+
+
+  try {
+    const draft = {
+      branchCode:
+        String(
+          branchCode || ""
+        )
+          .trim()
+          .toUpperCase(),
+
+      date:
+        String(
+          date || ""
+        ).trim(),
+
+      mode:
+        String(
+          mode || ""
+        )
+          .trim()
+          .toLowerCase(),
+
+      values:
+        values || {},
+
+      updatedAt:
+        Date.now(),
+    };
+
+
+    window.localStorage.setItem(
+      stockDraftKey(
+        branchCode,
+        date,
+        mode
+      ),
+      JSON.stringify(
+        draft
+      )
+    );
+
+
+    return draft;
+
+  } catch (error) {
+    console.error(
+      "Unable to save local stock draft:",
+      error
+    );
+
+    return null;
+  }
+}
+
+
+function removeLocalDraft(
+  branchCode,
+  date,
+  mode
+) {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return;
+  }
+
+
+  try {
+    window.localStorage.removeItem(
+      stockDraftKey(
+        branchCode,
+        date,
+        mode
+      )
+    );
+
+  } catch (error) {
+    console.error(
+      "Unable to remove local stock draft:",
+      error
+    );
+  }
+}
+
+
+function draftHasValues(
+  draft
+) {
+  if (
+    !draft?.values ||
+    typeof draft.values !==
+      "object"
+  ) {
+    return false;
+  }
+
+
+  return Object.values(
+    draft.values
+  ).some(
+    (value) =>
+      String(
+        value ?? ""
+      ).trim() !==
+      ""
+  );
+}
+
+
+function draftTimeLabel(
+  timestamp
+) {
+  if (!timestamp) {
+    return "";
+  }
+
+
+  const date =
+    new Date(
+      timestamp
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+
+  return date.toLocaleTimeString(
+    "en-US",
+    {
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+    }
+  );
+}
+
+
+/* ============================================================
    STOCK RECORD
 ============================================================ */
 
@@ -183,9 +456,21 @@ export default function BartStockRecord({
     );
 
 
-  const draftTimer =
-    useRef(
+  const [
+    draftSavedAt,
+    setDraftSavedAt,
+  ] =
+    useState(
       null
+    );
+
+
+  const [
+    draftRevision,
+    setDraftRevision,
+  ] =
+    useState(
+      0
     );
 
 
@@ -388,71 +673,117 @@ export default function BartStockRecord({
 
 
   /* ==========================================================
-     SAVE DRAFT
+     LOCAL DRAFT FLAGS
 
-     Debounced so each keystroke does
-     NOT immediately make a request.
+     Used by the mode cards so staff can immediately see
+     which mode has an unfinished draft on this device.
+  ========================================================== */
+
+  const localDraftFlags =
+    useMemo(
+      () => {
+        const result = {
+          daily:
+            false,
+
+          weekly:
+            false,
+
+          bakery:
+            false,
+        };
+
+
+        if (
+          !branch?.code ||
+          !date
+        ) {
+          return result;
+        }
+
+
+        [
+          "daily",
+          "weekly",
+          "bakery",
+        ].forEach(
+          (
+            draftMode
+          ) => {
+            result[
+              draftMode
+            ] =
+              draftHasValues(
+                readLocalDraft(
+                  branch.code,
+                  date,
+                  draftMode
+                )
+              );
+          }
+        );
+
+
+        return result;
+      },
+      [
+        branch?.code,
+        date,
+        draftRevision,
+      ]
+    );
+
+
+  /* ==========================================================
+     SAVE DRAFT LOCALLY
+
+     This is intentionally synchronous browser LocalStorage.
+
+     WHY:
+     - no Google API calls while typing
+     - no D1
+     - survives refresh
+     - survives accidental tab close
+     - survives browser restart on the same device
+
+     We save immediately on every valid quantity change so
+     even a refresh directly after typing is protected.
   ========================================================== */
 
   function queueDraftSave(
     nextInputs
   ) {
     if (
-      !mode
+      !mode ||
+      !branch?.code ||
+      !date
     ) {
       return;
     }
 
 
-    if (
-      draftTimer.current
-    ) {
-      clearTimeout(
-        draftTimer.current
+    const saved =
+      writeLocalDraft(
+        branch.code,
+        date,
+        mode,
+        nextInputs
+      );
+
+
+    if (saved) {
+      setDraftSavedAt(
+        saved.updatedAt
+      );
+
+
+      setDraftRevision(
+        (
+          current
+        ) =>
+          current + 1
       );
     }
-
-
-    draftTimer.current =
-      setTimeout(
-        async () => {
-          try {
-            await fetch(
-              "/api/staff/bart/stock-record/draft",
-              {
-                method:
-                  "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify({
-                    branchCode:
-                      branch.code,
-
-                    date,
-
-                    mode,
-
-                    values:
-                      nextInputs,
-                  }),
-              }
-            );
-          } catch (
-            err
-          ) {
-            console.error(
-              "Draft save failed:",
-              err
-            );
-          }
-        },
-        700
-      );
   }
 
 
@@ -504,10 +835,44 @@ export default function BartStockRecord({
     );
 
 
-    const draft =
+    /*
+      LOCAL DRAFT FIRST.
+
+      We keep the old backend draft as a fallback only so any
+      older saved draft can still be restored during migration.
+    */
+
+    const localDraft =
+      readLocalDraft(
+        branch?.code,
+        date,
+        selectedMode
+      );
+
+
+    const serverDraft =
       initData.drafts?.[
         selectedMode
       ]?.values;
+
+
+    const draft =
+      localDraft?.values ||
+      serverDraft ||
+      null;
+
+
+    if (
+      localDraft?.updatedAt
+    ) {
+      setDraftSavedAt(
+        localDraft.updatedAt
+      );
+    } else {
+      setDraftSavedAt(
+        null
+      );
+    }
 
 
     const starting =
@@ -535,6 +900,41 @@ export default function BartStockRecord({
     setInputs(
       starting
     );
+
+
+    /*
+      If an old backend draft was restored and there is no local
+      copy yet, immediately migrate it into LocalStorage.
+    */
+
+    if (
+      !localDraft &&
+      serverDraft
+    ) {
+      const migrated =
+        writeLocalDraft(
+          branch?.code,
+          date,
+          selectedMode,
+          starting
+        );
+
+
+      if (migrated) {
+        setDraftSavedAt(
+          migrated.updatedAt
+        );
+
+
+        setDraftRevision(
+          (
+            current
+          ) =>
+            current + 1
+        );
+      }
+    }
+
 
     setSearch(
       ""
@@ -594,7 +994,7 @@ export default function BartStockRecord({
      CLEAR
   ========================================================== */
 
-  async function clearDraft() {
+  function clearDraft() {
     const empty = {};
 
 
@@ -611,37 +1011,30 @@ export default function BartStockRecord({
       empty
     );
 
+
     setReview(
       false
     );
 
 
-    try {
-      await fetch(
-        "/api/staff/bart/stock-record/draft",
-        {
-          method:
-            "DELETE",
+    removeLocalDraft(
+      branch?.code,
+      date,
+      mode
+    );
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
 
-          body:
-            JSON.stringify({
-              branchCode:
-                branch.code,
+    setDraftSavedAt(
+      null
+    );
 
-              date,
 
-              mode,
-            }),
-        }
-      );
-    } catch {
-      // UI still remains cleared
-    }
+    setDraftRevision(
+      (
+        current
+      ) =>
+        current + 1
+    );
   }
 
 
@@ -846,6 +1239,32 @@ export default function BartStockRecord({
       }
 
 
+      /*
+        FINAL GOOGLE SUBMISSION SUCCEEDED.
+
+        Only now is it safe to delete the unfinished local draft.
+      */
+
+      removeLocalDraft(
+        branch?.code,
+        date,
+        mode
+      );
+
+
+      setDraftSavedAt(
+        null
+      );
+
+
+      setDraftRevision(
+        (
+          current
+        ) =>
+          current + 1
+      );
+
+
       setSuccess(
         data
       );
@@ -972,6 +1391,24 @@ export default function BartStockRecord({
               page ===
               "entry"
             ) {
+              /*
+                Make one final local snapshot before leaving
+                the active entry screen.
+              */
+
+              if (
+                mode &&
+                branch?.code
+              ) {
+                writeLocalDraft(
+                  branch.code,
+                  date,
+                  mode,
+                  inputs
+                );
+              }
+
+
               setPage(
                 "mode"
               );
@@ -1098,6 +1535,21 @@ export default function BartStockRecord({
                       event.target
                         .value
                     );
+
+
+                    setDraftSavedAt(
+                      null
+                    );
+
+
+                    setMode(
+                      null
+                    );
+
+
+                    setPage(
+                      "mode"
+                    );
                   }}
                 />
               </div>
@@ -1128,9 +1580,7 @@ export default function BartStockRecord({
                     ?.daily
                 }
                 draft={
-                  initData
-                    ?.drafts
-                    ?.daily
+                  localDraftFlags.daily
                 }
                 onClick={() =>
                   chooseMode(
@@ -1151,9 +1601,7 @@ export default function BartStockRecord({
                     ?.weekly
                 }
                 draft={
-                  initData
-                    ?.drafts
-                    ?.weekly
+                  localDraftFlags.weekly
                 }
                 onClick={() =>
                   chooseMode(
@@ -1169,9 +1617,7 @@ export default function BartStockRecord({
                 subtitle="MORNING SHIFT"
                 description="Record the dedicated bakery SKU group used by morning operations."
                 draft={
-                  initData
-                    ?.drafts
-                    ?.bakery
+                  localDraftFlags.bakery
                 }
                 accent
                 onClick={() =>
@@ -1231,6 +1677,29 @@ export default function BartStockRecord({
                   {date} ·{" "}
                   {items.length} items
                 </p>
+
+
+                {draftSavedAt && (
+                  <div className="bsr-draft-chip">
+                    <FileClock
+                      size={13}
+                    />
+
+                    DRAFT SAVED LOCALLY
+
+                    {draftTimeLabel(
+                      draftSavedAt
+                    ) && (
+                      <>
+                        {" · "}
+
+                        {draftTimeLabel(
+                          draftSavedAt
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
 
