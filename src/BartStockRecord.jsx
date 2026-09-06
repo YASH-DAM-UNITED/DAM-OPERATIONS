@@ -802,10 +802,43 @@ export default function BartStockRecord({
 
 
     /*
+      Bakery prerequisite.
+
+      IMPORTANT:
+      We reuse the Daily submission status already returned by
+      the existing /init request. This does NOT make another API
+      call and does NOT read Google Sheets again.
+
+      Bakery can open only after Daily stock has already been
+      successfully submitted for this same branch + date.
+    */
+
+    if (
+      selectedMode ===
+        "bakery" &&
+      !initData.duplicate?.daily
+    ) {
+      setValidation({
+        type:
+          "prerequisite",
+
+        title:
+          "Daily Stock Required",
+
+        message:
+          "Complete and submit Daily Stock for this reporting date before opening Bakery Stock.",
+      });
+
+      return;
+    }
+
+
+    /*
       Daily / Weekly duplicate
       protection.
 
-      Bakery intentionally excluded.
+      Bakery intentionally remains excluded from duplicate
+      blocking; its prerequisite is Daily submission.
     */
 
     if (
@@ -1265,6 +1298,37 @@ export default function BartStockRecord({
       );
 
 
+      /*
+        If Daily was just submitted successfully, update the
+        already-loaded init status locally.
+
+        This means Bakery is now considered unlocked in this
+        component without doing another /init request or another
+        Google Sheets read.
+      */
+
+      if (
+        mode ===
+        "daily"
+      ) {
+        setInitData(
+          (
+            current
+          ) => ({
+            ...current,
+
+            duplicate: {
+              ...(current?.duplicate ||
+                {}),
+
+              daily:
+                true,
+            },
+          })
+        );
+      }
+
+
       setSuccess(
         data
       );
@@ -1616,6 +1680,12 @@ export default function BartStockRecord({
                 title="Bakery"
                 subtitle="MORNING SHIFT"
                 description="Record the dedicated bakery SKU group used by morning operations."
+                disabled={
+                  !initData
+                    ?.duplicate
+                    ?.daily
+                }
+                disabledLabel="COMPLETE DAILY STOCK FIRST"
                 draft={
                   localDraftFlags.bakery
                 }
@@ -2356,6 +2426,7 @@ function ModeCard({
   subtitle,
   description,
   disabled,
+  disabledLabel,
   draft,
   accent,
   onClick,
@@ -2431,7 +2502,8 @@ function ModeCard({
             size={14}
           />
 
-          ALREADY SUBMITTED
+          {disabledLabel ||
+            "ALREADY SUBMITTED"}
         </div>
       ) : (
         <div className="bsr-mode-status">
