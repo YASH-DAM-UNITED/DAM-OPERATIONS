@@ -13,8 +13,6 @@ import {
   motion,
 } from "framer-motion";
 
-
-
 import {
   Activity,
   AlertTriangle,
@@ -47,7 +45,6 @@ import {
 import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
 import BartStaffSchedule from "./BartStaffSchedule";
-import BartDeliveryNotes from "./BartDeliveryNotes";
 
 
 /* ============================================================
@@ -105,23 +102,6 @@ const modules = [
     description:
       "Send and receive stock between DAM branches with transfer tracking.",
   },
-  {
-  id: "delivery-notes",
-  icon: FileScan,
-  number: "05",
-  title: "Delivery Notes",
-  subtitle: "SCAN & VERIFY",
-  description:
-    "Scan delivery notes, verify detected details and submit confirmed receiving data.",
-  },
-
-
-
-
-
-
-
-  
 ];
 
 
@@ -1652,21 +1632,6 @@ export default function BartStaffDashboard({
       />
     );
   }
-
-
-
-
-
-
-
-  if (active === "delivery-notes") {
-  return (
-    <BartDeliveryNotes
-      branch={branch}
-      onBack={() => returnToDashboard()}
-    />
-  );
-}
 
 
   if (
