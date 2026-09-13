@@ -87,12 +87,39 @@ function createId() {
     .slice(2, 9)}`;
 }
 
-function normaliseLine(value) {
+function stripArabic(value) {
   return String(value ?? "")
+    // Arabic + Arabic presentation-form blocks. DAM notes can be bilingual,
+    // but this scanner intentionally extracts the English side only.
+    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g, " ");
+}
+
+function normaliseLine(value) {
+  return stripArabic(value)
     .replace(/[|¦]/g, " ")
     .replace(/[“”]/g, '"')
     .replace(/[’]/g, "'")
+    .replace(/[•·]/g, " ")
     .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normaliseOcrText(value) {
+  return stripArabic(value)
+    .replace(/\r/g, "")
+    .replace(/[|¦]/g, " ")
+    .replace(/[“”]/g, '"')
+    .replace(/[’]/g, "'")
+    // Common OCR substitutions in units. Keep these conservative so product
+    // names are not aggressively rewritten.
+    .replace(/\bP[\s.]?C[\s.]?S\b/gi, "PCS")
+    .replace(/\bP[\s.]?C\b/gi, "PC")
+    .replace(/\bBott[Il1]e\b/gi, "Bottle")
+    .replace(/\bGa[Il1]{2}on\b/gi, "Gallon")
+    .replace(/\b([0-9]+(?:[.,][0-9]+)?)\s*m[I1]\b/gi, "$1 ml")
+    .replace(/\b([0-9]+(?:[.,][0-9]+)?)\s*[Il1](?=\s|$)/gi, "$1 L")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -127,34 +154,100 @@ function extractField(text, patterns) {
   return "";
 }
 
+function normalizeNumber(value) {
+  const cleaned = String(value ?? "")
+    .replace(/,/g, ".")
+    .replace(/[^0-9.]/g, "")
+    .replace(/\.{2,}/g, ".");
+
+  if (!cleaned) return "";
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return cleaned;
+  return Number.isInteger(n) ? String(n) : String(n);
+}
+
+function normalizeUom(value) {
+  let u = normaliseLine(value)
+    .replace(/[.,;:]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!u) return "";
+
+  // Repair very common OCR confusions before canonicalizing.
+  u = u
+    .replace(/Bott[Il1]e/gi, "Bottle")
+    .replace(/Ga[Il1]{2}on/gi, "Gallon")
+    .replace(/\bm[I1]\b/gi, "ML")
+    .replace(/\bLtr\b/gi, "LTR");
+
+  const size = u.match(/(\d+(?:[.,]\d+)?)\s*(ML|L|LTR|LITER|LITRE)\b/i);
+  const sizeText = size
+    ? `${normalizeNumber(size[1])} ${/^m/i.test(size[2]) ? "ML" : "L"}`
+    : "";
+
+  if (/\b(?:PCS?|PIECES?)\b/i.test(u)) return "PCS";
+  if (/\bBOTTLE\b/i.test(u)) return sizeText ? `BOTTLE ${sizeText}` : "BOTTLE";
+  if (/\bGALLON\b/i.test(u)) return sizeText ? `GALLON ${sizeText}` : "GALLON";
+  if (/\b(?:GRAM|GRAMS|GM|GMS)\b/i.test(u)) return "GRAM";
+  if (/\b(?:KG|KGS|KILOGRAM|KILOGRAMS)\b/i.test(u)) return "KG";
+  if (/\b(?:ML|MILLILITER|MILLILITRE)\b/i.test(u)) return "ML";
+  if (/\b(?:LTR|LITER|LITRE|LITERS|LITRES)\b/i.test(u)) return "L";
+  if (/\bBOX(?:ES)?\b/i.test(u)) return "BOX";
+  if (/\bPACK(?:S)?\b/i.test(u)) return "PACK";
+  if (/\bBAG(?:S)?\b/i.test(u)) return "BAG";
+  if (/\bCAN(?:S)?\b/i.test(u)) return "CAN";
+  if (/\bJAR(?:S)?\b/i.test(u)) return "JAR";
+
+  return u.toUpperCase();
+}
+
+const UOM_WORD = String.raw`(?:P[\s.]?C[\s.]?S?|PIECES?|BOTT(?:LE|IE)|GALLON|GRAMS?|GMS?|GM|KGS?|KG|M[LI1]|ML|LTR|LITER|LITRE|BOX(?:ES)?|PACKS?|BAGS?|CANS?|JARS?)`;
+const UOM_SIZE = String.raw`(?:\s+\d+(?:[.,]\d+)?\s*(?:ML|M[LI1]|L|LTR|LITER|LITRE))?`;
+
 function parseQtyUomPairs(value) {
   const pairs = [];
-  const regex = /(\d+(?:[.,]\d+)?)\s+(PCS|Pcs|pcs|PC|Pc|pc|Bottle(?:\s+\d+(?:[.,]\d+)?\s*(?:ml|ML|l|L))?|Gallon(?:\s+\d+(?:[.,]\d+)?\s*(?:l|L))?|GRAM|Gram|gram|GM|Gm|gm|KG|Kg|kg|ML|Ml|ml|LTR|Ltr|ltr|L|Box|BOX|Pack|PACK|Bag|BAG|Can|CAN|Jar|JAR|Piece|PIECE|Pieces|PIECES)/g;
+  const regex = new RegExp(
+    String.raw`(?:^|\s)(\d+(?:[.,]\d+)?)\s*(${UOM_WORD}${UOM_SIZE})\b`,
+    "gi"
+  );
+
   let match;
   while ((match = regex.exec(value)) !== null) {
+    const rawUom = normaliseLine(match[2]);
     pairs.push({
-      qty: match[1].replace(",", "."),
-      uom: normaliseLine(match[2]),
-      index: match.index,
+      qty: normalizeNumber(match[1]),
+      uom: normalizeUom(rawUom),
+      index: match.index + (match[0].length - match[0].trimStart().length),
       end: regex.lastIndex,
     });
   }
   return pairs;
 }
 
+function repairProductName(value) {
+  return normaliseLine(value)
+    .replace(/^[-:–—]+\s*/, "")
+    .replace(/\b(?:PRODUCT|ORDERED|DELIVERED)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parseItemBlock(block) {
   const line = normaliseLine(block);
-  const codeMatch = line.match(/\[?\s*([A-Z]{1,4}[- ]?\d{2,5})\s*\]?/i);
+  const codeMatch = line.match(/(?:\[\s*)?\b([A-Z]{1,3})\s*[- ]?\s*(\d{3,4})\b(?:\s*\])?/i);
   if (!codeMatch) return null;
 
-  const code = codeMatch[1].replace(/\s+/g, "").toUpperCase();
-  const afterCode = normaliseLine(line.slice((codeMatch.index || 0) + codeMatch[0].length));
+  const code = `${codeMatch[1]}${codeMatch[2]}`.toUpperCase();
+  const afterCode = normaliseLine(
+    line.slice((codeMatch.index || 0) + codeMatch[0].length)
+  );
   const pairs = parseQtyUomPairs(afterCode);
 
   if (!pairs.length) {
     return {
       code,
-      product: afterCode,
+      product: repairProductName(afterCode),
       orderedQty: "",
       orderedUom: "",
       deliveredQty: "",
@@ -162,9 +255,12 @@ function parseItemBlock(block) {
     };
   }
 
+  // DAM notes place ORDERED and DELIVERED at the right side of each product
+  // row. Product names may contain sizes such as "600ml", so always take the
+  // LAST two quantity/UOM pairs rather than the first two numeric-looking parts.
   const chosen = pairs.slice(-2);
   const firstPair = chosen[0];
-  const product = normaliseLine(afterCode.slice(0, firstPair.index));
+  const product = repairProductName(afterCode.slice(0, firstPair.index));
 
   if (chosen.length === 1) {
     return {
@@ -187,8 +283,50 @@ function parseItemBlock(block) {
   };
 }
 
+function buildItemBlocks(text) {
+  // Work on a flattened English-only stream. This survives Tesseract wrapping a
+  // single product row over 2-3 lines and survives Arabic text between columns.
+  const flat = normaliseLine(text.replace(/\n/g, " "));
+  const codeRegex = /(?:\[\s*)?\b[A-Z]{1,3}\s*[- ]?\s*\d{3,4}\b(?:\s*\])?/gi;
+  const matches = [...flat.matchAll(codeRegex)];
+  const blocks = [];
+
+  for (let i = 0; i < matches.length; i += 1) {
+    const start = matches[i].index ?? 0;
+    const next = matches[i + 1]?.index ?? flat.length;
+    let block = flat.slice(start, next).trim();
+
+    block = block.split(/\b(?:TOTAL|SIGNATURE|RECEIVED BY|PREPARED BY|EMAIL|PAGE\s+\d+)\b/i)[0].trim();
+    if (block) blocks.push(block);
+  }
+
+  return blocks;
+}
+
+function dedupeItems(items) {
+  const map = new Map();
+
+  for (const item of items) {
+    if (!item?.code) continue;
+    const key = item.code.toUpperCase();
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, item);
+      continue;
+    }
+
+    // Prefer whichever duplicate has more complete OCR information.
+    const score = (x) => [x.product, x.orderedQty, x.orderedUom, x.deliveredQty, x.deliveredUom]
+      .filter(Boolean).length;
+    if (score(item) > score(existing)) map.set(key, item);
+  }
+
+  return [...map.values()];
+}
+
 function parseDeliveryNoteText(rawText) {
-  const text = String(rawText || "").replace(/\r/g, "");
+  const text = normaliseOcrText(rawText);
   const lines = text
     .split("\n")
     .map(normaliseLine)
@@ -216,33 +354,12 @@ function parseDeliveryNoteText(rawText) {
     /Destination\s*[:#-]?\s*([^\n]+)/i,
   ]);
 
-  // Group wrapped OCR lines under each product code.
-  const itemBlocks = [];
-  let current = "";
-  const codeStart = /^\s*\[?\s*[A-Z]{1,4}[- ]?\d{2,5}\s*\]?/i;
-
-  for (const line of lines) {
-    if (codeStart.test(line)) {
-      if (current) itemBlocks.push(current);
-      current = line;
-      continue;
-    }
-
-    if (current) {
-      const isFooter = /^(total|email|signature|received|prepared|page\s+\d+)/i.test(line);
-      if (isFooter) {
-        itemBlocks.push(current);
-        current = "";
-      } else {
-        current += ` ${line}`;
-      }
-    }
-  }
-  if (current) itemBlocks.push(current);
-
-  const items = itemBlocks
-    .map(parseItemBlock)
-    .filter((item) => item && item.code && item.product);
+  const itemBlocks = buildItemBlocks(text);
+  const items = dedupeItems(
+    itemBlocks
+      .map(parseItemBlock)
+      .filter((item) => item && item.code && item.product)
+  );
 
   return {
     deliveryNoteNumber,
@@ -673,6 +790,15 @@ export default function BartDeliveryNotes({
             setOcrStatus(message.status);
           }
         },
+      });
+
+      // DAM delivery notes are dense printed tables. Preserve spaces so the
+      // quantity/UOM columns are easier to reconstruct, and use automatic page
+      // segmentation for the full paper. OCR language stays English-only, so
+      // Arabic print is intentionally ignored.
+      await worker.setParameters({
+        preserve_interword_spaces: "1",
+        tessedit_pageseg_mode: "3",
       });
 
       setOcrStatus("Reading delivery note");
