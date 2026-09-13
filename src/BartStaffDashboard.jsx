@@ -28,6 +28,7 @@ import {
   Coffee,
   Database,
   Eye,
+  FileScan,
   LoaderCircle,
   LogOut,
   MapPin,
@@ -45,6 +46,7 @@ import {
 import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
 import BartStaffSchedule from "./BartStaffSchedule";
+import BartDeliveryNotes from "./BartDeliveryNotes";
 
 
 /* ============================================================
@@ -101,6 +103,15 @@ const modules = [
     subtitle: "INTERNAL MOVEMENT",
     description:
       "Send and receive stock between DAM branches with transfer tracking.",
+  },
+  {
+    id: "delivery-notes",
+    icon: FileScan,
+    number: "05",
+    title: "Delivery Notes",
+    subtitle: "SCAN & VERIFY",
+    description:
+      "Scan delivery notes, verify detected details and submit confirmed receiving data.",
   },
 ];
 
@@ -1465,6 +1476,13 @@ export default function BartStaffDashboard({
           setActive(
             "stock-record"
           );
+        } else if (
+          moduleId ===
+          "delivery-notes"
+        ) {
+          setActive(
+            "delivery-notes"
+          );
         } else {
           setActive(
             "stock-transfer"
@@ -1520,6 +1538,17 @@ export default function BartStaffDashboard({
     ) {
       openFullModule(
         "schedule"
+      );
+
+      return;
+    }
+
+    if (
+      moduleId ===
+      "delivery-notes"
+    ) {
+      openFullModule(
+        "delivery-notes"
       );
 
       return;
@@ -1625,6 +1654,21 @@ export default function BartStaffDashboard({
   ) {
     return (
       <BartStaffSchedule
+        branch={branch}
+        onBack={() =>
+          returnToDashboard()
+        }
+      />
+    );
+  }
+
+
+  if (
+    active ===
+    "delivery-notes"
+  ) {
+    return (
+      <BartDeliveryNotes
         branch={branch}
         onBack={() =>
           returnToDashboard()
@@ -2200,7 +2244,7 @@ export default function BartStaffDashboard({
           </div>
 
           <div className="bart--count">
-            04 MODULES
+            05 MODULES
           </div>
         </section>
 
