@@ -47,6 +47,7 @@ import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
 import BartStaffSchedule from "./BartStaffSchedule";
 import BartDeliveryNotes from "./BartDeliveryNotes";
+import BartDeliveryNotesAI from "./BartDeliveryNotesAI";
 
 
 /* ============================================================
