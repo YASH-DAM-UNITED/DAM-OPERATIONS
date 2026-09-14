@@ -1669,7 +1669,7 @@ export default function BartStaffDashboard({
     "delivery-notes"
   ) {
     return (
-      <BartDeliveryNotes
+      <BartDeliveryNotesAI
         branch={branch}
         onBack={() =>
           returnToDashboard()
