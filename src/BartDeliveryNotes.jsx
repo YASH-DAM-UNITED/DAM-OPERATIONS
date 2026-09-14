@@ -1,2544 +1,750 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
-import {
-  AnimatePresence,
-  motion,
-} from "framer-motion";
-
-import {
-  AlertTriangle,
   ArrowLeft,
   Camera,
-  Check,
   CheckCircle2,
-  ChevronRight,
-  ClipboardCheck,
+  ChevronDown,
   FileScan,
   Image as ImageIcon,
-  LoaderCircle,
-  PackageCheck,
-  Pencil,
+  Loader2,
   Plus,
   RefreshCcw,
+  RotateCcw,
+  Save,
   ScanLine,
-  ShieldCheck,
-  Sparkles,
   Trash2,
-  Upload,
+  TriangleAlert,
   X,
-  XCircle,
 } from "lucide-react";
-
-import { createWorker } from "tesseract.js";
-
+import { PaddleOCR } from "@paddleocr/paddleocr-js";
 import "./BartDeliveryNotes.css";
 
-
-/* ============================================================
-   CONFIG
-============================================================ */
-
-/*
-  LIVE OCR
-  --------
-  OCR runs directly in the staff browser using Tesseract.js.
-  No paid OCR API is required for scanning. The image is not sent
-  to our backend by this component.
-
-  Submission storage is intentionally OFF until your backend route
-  is ready. When ENABLE_BACKEND_SUBMIT is false, the verified payload
-  is only logged locally and the UI shows a local success state.
-*/
 const ENABLE_BACKEND_SUBMIT = false;
+const SUBMIT_ENDPOINT = "/api/staff/bart/delivery-note/submit";
+const MAX_FILE_MB = 14;
 
-const SUBMIT_ENDPOINT =
-  "/api/staff/bart/delivery-note/submit";
+const EMPTY_NOTE = {
+  deliveryNoteNumber: "",
+  shippingDate: "",
+  sourceLocation: "",
+  destinationLocation: "",
+  supplier: "DAM UNITED",
+  items: [],
+};
 
-const OCR_LANGUAGE = "eng";
-const OCR_MAX_DIMENSION = 2600;
-const TABLE_TOP_RATIO = 0.28;
-const TABLE_BOTTOM_RATIO = 0.94;
+const EMPTY_ITEM = () => ({
+  id: crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+  code: "",
+  product: "",
+  orderedQty: "",
+  orderedUom: "",
+  deliveredQty: "",
+  deliveredUom: "",
+  confidence: 0,
+  needsReview: true,
+  raw: "",
+});
 
+const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+/g;
 
-/* ============================================================
-   HELPERS
-============================================================ */
-
-function sleep(ms) {
-  return new Promise((resolve) =>
-    window.setTimeout(resolve, ms)
-  );
-}
-
-function cleanText(value) {
-  return String(value ?? "").trim();
-}
-
-function createId() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-
-  return `dn-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 9)}`;
-}
-
-function stripArabic(value) {
-  return String(value ?? "")
-    // Arabic + Arabic presentation-form blocks. DAM notes can be bilingual,
-    // but this scanner intentionally extracts the English side only.
-    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g, " ");
-}
-
-function normaliseLine(value) {
-  return stripArabic(value)
-    .replace(/[|¦]/g, " ")
-    .replace(/[“”]/g, '"')
-    .replace(/[’]/g, "'")
-    .replace(/[•·]/g, " ")
+function stripArabicOnly(value = "") {
+  return String(value)
+    .replace(ARABIC_RE, " ")
+    .replace(/[\u200f\u200e]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function normaliseOcrText(value) {
-  return stripArabic(value)
-    .replace(/\r/g, "")
+function cleanText(value = "") {
+  return stripArabicOnly(value)
     .replace(/[|¦]/g, " ")
-    .replace(/[“”]/g, '"')
-    .replace(/[’]/g, "'")
-    // Common OCR substitutions in units. Keep these conservative so product
-    // names are not aggressively rewritten.
-    .replace(/\bP[\s.]?C[\s.]?S\b/gi, "PCS")
-    .replace(/\bP[\s.]?C\b/gi, "PC")
-    .replace(/\bBott[Il1]e\b/gi, "Bottle")
-    .replace(/\bGa[Il1]{2}on\b/gi, "Gallon")
-    .replace(/\b([0-9]+(?:[.,][0-9]+)?)\s*m[I1]\b/gi, "$1 ml")
-    .replace(/\b([0-9]+(?:[.,][0-9]+)?)\s*[Il1](?=\s|$)/gi, "$1 L")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-function toLocalDateTimeValue(raw) {
-  const value = normaliseLine(raw);
-  if (!value) return "";
-
-  // MM/DD/YYYY HH:MM[:SS] — common on DAM delivery notes.
-  const us = value.match(
-    /(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/
-  );
-
-  if (us) {
-    const [, mm, dd, yyyy, hh, min, sec = "00"] = us;
-    return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}T${hh.padStart(2, "0")}:${min}:${sec}`;
-  }
-
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    const p = (n) => String(n).padStart(2, "0");
-    return `${parsed.getFullYear()}-${p(parsed.getMonth() + 1)}-${p(parsed.getDate())}T${p(parsed.getHours())}:${p(parsed.getMinutes())}:${p(parsed.getSeconds())}`;
-  }
-
-  return value;
+function normalizeCode(value = "") {
+  const clean = cleanText(value).toUpperCase();
+  const m = clean.match(/\[?\s*([A-Z]{1,4})\s*[-_.]?\s*(\d{2,4})\s*\]?/);
+  return m ? `${m[1]}${m[2]}` : "";
 }
 
-function extractField(text, patterns) {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) return normaliseLine(match[1]);
+function normalizeNumber(value = "") {
+  const s = String(value)
+    .replace(/[Oo]/g, "0")
+    .replace(/[,]/g, ".")
+    .replace(/[^0-9.]/g, "");
+  const m = s.match(/\d+(?:\.\d+)?/);
+  return m ? m[0] : "";
+}
+
+function normalizeUom(value = "") {
+  let s = cleanText(value).toUpperCase();
+  s = s
+    .replace(/\bP[CS5]{2,3}\b/g, "PCS")
+    .replace(/\bPIECE(?:S)?\b/g, "PCS")
+    .replace(/\bBOT(?:T|I|L|1)+E(?:S)?\b/g, "BOTTLE")
+    .replace(/\bBTL\b/g, "BOTTLE")
+    .replace(/\bGALL(?:O|0)N(?:S)?\b/g, "GALLON")
+    .replace(/\bGR(?:A|4)M(?:S)?\b/g, "GRAM")
+    .replace(/\bK(?:I|1)L(?:O|0)GRAM(?:S)?\b/g, "KG")
+    .replace(/\bM[I1L][L1I]?[I1L]?\b/g, "ML")
+    .replace(/\bL[I1]TRE(?:S)?\b/g, "L")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const patterns = [
+    /BOTTLE\s*(\d+(?:\.\d+)?)\s*(ML|L)\b/,
+    /GALLON\s*(\d+(?:\.\d+)?)\s*(ML|L)\b/,
+    /\b(PCS|GRAM|KG|ML|L|BOTTLE|GALLON|PACK|BOX|BAG|CAN|CUP)\b/,
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (m) return m[0].replace(/\s+/g, " ").trim();
+  }
+  return s.replace(/^\d+(?:\.\d+)?\s*/, "").trim();
+}
+
+function parseQtyUom(cellText = "") {
+  const raw = cleanText(cellText);
+  if (!raw) return { qty: "", uom: "", raw };
+  const qty = normalizeNumber(raw);
+  let remainder = raw;
+  if (qty) {
+    const idx = remainder.search(/\d/);
+    if (idx >= 0) {
+      const match = remainder.slice(idx).match(/^\d+(?:[.,]\d+)?/);
+      if (match) remainder = `${remainder.slice(0, idx)} ${remainder.slice(idx + match[0].length)}`;
+    }
+  }
+  return { qty, uom: normalizeUom(remainder), raw };
+}
+
+function polyBounds(poly = []) {
+  const pts = Array.isArray(poly?.[0]) ? poly : [];
+  const xs = pts.map((p) => Number(p?.[0])).filter(Number.isFinite);
+  const ys = pts.map((p) => Number(p?.[1])).filter(Number.isFinite);
+  if (!xs.length || !ys.length) return null;
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function normalizeOcrItems(result) {
+  return (result?.items || [])
+    .map((item, index) => {
+      const b = polyBounds(item.poly || item.box || item.points);
+      if (!b) return null;
+      const text = cleanText(item.text || "");
+      if (!text) return null;
+      return {
+        id: index,
+        text,
+        rawText: item.text || "",
+        score: Number(item.score ?? 0),
+        ...b,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.cy - b.cy || a.cx - b.cx);
+}
+
+function findHeader(items, imageWidth) {
+  const productCandidates = items.filter((i) => /\bPRODUCT\b/i.test(i.text));
+  const orderedCandidates = items.filter((i) => /\bORDERED\b/i.test(i.text));
+  const deliveredCandidates = items.filter((i) => /\bDELIVERED\b/i.test(i.text));
+
+  const combos = [];
+  for (const p of productCandidates) {
+    for (const o of orderedCandidates) {
+      for (const d of deliveredCandidates) {
+        const ySpread = Math.max(p.cy, o.cy, d.cy) - Math.min(p.cy, o.cy, d.cy);
+        if (p.cx < o.cx && o.cx < d.cx && ySpread < Math.max(70, p.height * 3)) {
+          combos.push({ p, o, d, ySpread });
+        }
+      }
+    }
+  }
+
+  combos.sort((a, b) => a.ySpread - b.ySpread);
+  if (combos[0]) {
+    const { p, o, d } = combos[0];
+    const orderedLeft = (p.maxX + o.minX) / 2;
+    const deliveredLeft = (o.maxX + d.minX) / 2;
+    return {
+      headerY: Math.max(p.maxY, o.maxY, d.maxY),
+      productLeft: 0,
+      orderedLeft: Math.max(imageWidth * 0.55, orderedLeft),
+      deliveredLeft: Math.max(imageWidth * 0.73, deliveredLeft),
+      right: imageWidth,
+      detected: true,
+    };
+  }
+
+  return {
+    headerY: 0,
+    productLeft: 0,
+    orderedLeft: imageWidth * 0.64,
+    deliveredLeft: imageWidth * 0.82,
+    right: imageWidth,
+    detected: false,
+  };
+}
+
+function groupPhysicalRows(items, headerY, imageHeight) {
+  const tableItems = items.filter((i) => i.cy > headerY + 5 && i.cy < imageHeight * 0.97);
+  if (!tableItems.length) return [];
+
+  const medianHeight = [...tableItems]
+    .map((i) => i.height)
+    .sort((a, b) => a - b)[Math.floor(tableItems.length / 2)] || 20;
+  const tolerance = Math.max(13, Math.min(38, medianHeight * 0.72));
+
+  const rows = [];
+  for (const item of tableItems) {
+    let row = rows.find((r) => Math.abs(r.cy - item.cy) <= tolerance);
+    if (!row) {
+      row = { cy: item.cy, items: [] };
+      rows.push(row);
+    }
+    row.items.push(item);
+    row.cy = row.items.reduce((sum, x) => sum + x.cy, 0) / row.items.length;
+  }
+
+  rows.sort((a, b) => a.cy - b.cy);
+  rows.forEach((r) => r.items.sort((a, b) => a.cx - b.cx));
+  return rows;
+}
+
+function splitRowByColumns(row, columns) {
+  const product = [];
+  const ordered = [];
+  const delivered = [];
+  for (const item of row.items) {
+    if (item.cx >= columns.deliveredLeft) delivered.push(item);
+    else if (item.cx >= columns.orderedLeft) ordered.push(item);
+    else product.push(item);
+  }
+  const join = (arr) => cleanText(arr.map((x) => x.text).join(" "));
+  return {
+    productText: join(product),
+    orderedText: join(ordered),
+    deliveredText: join(delivered),
+    score: row.items.length ? row.items.reduce((s, i) => s + i.score, 0) / row.items.length : 0,
+    cy: row.cy,
+    allText: join(row.items),
+  };
+}
+
+function isFooterOrNoise(text = "") {
+  const s = text.toUpperCase();
+  return /SIGNATURE|RECEIVED BY|PREPARED BY|PRINTED|PAGE\s*\d|EMAIL|@|TOTAL|NOTE\b|COMMENT|DRIVER/.test(s);
+}
+
+function buildProductRows(physicalRows, columns) {
+  const rows = physicalRows.map((r) => splitRowByColumns(r, columns));
+  const result = [];
+  let current = null;
+
+  const pushCurrent = () => {
+    if (!current) return;
+    const productClean = cleanText(current.productText);
+    const code = normalizeCode(productClean);
+    const product = cleanText(
+      productClean
+        .replace(/\[?\s*[A-Z]{1,4}\s*[-_.]?\s*\d{2,4}\s*\]?/i, " ")
+        .replace(/^[-:–—\s]+/, " ")
+    );
+    const ordered = parseQtyUom(current.orderedText);
+    const delivered = parseQtyUom(current.deliveredText);
+    const needsReview = !code || !product || !ordered.qty || !delivered.qty || !delivered.uom;
+    result.push({
+      id: crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      code,
+      product,
+      orderedQty: ordered.qty,
+      orderedUom: ordered.uom,
+      deliveredQty: delivered.qty,
+      deliveredUom: delivered.uom,
+      confidence: current.score,
+      needsReview,
+      raw: current.allText,
+    });
+    current = null;
+  };
+
+  for (const row of rows) {
+    if (/\bPRODUCT\b/i.test(row.allText) && /\bORDERED\b/i.test(row.allText)) continue;
+    if (isFooterOrNoise(row.allText)) {
+      pushCurrent();
+      break;
+    }
+
+    const hasCode = Boolean(normalizeCode(row.productText));
+    const hasQtyColumns = Boolean(normalizeNumber(row.orderedText) || normalizeNumber(row.deliveredText));
+
+    if (hasCode) {
+      pushCurrent();
+      current = { ...row };
+      continue;
+    }
+
+    if (current) {
+      // OCR often splits one printed table row into two y-lines. Keep appending until next product code.
+      current.productText = cleanText(`${current.productText} ${row.productText}`);
+      current.orderedText = cleanText(`${current.orderedText} ${row.orderedText}`);
+      current.deliveredText = cleanText(`${current.deliveredText} ${row.deliveredText}`);
+      current.allText = cleanText(`${current.allText} ${row.allText}`);
+      current.score = (current.score + row.score) / 2;
+      continue;
+    }
+
+    // A line with quantities but a missed product code must still be kept for review.
+    if (hasQtyColumns && row.productText) {
+      current = { ...row };
+    }
+  }
+  pushCurrent();
+  return result.filter((r) => r.code || r.product || r.orderedQty || r.deliveredQty);
+}
+
+function findHeaderValue(items, labels) {
+  const lines = items.map((i) => i.text);
+  const joined = lines.join("\n");
+  for (const label of labels) {
+    const re = new RegExp(`${label}\\s*[:#-]?\\s*([^\\n]+)`, "i");
+    const m = joined.match(re);
+    if (m?.[1]) return cleanText(m[1]);
   }
   return "";
 }
 
-function normalizeNumber(value) {
-  const cleaned = String(value ?? "")
-    .replace(/,/g, ".")
-    .replace(/[^0-9.]/g, "")
-    .replace(/\.{2,}/g, ".");
-
-  if (!cleaned) return "";
-  const n = Number(cleaned);
-  if (!Number.isFinite(n)) return cleaned;
-  return Number.isInteger(n) ? String(n) : String(n);
-}
-
-function normalizeUom(value) {
-  let u = normaliseLine(value)
-    .replace(/[.,;:]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!u) return "";
-
-  // OCR repair. Only UOM text is touched here — product names are left alone.
-  u = u
-    .replace(/B[0O]TT(?:LE|IE|1E)/gi, "Bottle")
-    .replace(/BOTT[Il1]E/gi, "Bottle")
-    .replace(/GA[Il1]{2}[0O]N/gi, "Gallon")
-    .replace(/P[\s.]?C[\s.]?S/gi, "PCS")
-    .replace(/P[\s.]?C\b/gi, "PCS")
-    .replace(/\bm[I1l]\b/gi, "ML")
-    .replace(/\bLtr\b/gi, "L")
-    .replace(/\bLitre?s?\b/gi, "L")
-    .replace(/\bLiter?s?\b/gi, "L");
-
-  const size = u.match(/(\d+(?:[.,]\d+)?)\s*(ML|L)\b/i);
-  const sizeText = size
-    ? `${normalizeNumber(size[1])} ${size[2].toUpperCase()}`
-    : "";
-
-  if (/\b(?:PCS?|PIECES?)\b/i.test(u)) return "PCS";
-  if (/\bBOTTLE\b/i.test(u)) return sizeText ? `BOTTLE ${sizeText}` : "BOTTLE";
-  if (/\bGALLON\b/i.test(u)) return sizeText ? `GALLON ${sizeText}` : "GALLON";
-  if (/\b(?:GRAM|GRAMS|GM|GMS|GR)\b/i.test(u)) return "GRAM";
-  if (/\b(?:KG|KGS|KILOGRAM|KILOGRAMS)\b/i.test(u)) return "KG";
-  if (/\b(?:ML|MILLILITER|MILLILITRE)\b/i.test(u)) return "ML";
-  if (/\b(?:LTR|LITER|LITRE|LITERS|LITRES)\b/i.test(u)) return "L";
-  if (/\bBOX(?:ES)?\b/i.test(u)) return "BOX";
-  if (/\bPACK(?:S)?\b/i.test(u)) return "PACK";
-  if (/\bBAG(?:S)?\b/i.test(u)) return "BAG";
-  if (/\bCAN(?:S)?\b/i.test(u)) return "CAN";
-  if (/\bJAR(?:S)?\b/i.test(u)) return "JAR";
-
-  return u.toUpperCase();
-}
-
-const UOM_WORD = String.raw`(?:P[\s.]?C[\s.]?S?|PIECES?|B[0O]TT(?:LE|IE|1E)|BOTT[Il1]E|GA[Il1]{2}[0O]N|GALLON|GRAMS?|GMS?|GM|GR|KGS?|KG|M[LIl1]|ML|LTR|LITER|LITRE|BOX(?:ES)?|PACKS?|BAGS?|CANS?|JARS?)`;
-const UOM_SIZE = String.raw`(?:\s+\d+(?:[.,]\d+)?\s*(?:ML|M[LIl1]|L|LTR|LITER|LITRE))?`;
-
-function parseQtyUomPairs(value) {
-  const pairs = [];
-  const regex = new RegExp(
-    String.raw`(?:^|\s)(\d+(?:[.,]\d+)?)\s*(${UOM_WORD}${UOM_SIZE})\b`,
-    "gi"
-  );
-
-  let match;
-  while ((match = regex.exec(value)) !== null) {
-    pairs.push({
-      qty: normalizeNumber(match[1]),
-      uom: normalizeUom(match[2]),
-      index: match.index + (match[0].length - match[0].trimStart().length),
-      end: regex.lastIndex,
-    });
-  }
-  return pairs;
-}
-
-function repairProductName(value) {
-  return normaliseLine(value)
-    .replace(/^[-:–—]+\s*/, "")
-    .replace(/\b(?:PRODUCT|ORDERED|DELIVERED|QTY|QUANTITY)\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// DAM item codes are the strongest row anchor. The OCR may lose brackets or
-// insert spaces, so accept CB 134 / [CB134] / B 016 / S046 etc.
-const ITEM_CODE_REGEX = /(?:\[\s*)?\b([A-Z]{1,3})\s*[- ]?\s*(\d{3,4})\b(?:\s*\])?/gi;
-
-function getCodeMatches(text) {
-  const regex = new RegExp(ITEM_CODE_REGEX.source, "gi");
-  return [...text.matchAll(regex)].map((match) => ({
-    match,
-    index: match.index ?? 0,
-    code: `${match[1]}${match[2]}`.toUpperCase(),
-  }));
-}
-
-function parseItemBlock(block) {
-  const line = normaliseLine(block);
-  const codeMatch = line.match(new RegExp(ITEM_CODE_REGEX.source, "i"));
-  if (!codeMatch) return null;
-
-  const code = `${codeMatch[1]}${codeMatch[2]}`.toUpperCase();
-  const afterCode = normaliseLine(line.slice((codeMatch.index || 0) + codeMatch[0].length));
-  const pairs = parseQtyUomPairs(afterCode);
-
-  // Never throw away a detected table row. If quantities are unclear, keep
-  // the row so staff can repair it on the review screen.
-  if (!pairs.length) {
-    return {
-      code,
-      product: repairProductName(afterCode) || "OCR REVIEW REQUIRED",
-      orderedQty: "",
-      orderedUom: "",
-      deliveredQty: "",
-      deliveredUom: "",
-      needsReview: true,
-    };
-  }
-
-  const chosen = pairs.slice(-2);
-  const firstPair = chosen[0];
-  const product = repairProductName(afterCode.slice(0, firstPair.index)) || "OCR REVIEW REQUIRED";
-
-  if (chosen.length === 1) {
-    return {
-      code,
-      product,
-      orderedQty: chosen[0].qty,
-      orderedUom: chosen[0].uom,
-      deliveredQty: chosen[0].qty,
-      deliveredUom: chosen[0].uom,
-      needsReview: true,
-    };
-  }
+function extractNoteMeta(items) {
+  const text = items.map((i) => i.text).join("\n");
+  const deliveryNote =
+    text.match(/DELIVERY\s*NOTE\s*[:#-]?\s*([A-Z0-9\-/]+)/i)?.[1] ||
+    text.match(/\b([A-Z]{2,6}\/[A-Z]{2,6}\/\d{3,})\b/i)?.[1] ||
+    "";
+  const shippingDate =
+    text.match(/SHIPPING\s*DATE\s*[:#-]?\s*([0-9]{1,2}[\/-][0-9]{1,2}[\/-][0-9]{2,4}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?)/i)?.[1] ||
+    "";
+  const sourceLocation =
+    text.match(/SOURCE\s*LOCATION\s*[:#-]?\s*([^\n]+)/i)?.[1] ||
+    findHeaderValue(items, ["SOURCE"]);
+  const destinationLocation =
+    text.match(/DESTINATION\s*LOCATION\s*[:#-]?\s*([^\n]+)/i)?.[1] ||
+    findHeaderValue(items, ["DESTINATION"]);
 
   return {
-    code,
-    product,
-    orderedQty: chosen[0].qty,
-    orderedUom: chosen[0].uom,
-    deliveredQty: chosen[1].qty,
-    deliveredUom: chosen[1].uom,
-    needsReview: false,
+    deliveryNoteNumber: cleanText(deliveryNote),
+    shippingDate: cleanText(shippingDate),
+    sourceLocation: cleanText(sourceLocation),
+    destinationLocation: cleanText(destinationLocation),
   };
 }
 
-function buildItemBlocks(text) {
-  // Arabic is removed CHARACTER-BY-CHARACTER. English on the same bilingual
-  // line is preserved. Then each product-code anchor owns everything until
-  // the next product-code anchor, which rebuilds wrapped OCR rows.
-  const cleaned = normaliseOcrText(text);
-  const flat = normaliseLine(cleaned.replace(/\n/g, " "));
-  const matches = getCodeMatches(flat);
-  const blocks = [];
-
-  for (let i = 0; i < matches.length; i += 1) {
-    const start = matches[i].index;
-    const next = matches[i + 1]?.index ?? flat.length;
-    let block = flat.slice(start, next).trim();
-
-    block = block
-      .split(/\b(?:TOTAL|SIGNATURE|RECEIVED BY|PREPARED BY|EMAIL|PAGE\s+\d+|REMARKS?)\b/i)[0]
-      .trim();
-
-    if (block) blocks.push(block);
-  }
-
-  return blocks;
+function mismatchCount(items) {
+  return items.filter((i) => {
+    if (!i.orderedQty || !i.deliveredQty) return false;
+    return Number(i.orderedQty) !== Number(i.deliveredQty);
+  }).length;
 }
 
-function itemCompleteness(item) {
-  return [item.product, item.orderedQty, item.orderedUom, item.deliveredQty, item.deliveredUom]
-    .filter((v) => cleanText(v) && v !== "OCR REVIEW REQUIRED").length;
+function toDatetimeLocal(value = "") {
+  const m = value.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!m) return value;
+  const [, mm, dd, yyyy, hh = "00", min = "00"] = m;
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}T${hh.padStart(2, "0")}:${min}`;
 }
 
-function dedupeItems(items) {
-  const map = new Map();
+export default function BartDeliveryNotes({ branch, onBack }) {
+  const inputRef = useRef(null);
+  const ocrRef = useRef(null);
+  const previewUrlRef = useRef(null);
 
-  for (const item of items) {
-    if (!item?.code) continue;
-    const key = item.code.toUpperCase();
-    const existing = map.get(key);
-
-    if (!existing || itemCompleteness(item) > itemCompleteness(existing)) {
-      map.set(key, item);
-    }
-  }
-
-  return [...map.values()];
-}
-
-function parseItemsFromManyTexts(texts) {
-  const all = [];
-  for (const text of texts.filter(Boolean)) {
-    for (const block of buildItemBlocks(text)) {
-      const item = parseItemBlock(block);
-      if (item?.code) all.push(item);
-    }
-  }
-  return dedupeItems(all);
-}
-
-function parseDeliveryNoteText(rawText, tableTexts = []) {
-  const text = normaliseOcrText(rawText);
-  const lines = text.split("\n").map(normaliseLine).filter(Boolean);
-  const flattened = lines.join("\n");
-
-  const deliveryNoteNumber = extractField(flattened, [
-    /Delivery\s*Note(?:\s*(?:No\.?|Number|#))?\s*[:#-]?\s*([A-Z0-9][A-Z0-9\/-]{4,})/i,
-    /(?:DN|D\.?N\.?)\s*[:#-]?\s*([A-Z0-9][A-Z0-9\/-]{4,})/i,
-  ]);
-
-  const shippingDateRaw = extractField(flattened, [
-    /Shipping\s*Date\s*[:#-]?\s*([^\n]+)/i,
-    /Date\s*[:#-]?\s*((?:\d{1,2}[\/.-]){2}\d{4}[^\n]*)/i,
-  ]);
-
-  const sourceLocation = extractField(flattened, [
-    /Source\s*Location\s*[:#-]?\s*([^\n]+)/i,
-    /Source\s*[:#-]?\s*([^\n]+)/i,
-  ]);
-
-  const destinationLocation = extractField(flattened, [
-    /Destination\s*Location\s*[:#-]?\s*([^\n]+)/i,
-    /Destination\s*[:#-]?\s*([^\n]+)/i,
-  ]);
-
-  const items = parseItemsFromManyTexts([text, ...tableTexts]);
-
-  return {
-    deliveryNoteNumber,
-    shippingDate: toLocalDateTimeValue(shippingDateRaw),
-    sourceLocation,
-    destinationLocation,
-    supplier: /\bDAM\b/i.test(flattened) ? "DAM" : "",
-    items,
-  };
-}
-
-async function loadImageFromFile(file) {
-  const objectUrl = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    image.decoding = "async";
-    image.src = objectUrl;
-    await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = () => reject(new Error("Unable to read the captured image."));
-    });
-    return image;
-  } finally {
-    // The decoded Image remains usable after the URL is revoked.
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-function canvasToBlob(canvas, quality = 0.94) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Unable to prepare the image for OCR."))),
-      "image/jpeg",
-      quality
-    );
-  });
-}
-
-function drawProcessedCanvas(image, crop = null, thresholdMode = false) {
-  const sx = crop?.x ?? 0;
-  const sy = crop?.y ?? 0;
-  const sw = crop?.width ?? image.naturalWidth;
-  const sh = crop?.height ?? image.naturalHeight;
-
-  const largest = Math.max(sw, sh);
-  const scale = largest > OCR_MAX_DIMENSION ? OCR_MAX_DIMENSION / largest : 1;
-  const width = Math.max(1, Math.round(sw * scale));
-  const height = Math.max(1, Math.round(sh * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("Image processing is not supported on this device.");
-
-  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
-  const pixels = ctx.getImageData(0, 0, width, height);
-  const data = pixels.data;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    const boosted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
-    const out = thresholdMode ? (boosted < 176 ? 0 : 255) : boosted;
-    data[i] = out;
-    data[i + 1] = out;
-    data[i + 2] = out;
-  }
-
-  ctx.putImageData(pixels, 0, 0);
-  return canvas;
-}
-
-async function prepareOcrImages(file) {
-  const image = await loadImageFromFile(file);
-
-  const fullCanvas = drawProcessedCanvas(image, null, false);
-  const fullBlob = await canvasToBlob(fullCanvas);
-
-  // DAM table is consistently in the middle/lower portion of the page.
-  // We OCR this region separately so the header/address/Arabic cannot drown out
-  // the PRODUCT / ORDERED / DELIVERED rows.
-  const tableY = Math.round(image.naturalHeight * TABLE_TOP_RATIO);
-  const tableBottom = Math.round(image.naturalHeight * TABLE_BOTTOM_RATIO);
-  const tableCrop = {
-    x: 0,
-    y: tableY,
-    width: image.naturalWidth,
-    height: Math.max(1, tableBottom - tableY),
-  };
-
-  const tableSoftCanvas = drawProcessedCanvas(image, tableCrop, false);
-  const tableHardCanvas = drawProcessedCanvas(image, tableCrop, true);
-
-  return {
-    fullBlob,
-    tableSoftBlob: await canvasToBlob(tableSoftCanvas),
-    tableHardBlob: await canvasToBlob(tableHardCanvas),
-  };
-}
-
-function normaliseItem(item = {}) {
-  return {
-    id: item.id || createId(),
-    code: cleanText(item.code),
-    product: cleanText(item.product),
-    orderedQty: cleanText(item.orderedQty),
-    orderedUom: cleanText(item.orderedUom),
-    deliveredQty: cleanText(item.deliveredQty),
-    deliveredUom: cleanText(item.deliveredUom),
-    needsReview: Boolean(item.needsReview),
-  };
-}
-
-function normaliseResult(data = {}) {
-  return {
-    deliveryNoteNumber: cleanText(
-      data.deliveryNoteNumber
-    ),
-    shippingDate: cleanText(data.shippingDate),
-    sourceLocation: cleanText(
-      data.sourceLocation
-    ),
-    destinationLocation: cleanText(
-      data.destinationLocation
-    ),
-    supplier: cleanText(data.supplier || "DAM"),
-    items: Array.isArray(data.items)
-      ? data.items.map(normaliseItem)
-      : [],
-  };
-}
-
-function isMismatch(item) {
-  const a = cleanText(item.orderedQty)
-    .replace(/,/g, "");
-  const b = cleanText(item.deliveredQty)
-    .replace(/,/g, "");
-
-  if (!a || !b) {
-    return false;
-  }
-
-  const ordered = Number(a);
-  const delivered = Number(b);
-
-  if (
-    Number.isFinite(ordered) &&
-    Number.isFinite(delivered)
-  ) {
-    return ordered !== delivered;
-  }
-
-  return a !== b;
-}
-
-function displayDate(value) {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString([], {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-
-/* ============================================================
-   SMALL COMPONENTS
-============================================================ */
-
-function Step({
-  number,
-  label,
-  active,
-  complete,
-}) {
-  return (
-    <div
-      className={`dn-step ${
-        active ? "is-active" : ""
-      } ${complete ? "is-complete" : ""}`}
-    >
-      <div className="dn-step-dot">
-        {complete ? (
-          <Check size={14} />
-        ) : (
-          number
-        )}
-      </div>
-
-      <span>{label}</span>
-    </div>
-  );
-}
-
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}) {
-  return (
-    <label className="dn-field">
-      <span>{label}</span>
-
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-      />
-    </label>
-  );
-}
-
-
-function EmptyState() {
-  return (
-    <div className="dn-empty-state">
-      <div className="dn-empty-icon">
-        <ScanLine size={26} />
-      </div>
-
-      <strong>No delivery note scanned yet</strong>
-
-      <p>
-        Use the camera or select a clear image of
-        the complete delivery note.
-      </p>
-    </div>
-  );
-}
-
-
-/* ============================================================
-   MAIN PAGE
-============================================================ */
-
-export default function BartDeliveryNotes({
-  branch,
-  onBack,
-}) {
-  const fileInputRef = useRef(null);
-
-  const [step, setStep] =
-    useState("capture");
-
-  const [file, setFile] =
-    useState(null);
-
-  const [previewUrl, setPreviewUrl] =
-    useState("");
-
-  const [scanError, setScanError] =
-    useState("");
-
-  const [submitError, setSubmitError] =
-    useState("");
-
-  const [form, setForm] =
-    useState(null);
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [submissionId, setSubmissionId] =
-    useState("");
-
-  const [confirmed, setConfirmed] =
-    useState(false);
-
-  const [ocrProgress, setOcrProgress] =
-    useState(0);
-
-  const [ocrStatus, setOcrStatus] =
-    useState("Ready");
-
-  const [rawOcrText, setRawOcrText] =
-    useState("");
-
-
-  /* ==========================================================
-     IMAGE MEMORY CLEANUP
-  ========================================================== */
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [phase, setPhase] = useState("capture");
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanMessage, setScanMessage] = useState("Ready to scan");
+  const [note, setNote] = useState(EMPTY_NOTE);
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState("");
+  const [submissionId, setSubmissionId] = useState("");
+  const [ocrDebug, setOcrDebug] = useState([]);
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      try { ocrRef.current?.close?.(); } catch (_) {}
     };
-  }, [previewUrl]);
+  }, []);
 
+  const stats = useMemo(() => {
+    const review = note.items.filter((i) => i.needsReview).length;
+    return {
+      rows: note.items.length,
+      review,
+      mismatches: mismatchCount(note.items),
+    };
+  }, [note.items]);
 
-  /* ==========================================================
-     DERIVED VALUES
-  ========================================================== */
-
-  const mismatchCount =
-    useMemo(() => {
-      if (!form?.items) {
-        return 0;
-      }
-
-      return form.items.filter(
-        isMismatch
-      ).length;
-    }, [form]);
-
-  const completeItemCount =
-    useMemo(() => {
-      if (!form?.items) {
-        return 0;
-      }
-
-      return form.items.filter(
-        (item) =>
-          cleanText(item.code) &&
-          cleanText(item.product) &&
-          cleanText(item.deliveredQty)
-      ).length;
-    }, [form]);
-
-  const reviewValid =
-    Boolean(
-      cleanText(
-        form?.deliveryNoteNumber
-      ) &&
-        cleanText(form?.shippingDate) &&
-        form?.items?.length > 0 &&
-        completeItemCount ===
-          form?.items?.length &&
-        confirmed
-    );
-
-
-  /* ==========================================================
-     IMAGE SELECT / CAMERA
-  ========================================================== */
-
-  function handleImage(event) {
-    const selected =
-      event.target.files?.[0];
-
-    if (!selected) {
-      return;
-    }
-
-    if (
-      !selected.type.startsWith(
-        "image/"
-      )
-    ) {
-      setScanError(
-        "Please select an image file."
-      );
-
-      return;
-    }
-
-    const maxBytes =
-      12 * 1024 * 1024;
-
-    if (selected.size > maxBytes) {
-      setScanError(
-        "Image is too large. Maximum size is 12 MB."
-      );
-
-      return;
-    }
-
-    if (previewUrl) {
-      URL.revokeObjectURL(
-        previewUrl
-      );
-    }
-
-    const objectUrl =
-      URL.createObjectURL(
-        selected
-      );
-
-    setFile(selected);
-    setPreviewUrl(objectUrl);
-    setForm(null);
-    setConfirmed(false);
-    setRawOcrText("");
-    setOcrProgress(0);
-    setOcrStatus("Ready");
-    setScanError("");
-    setSubmitError("");
-    setStep("preview");
+  async function getOcr() {
+    if (ocrRef.current) return ocrRef.current;
+    setScanMessage("Loading PaddleOCR engine…");
+    setScanProgress(8);
+    // English recognition is intentional: Arabic text may exist on the note,
+    // but we only retain English/numeric content for the DAM receiving workflow.
+    ocrRef.current = await PaddleOCR.create({
+      lang: "en",
+      ocrVersion: "PP-OCRv5",
+      worker: true,
+      ortOptions: {
+        backend: "wasm",
+        wasmPaths: "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/",
+        numThreads: Math.max(1, Math.min(2, navigator.hardwareConcurrency || 2)),
+        simd: true,
+      },
+    });
+    return ocrRef.current;
   }
 
+  function resetPreview() {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = null;
+    setPreviewUrl("");
+  }
 
-  function retake() {
+  function clearAll() {
+    resetPreview();
     setFile(null);
-    setForm(null);
+    setNote(EMPTY_NOTE);
     setConfirmed(false);
-    setScanError("");
-    setSubmitError("");
-    setStep("capture");
-
-    if (previewUrl) {
-      URL.revokeObjectURL(
-        previewUrl
-      );
-
-      setPreviewUrl("");
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value =
-        "";
-    }
+    setError("");
+    setSubmissionId("");
+    setOcrDebug([]);
+    setPhase("capture");
+    setScanProgress(0);
+    setScanMessage("Ready to scan");
+    if (inputRef.current) inputRef.current.value = "";
   }
 
-
-  /* ==========================================================
-     OCR SCAN
-  ========================================================== */
+  async function handleFile(event) {
+    const next = event.target.files?.[0];
+    if (!next) return;
+    setError("");
+    if (!next.type.startsWith("image/")) {
+      setError("Please capture or select an image.");
+      return;
+    }
+    if (next.size > MAX_FILE_MB * 1024 * 1024) {
+      setError(`Image is too large. Maximum ${MAX_FILE_MB} MB.`);
+      return;
+    }
+    resetPreview();
+    const url = URL.createObjectURL(next);
+    previewUrlRef.current = url;
+    setPreviewUrl(url);
+    setFile(next);
+    setPhase("preview");
+  }
 
   async function scanDocument() {
-    if (!file) {
-      setScanError(
-        "Capture or select a delivery note first."
-      );
-      return;
-    }
-
-    setStep("scanning");
-    setScanError("");
-    setSubmitError("");
-    setConfirmed(false);
-    setOcrProgress(0);
-    setOcrStatus("Preparing image");
-    setRawOcrText("");
-
-    let worker;
+    if (!file) return;
+    setError("");
+    setPhase("scanning");
+    setScanProgress(3);
+    setScanMessage("Starting document scanner…");
 
     try {
-      const preparedImages = await prepareOcrImages(file);
-
-      setOcrStatus("Loading OCR engine");
-
-      worker = await createWorker(OCR_LANGUAGE, 1, {
-        logger: (message) => {
-          if (typeof message?.progress === "number") {
-            setOcrProgress(Math.max(0, Math.min(100, Math.round(message.progress * 100))));
-          }
-
-          if (message?.status) {
-            setOcrStatus(message.status);
-          }
-        },
+      const ocr = await getOcr();
+      setScanProgress(20);
+      setScanMessage("Finding text and table geometry…");
+      const [result] = await ocr.predict(file, {
+        textDetLimitSideLen: 1800,
+        textDetLimitType: "max",
+        textDetBoxThresh: 0.42,
+        textDetUnclipRatio: 1.7,
+        textRecScoreThresh: 0.35,
       });
+      setScanProgress(74);
+      setScanMessage("Following PRODUCT / ORDERED / DELIVERED rows…");
 
-      // PASS 1 — full page for delivery-note number/date/source/destination.
-      await worker.setParameters({
-        preserve_interword_spaces: "1",
-        tessedit_pageseg_mode: "3",
+      const items = normalizeOcrItems(result);
+      const imageWidth = result?.image?.width || 1200;
+      const imageHeight = result?.image?.height || 1600;
+      const columns = findHeader(items, imageWidth);
+      const physicalRows = groupPhysicalRows(items, columns.headerY, imageHeight);
+      const parsedItems = buildProductRows(physicalRows, columns);
+      const meta = extractNoteMeta(items);
+
+      setOcrDebug(items);
+      setNote({
+        ...EMPTY_NOTE,
+        ...meta,
+        shippingDate: toDatetimeLocal(meta.shippingDate),
+        items: parsedItems,
       });
-
-      setOcrStatus("Reading document header");
-      const fullResult = await worker.recognize(preparedImages.fullBlob);
-      const rawText = fullResult?.data?.text || "";
-
-      // PASS 2 — table-only, assume a uniform block. This is the primary item pass.
-      await worker.setParameters({
-        preserve_interword_spaces: "1",
-        tessedit_pageseg_mode: "6",
-      });
-      setOcrStatus("Reading PRODUCT / ORDERED / DELIVERED table");
-      const tableSoftResult = await worker.recognize(preparedImages.tableSoftBlob);
-      const tableSoftText = tableSoftResult?.data?.text || "";
-
-      // PASS 3 — high-contrast table. Different preprocessing catches faint row
-      // text, brackets and UOM characters missed by the first table pass.
-      await worker.setParameters({
-        preserve_interword_spaces: "1",
-        tessedit_pageseg_mode: "4",
-      });
-      setOcrStatus("Cross-checking every table row");
-      const tableHardResult = await worker.recognize(preparedImages.tableHardBlob);
-      const tableHardText = tableHardResult?.data?.text || "";
-
-      const debugText = [
-        "===== FULL PAGE =====",
-        rawText,
-        "===== TABLE PASS 1 =====",
-        tableSoftText,
-        "===== TABLE PASS 2 =====",
-        tableHardText,
-      ].join("\n");
-      setRawOcrText(debugText);
-      setOcrProgress(100);
-      setOcrStatus("Rebuilding table rows");
-
-      if (!rawText.trim() && !tableSoftText.trim() && !tableHardText.trim()) {
-        throw new Error(
-          "No readable text was detected. Retake the photo with the full paper visible, flat and well lit."
-        );
-      }
-
-      const parsed = parseDeliveryNoteText(rawText, [tableSoftText, tableHardText]);
-      const normalized = normaliseResult(parsed);
-
-      // We allow review even if some fields are missed so staff can correct them manually.
-      setForm(normalized);
-      setStep("review");
-    } catch (error) {
-      console.error("DELIVERY NOTE OCR ERROR", error);
-      setScanError(
-        error?.message ||
-          "Unable to read this image. Please retake the delivery note clearly."
-      );
-      setStep("preview");
-    } finally {
-      if (worker) {
-        try {
-          await worker.terminate();
-        } catch {
-          // Nothing else to do.
-        }
-      }
+      setScanProgress(100);
+      setScanMessage(`Found ${parsedItems.length} table row${parsedItems.length === 1 ? "" : "s"}`);
+      setPhase("review");
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || "OCR failed. Please retake the photo in good light.");
+      setPhase("preview");
     }
   }
 
-
-  /* ==========================================================
-     FORM EDITING
-  ========================================================== */
-
-  function updateField(
-    key,
-    value
-  ) {
-    setForm((current) => ({
-      ...current,
-      [key]: value,
-    }));
-
-    setConfirmed(false);
+  function updateMeta(key, value) {
+    setNote((prev) => ({ ...prev, [key]: value }));
   }
 
-
-  function updateItem(
-    id,
-    key,
-    value
-  ) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map(
-        (item) =>
-          item.id === id
-            ? {
-                ...item,
-                [key]: value,
-              }
-            : item
+  function updateItem(id, key, value) {
+    setNote((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              [key]: value,
+              needsReview:
+                key === "needsReview"
+                  ? value
+                  : !(key === "code" ? value : item.code) ||
+                    !(key === "product" ? value : item.product) ||
+                    !(key === "deliveredQty" ? value : item.deliveredQty) ||
+                    !(key === "deliveredUom" ? value : item.deliveredUom),
+            }
+          : item
       ),
     }));
-
-    setConfirmed(false);
   }
-
-
-  function addItem() {
-    setForm((current) => ({
-      ...current,
-      items: [
-        ...current.items,
-        normaliseItem({
-          code: "",
-          product: "",
-          orderedQty: "",
-          orderedUom: "",
-          deliveredQty: "",
-          deliveredUom: "",
-        }),
-      ],
-    }));
-
-    setConfirmed(false);
-  }
-
 
   function removeItem(id) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.filter(
-        (item) =>
-          item.id !== id
-      ),
-    }));
-
-    setConfirmed(false);
+    setNote((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== id) }));
   }
 
+  function addItem() {
+    setNote((prev) => ({ ...prev, items: [...prev.items, EMPTY_ITEM()] }));
+  }
 
-  /* ==========================================================
-     FINAL SUBMISSION
-  ========================================================== */
+  const canSubmit =
+    confirmed &&
+    Boolean(note.deliveryNoteNumber) &&
+    note.items.length > 0 &&
+    note.items.every((i) => i.code && i.product && i.deliveredQty && i.deliveredUom);
 
-  async function submitDeliveryNote() {
-    if (!reviewValid) {
-      return;
-    }
+  async function submitNote() {
+    if (!canSubmit) return;
+    setError("");
+    setPhase("submitting");
+    const payload = {
+      branchCode: branch?.code || "",
+      branchName: branch?.name || "",
+      deliveryNoteNumber: note.deliveryNoteNumber,
+      shippingDate: note.shippingDate,
+      sourceLocation: note.sourceLocation,
+      destinationLocation: note.destinationLocation,
+      supplier: note.supplier,
+      items: note.items.map(({ id, confidence, needsReview, raw, ...rest }) => rest),
+      mismatchCount: mismatchCount(note.items),
+      submittedAt: new Date().toISOString(),
+    };
 
     try {
-      setSubmitting(true);
-      setSubmitError("");
-
-      /*
-        IMPORTANT:
-        We do NOT include the image here.
-        Only the staff-confirmed text/data is submitted.
-      */
-      const payload = {
-        branchCode:
-          branch?.code || "",
-        branchName:
-          branch?.name || "",
-        deliveryNoteNumber:
-          cleanText(
-            form.deliveryNoteNumber
-          ),
-        shippingDate:
-          cleanText(
-            form.shippingDate
-          ),
-        sourceLocation:
-          cleanText(
-            form.sourceLocation
-          ),
-        destinationLocation:
-          cleanText(
-            form.destinationLocation
-          ),
-        supplier:
-          cleanText(form.supplier),
-        items: form.items.map(
-          (item) => ({
-            code: cleanText(
-              item.code
-            ),
-            product: cleanText(
-              item.product
-            ),
-            orderedQty:
-              cleanText(
-                item.orderedQty
-              ),
-            orderedUom:
-              cleanText(
-                item.orderedUom
-              ),
-            deliveredQty:
-              cleanText(
-                item.deliveredQty
-              ),
-            deliveredUom:
-              cleanText(
-                item.deliveredUom
-              ),
-          })
-        ),
-        mismatchCount,
-        submittedAt:
-          new Date().toISOString(),
-      };
-
-      let result;
-
-      if (!ENABLE_BACKEND_SUBMIT) {
-        await sleep(900);
-
-        console.log(
-          "DELIVERY NOTE VERIFIED PAYLOAD",
-          payload
-        );
-
-        result = {
-          success: true,
-          submissionId:
-            `DN-${Date.now()
-              .toString()
-              .slice(-8)}`,
-        };
+      if (ENABLE_BACKEND_SUBMIT) {
+        const res = await fetch(SUBMIT_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.success === false) throw new Error(data?.message || "Submission failed");
+        setSubmissionId(data?.id || data?.submissionId || note.deliveryNoteNumber);
       } else {
-        const response =
-          await fetch(
-            SUBMIT_ENDPOINT,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify(
-                payload
-              ),
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (
-          !response.ok ||
-          !data.success
-        ) {
-          throw new Error(
-            data.message ||
-              "Unable to submit delivery note."
-          );
-        }
-
-        result = data;
+        console.log("DELIVERY NOTE PAYLOAD", payload);
+        await new Promise((r) => setTimeout(r, 600));
+        setSubmissionId(`LOCAL-${Date.now().toString().slice(-7)}`);
       }
-
-      setSubmissionId(
-        result.submissionId ||
-          result.id ||
-          "SUBMITTED"
-      );
-
-      /*
-        Image no longer needed after successful submission.
-      */
+      resetPreview();
       setFile(null);
-
-      if (previewUrl) {
-        URL.revokeObjectURL(
-          previewUrl
-        );
-
-        setPreviewUrl("");
-      }
-
-      setStep("success");
-    } catch (error) {
-      setSubmitError(
-        error?.message ||
-          "Unable to submit delivery note."
-      );
-    } finally {
-      setSubmitting(false);
+      setPhase("success");
+    } catch (err) {
+      setError(err?.message || "Unable to submit delivery note.");
+      setPhase("review");
     }
   }
-
-
-  /* ==========================================================
-     RESET
-  ========================================================== */
-
-  function newDeliveryNote() {
-    setFile(null);
-    setPreviewUrl("");
-    setForm(null);
-    setConfirmed(false);
-    setSubmissionId("");
-    setScanError("");
-    setSubmitError("");
-    setStep("capture");
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value =
-        "";
-    }
-  }
-
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
 
   return (
-    <div className="dn-page">
-      <div className="dn-grid-bg" />
-      <div className="dn-orb dn-orb-one" />
-      <div className="dn-orb dn-orb-two" />
-
-      <input
-        ref={fileInputRef}
-        className="dn-hidden-input"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleImage}
-      />
-
-      {/* ======================================================
-          TOP BAR
-      ====================================================== */}
-
+    <div className="dn-shell">
+      <div className="dn-grid" />
       <header className="dn-topbar">
+        <button className="dn-icon-btn" onClick={onBack} aria-label="Back">
+          <ArrowLeft size={20} />
+        </button>
         <div className="dn-brand">
-          <div className="dn-brand-icon">
-            <FileScan size={20} />
-          </div>
-
+          <div className="dn-brand-icon"><FileScan size={20} /></div>
           <div>
-            <strong>
-              DELIVERY NOTES
-            </strong>
-
-            <span>
-              BART STAFF OPERATIONS
-            </span>
+            <strong>Delivery Notes</strong>
+            <span>LIVE TABLE SCANNER</span>
           </div>
         </div>
-
-        <div className="dn-top-actions">
-          <div className="dn-secure-badge">
-            <ShieldCheck size={14} />
-            TEXT-ONLY STORAGE
-          </div>
-
-          <button
-            type="button"
-            className="dn-close-button"
-            onClick={onBack}
-            title="Back to dashboard"
-          >
-            <X size={18} />
-          </button>
+        <div className="dn-branch-pill">
+          <span>{branch?.code || "BRANCH"}</span>
+          <b>{branch?.name || "Receiving Branch"}</b>
         </div>
       </header>
 
-
       <main className="dn-main">
-
-        {/* ====================================================
-            BACK / HERO
-        ==================================================== */}
-
-        <motion.button
-          type="button"
-          className="dn-back-button"
-          onClick={onBack}
-          initial={{
-            opacity: 0,
-            x: -10,
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-          }}
-        >
-          <ArrowLeft size={15} />
-          BACK TO STAFF DASHBOARD
-        </motion.button>
-
-
         <section className="dn-hero">
-          <motion.div
-            className="dn-hero-copy"
-            initial={{
-              opacity: 0,
-              y: 20,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-          >
-            <div className="dn-eyebrow">
-              <Sparkles size={13} />
-              SMART DOCUMENT CAPTURE
-            </div>
-
-            <h1>
-              Scan. Verify.
-              <span> Submit.</span>
-            </h1>
-
+          <div>
+            <div className="dn-kicker"><ScanLine size={15} /> DAM TABLE READER</div>
+            <h1>Scan every delivery-note row.</h1>
             <p>
-              Capture a delivery note,
-              review every detected value,
-              and submit only the
-              staff-confirmed data.
+              PaddleOCR reads text with coordinates, then this page follows the printed
+              <b> PRODUCT → ORDERED → DELIVERED </b> columns row-by-row. Arabic characters are removed only after reading each cell.
             </p>
-          </motion.div>
-
-
-          <motion.div
-            className="dn-branch-card"
-            initial={{
-              opacity: 0,
-              y: 20,
-              scale: 0.98,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1,
-            }}
-          >
-            <span>
-              RECEIVING BRANCH
-            </span>
-
-            <strong>
-              {branch?.name ||
-                "BART Branch"}
-            </strong>
-
-            <div>
-              <small>
-                {branch?.code ||
-                  "B000"}
-              </small>
-
-              <small className="dn-live">
-                <i />
-                ACTIVE
-              </small>
-            </div>
-          </motion.div>
+          </div>
+          <div className="dn-engine-badge">
+            <span className="dn-live-dot" />
+            <div><b>LOCAL OCR</b><small>No paid vision API</small></div>
+          </div>
         </section>
 
+        {error && (
+          <div className="dn-alert dn-alert-danger"><TriangleAlert size={18} /><span>{error}</span></div>
+        )}
 
-        {/* ====================================================
-            STEPS
-        ==================================================== */}
-
-        <section className="dn-stepper">
-          <Step
-            number="1"
-            label="CAPTURE"
-            active={
-              step === "capture" ||
-              step === "preview"
-            }
-            complete={[
-              "scanning",
-              "review",
-              "success",
-            ].includes(step)}
-          />
-
-          <div className="dn-step-line" />
-
-          <Step
-            number="2"
-            label="SCAN"
-            active={
-              step === "scanning"
-            }
-            complete={[
-              "review",
-              "success",
-            ].includes(step)}
-          />
-
-          <div className="dn-step-line" />
-
-          <Step
-            number="3"
-            label="VERIFY"
-            active={
-              step === "review"
-            }
-            complete={
-              step === "success"
-            }
-          />
-
-          <div className="dn-step-line" />
-
-          <Step
-            number="4"
-            label="SUBMIT"
-            active={
-              step === "success"
-            }
-            complete={
-              step === "success"
-            }
-          />
-        </section>
-
-
-        {/* ====================================================
-            DEMO BADGE
-        ==================================================== */}
-
-        <div className="dn-demo-banner">
-          <Sparkles size={15} />
-
-          <span>
-            LIVE OCR — this photo is read on the staff device using Tesseract.js.
-            No sample delivery-note data is used.
-            {!ENABLE_BACKEND_SUBMIT && " Verified submission storage is still local until the backend submit route is connected."}
-          </span>
-        </div>
-
-
-        {/* ====================================================
-            ERROR
-        ==================================================== */}
-
-        <AnimatePresence>
-          {(scanError ||
-            submitError) && (
-            <motion.div
-              className="dn-error-banner"
-              initial={{
-                opacity: 0,
-                y: -8,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              exit={{
-                opacity: 0,
-              }}
-            >
-              <XCircle size={17} />
-
-              <span>
-                {scanError ||
-                  submitError}
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-
-        {/* ====================================================
-            CAPTURE
-        ==================================================== */}
-
-        {step === "capture" && (
-          <motion.section
-            className="dn-capture-layout"
-            initial={{
-              opacity: 0,
-              y: 25,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-          >
-            <div
-              className="dn-capture-card"
-              onClick={() =>
-                fileInputRef.current?.click()
-              }
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (
-                  event.key ===
-                    "Enter" ||
-                  event.key === " "
-                ) {
-                  fileInputRef.current?.click();
-                }
-              }}
-            >
+        <AnimatePresence mode="wait">
+          {phase === "capture" && (
+            <motion.section key="capture" className="dn-panel dn-capture" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="dn-scan-frame">
-                <span className="c1" />
-                <span className="c2" />
-                <span className="c3" />
-                <span className="c4" />
-
-                <div className="dn-camera-circle">
-                  <Camera size={34} />
-                </div>
-
-                <strong>
-                  Capture Delivery Note
-                </strong>
-
-                <p>
-                  Keep the complete
-                  document inside the
-                  frame and make sure the
-                  text is readable.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                >
-                  <Camera size={17} />
-                  OPEN CAMERA
-                </button>
+                <span className="c tl" /><span className="c tr" /><span className="c bl" /><span className="c br" />
+                <div className="dn-camera-orb"><Camera size={34} /></div>
+                <h2>Photograph the complete note</h2>
+                <p>Keep PRODUCT, ORDERED and DELIVERED columns fully visible. Avoid cutting the left product codes or right delivered column.</p>
+                <button className="dn-primary" onClick={() => inputRef.current?.click()}><Camera size={18} /> Open Camera</button>
               </div>
-            </div>
-
-
-            <aside className="dn-guide-card">
-              <div className="dn-guide-head">
-                <div>
-                  <ScanLine size={21} />
-                </div>
-
-                <span>
-                  SCAN QUALITY
-                </span>
-              </div>
-
-              <h3>
-                Get a clean scan
-              </h3>
-
-              <div className="dn-guide-list">
-                <div>
-                  <CheckCircle2
-                    size={16}
-                  />
-
-                  <span>
-                    Capture the complete
-                    page
-                  </span>
-                </div>
-
-                <div>
-                  <CheckCircle2
-                    size={16}
-                  />
-
-                  <span>
-                    Use good lighting
-                  </span>
-                </div>
-
-                <div>
-                  <CheckCircle2
-                    size={16}
-                  />
-
-                  <span>
-                    Avoid blur and heavy
-                    shadows
-                  </span>
-                </div>
-
-                <div>
-                  <CheckCircle2
-                    size={16}
-                  />
-
-                  <span>
-                    Keep product table
-                    straight
-                  </span>
-                </div>
-              </div>
-
-              <div className="dn-privacy-note">
-                <ShieldCheck
-                  size={17}
-                />
-
-                <p>
-                  <strong>
-                    Privacy
-                  </strong>
-
-                  The final submission
-                  contains text/data only.
-                  The captured image is
-                  not included in the
-                  submission payload.
-                </p>
-              </div>
-            </aside>
-          </motion.section>
-        )}
-
-
-        {/* ====================================================
-            PREVIEW
-        ==================================================== */}
-
-        {step === "preview" && (
-          <motion.section
-            className="dn-preview-layout"
-            initial={{
-              opacity: 0,
-              y: 24,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-          >
-            <div className="dn-photo-card">
-              <div className="dn-card-head">
-                <div>
-                  <span>
-                    DOCUMENT PREVIEW
-                  </span>
-
-                  <h2>
-                    Ready to scan
-                  </h2>
-                </div>
-
-                <div className="dn-file-pill">
-                  <ImageIcon size={14} />
-                  {file?.name ||
-                    "Captured image"}
-                </div>
-              </div>
-
-              <div className="dn-image-stage">
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="Delivery note preview"
-                  />
-                ) : (
-                  <EmptyState />
-                )}
-
-                <div className="dn-scan-line" />
-              </div>
-            </div>
-
-
-            <aside className="dn-action-card">
-              <div className="dn-action-icon">
-                <FileScan size={24} />
-              </div>
-
-              <span>
-                NEXT STEP
-              </span>
-
-              <h2>
-                Read this delivery note
-              </h2>
-
-              <p>
-                The scanner will detect
-                the note number, date,
-                locations, item codes,
-                product names and
-                delivered quantities.
-              </p>
-
-              <button
-                type="button"
-                className="dn-primary-btn"
-                onClick={
-                  scanDocument
-                }
-              >
-                <ScanLine size={18} />
-                SCAN DOCUMENT
-                <ChevronRight
-                  size={17}
-                />
-              </button>
-
-              <button
-                type="button"
-                className="dn-secondary-btn"
-                onClick={retake}
-              >
-                <RefreshCcw
-                  size={16}
-                />
-                RETAKE / CHANGE PHOTO
-              </button>
-            </aside>
-          </motion.section>
-        )}
-
-
-        {/* ====================================================
-            SCANNING
-        ==================================================== */}
-
-        {step === "scanning" && (
-          <motion.section
-            className="dn-scanning-card"
-            initial={{
-              opacity: 0,
-              scale: 0.98,
-            }}
-            animate={{
-              opacity: 1,
-              scale: 1,
-            }}
-          >
-            <div className="dn-scanner-visual">
-              <FileScan size={52} />
-
-              <motion.div
-                className="dn-scanner-beam"
-                animate={{
-                  y: [
-                    -66,
-                    66,
-                    -66,
-                  ],
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              />
-            </div>
-
-            <div className="dn-scanning-copy">
-              <span>
-                DOCUMENT INTELLIGENCE
-              </span>
-
-              <h2>
-                Reading delivery note...
-              </h2>
-
-              <p>
-                {ocrStatus || "Reading document"} · {ocrProgress}%
-                <br />
-                Detecting header details, product codes and delivered quantities.
-              </p>
-
-              <div className="dn-loading-line">
-                <motion.i
-                  animate={{
-                    x: [
-                      "-100%",
-                      "340%",
-                    ],
-                  }}
-                  transition={{
-                    duration: 1.1,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-              </div>
-            </div>
-          </motion.section>
-        )}
-
-
-        {/* ====================================================
-            REVIEW
-        ==================================================== */}
-
-        {step === "review" &&
-          form && (
-            <motion.section
-              className="dn-review-wrap"
-              initial={{
-                opacity: 0,
-                y: 25,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-            >
-              <div className="dn-review-heading">
-                <div>
-                  <div className="dn-eyebrow">
-                    <ClipboardCheck
-                      size={13}
-                    />
-                    STAFF VERIFICATION
-                  </div>
-
-                  <h2>
-                    Cross-check before
-                    submission
-                  </h2>
-
-                  <p>
-                    Every field below is
-                    editable. Compare it
-                    with the physical
-                    delivery note.
-                  </p>
-                </div>
-
-                <div className="dn-review-stats">
-                  <div>
-                    <small>
-                      ITEMS
-                    </small>
-
-                    <strong>
-                      {
-                        form.items
-                          .length
-                      }
-                    </strong>
-                  </div>
-
-                  <div
-                    className={
-                      mismatchCount
-                        ? "warn"
-                        : ""
-                    }
-                  >
-                    <small>
-                      QTY DIFFERENCE
-                    </small>
-
-                    <strong>
-                      {
-                        mismatchCount
-                      }
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-
-              <div className="dn-meta-card">
-                <div className="dn-card-head">
-                  <div>
-                    <span>
-                      DOCUMENT DETAILS
-                    </span>
-
-                    <h3>
-                      Detected header
-                    </h3>
-                  </div>
-
-                  <Pencil size={17} />
-                </div>
-
-                <div className="dn-fields-grid">
-                  <Field
-                    label="Delivery Note No."
-                    value={
-                      form.deliveryNoteNumber
-                    }
-                    onChange={(value) =>
-                      updateField(
-                        "deliveryNoteNumber",
-                        value
-                      )
-                    }
-                    placeholder="Example: CKWH/INT/46389"
-                  />
-
-                  <Field
-                    label="Shipping Date"
-                    type="datetime-local"
-                    value={
-                      form.shippingDate
-                        ? String(
-                            form.shippingDate
-                          ).slice(
-                            0,
-                            16
-                          )
-                        : ""
-                    }
-                    onChange={(value) =>
-                      updateField(
-                        "shippingDate",
-                        value
-                      )
-                    }
-                  />
-
-                  <Field
-                    label="Supplier"
-                    value={
-                      form.supplier
-                    }
-                    onChange={(value) =>
-                      updateField(
-                        "supplier",
-                        value
-                      )
-                    }
-                    placeholder="Supplier"
-                  />
-
-                  <Field
-                    label="Source Location"
-                    value={
-                      form.sourceLocation
-                    }
-                    onChange={(value) =>
-                      updateField(
-                        "sourceLocation",
-                        value
-                      )
-                    }
-                    placeholder="Source"
-                  />
-
-                  <Field
-                    label="Destination Location"
-                    value={
-                      form.destinationLocation
-                    }
-                    onChange={(value) =>
-                      updateField(
-                        "destinationLocation",
-                        value
-                      )
-                    }
-                    placeholder="Destination"
-                  />
-
-                  <div className="dn-field dn-readonly-field">
-                    <span>
-                      Receiving Branch
-                    </span>
-
-                    <div>
-                      {branch?.code ||
-                        "B000"}{" "}
-                      —{" "}
-                      {branch?.name ||
-                        "BART Branch"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-
-              <div className="dn-items-card">
-                <div className="dn-card-head dn-items-head">
-                  <div>
-                    <span>
-                      DETECTED PRODUCTS
-                    </span>
-
-                    <h3>
-                      Delivered items
-                    </h3>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="dn-add-item"
-                    onClick={addItem}
-                  >
-                    <Plus size={15} />
-                    ADD ITEM
-                  </button>
-                </div>
-
-
-                <div className="dn-desktop-table-wrap">
-                  <table className="dn-items-table">
-                    <thead>
-                      <tr>
-                        <th>
-                          CODE
-                        </th>
-
-                        <th>
-                          PRODUCT
-                        </th>
-
-                        <th>
-                          ORDERED
-                        </th>
-
-                        <th>
-                          DELIVERED
-                        </th>
-
-                        <th>
-                          UOM
-                        </th>
-
-                        <th />
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {form.items.map(
-                        (item) => {
-                          const mismatch =
-                            isMismatch(
-                              item
-                            );
-
-                          return (
-                            <tr
-                              key={
-                                item.id
-                              }
-                              className={
-                                mismatch
-                                  ? "has-mismatch"
-                                  : ""
-                              }
-                            >
-                              <td>
-                                <input
-                                  value={
-                                    item.code
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateItem(
-                                      item.id,
-                                      "code",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                />
-                              </td>
-
-                              <td className="dn-product-cell">
-                                <input
-                                  value={
-                                    item.product
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateItem(
-                                      item.id,
-                                      "product",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                />
-                              </td>
-
-                              <td>
-                                <input
-                                  value={
-                                    item.orderedQty
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateItem(
-                                      item.id,
-                                      "orderedQty",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                  inputMode="decimal"
-                                />
-                              </td>
-
-                              <td>
-                                <div className="dn-delivered-cell">
-                                  <input
-                                    value={
-                                      item.deliveredQty
-                                    }
-                                    onChange={(
-                                      event
-                                    ) =>
-                                      updateItem(
-                                        item.id,
-                                        "deliveredQty",
-                                        event
-                                          .target
-                                          .value
-                                      )
-                                    }
-                                    inputMode="decimal"
-                                  />
-
-                                  {mismatch && (
-                                    <AlertTriangle
-                                      size={
-                                        14
-                                      }
-                                    />
-                                  )}
-                                </div>
-                              </td>
-
-                              <td>
-                                <input
-                                  value={
-                                    item.deliveredUom
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateItem(
-                                      item.id,
-                                      "deliveredUom",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                />
-                              </td>
-
-                              <td>
-                                <button
-                                  type="button"
-                                  className="dn-row-delete"
-                                  onClick={() =>
-                                    removeItem(
-                                      item.id
-                                    )
-                                  }
-                                  title="Remove item"
-                                >
-                                  <Trash2
-                                    size={
-                                      15
-                                    }
-                                  />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        }
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-
-                <div className="dn-mobile-items">
-                  {form.items.map(
-                    (item, index) => {
-                      const mismatch =
-                        isMismatch(
-                          item
-                        );
-
-                      return (
-                        <article
-                          key={
-                            item.id
-                          }
-                          className={`dn-mobile-item ${
-                            mismatch
-                              ? "has-mismatch"
-                              : ""
-                          }`}
-                        >
-                          <div className="dn-mobile-item-head">
-                            <span>
-                              ITEM{" "}
-                              {String(
-                                index +
-                                  1
-                              ).padStart(
-                                2,
-                                "0"
-                              )}
-                            </span>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeItem(
-                                  item.id
-                                )
-                              }
-                            >
-                              <Trash2
-                                size={
-                                  15
-                                }
-                              />
-                            </button>
-                          </div>
-
-                          <Field
-                            label="Code"
-                            value={
-                              item.code
-                            }
-                            onChange={(
-                              value
-                            ) =>
-                              updateItem(
-                                item.id,
-                                "code",
-                                value
-                              )
-                            }
-                          />
-
-                          <Field
-                            label="Product"
-                            value={
-                              item.product
-                            }
-                            onChange={(
-                              value
-                            ) =>
-                              updateItem(
-                                item.id,
-                                "product",
-                                value
-                              )
-                            }
-                          />
-
-                          <div className="dn-mobile-two">
-                            <Field
-                              label="Ordered"
-                              value={
-                                item.orderedQty
-                              }
-                              onChange={(
-                                value
-                              ) =>
-                                updateItem(
-                                  item.id,
-                                  "orderedQty",
-                                  value
-                                )
-                              }
-                            />
-
-                            <Field
-                              label="Delivered"
-                              value={
-                                item.deliveredQty
-                              }
-                              onChange={(
-                                value
-                              ) =>
-                                updateItem(
-                                  item.id,
-                                  "deliveredQty",
-                                  value
-                                )
-                              }
-                            />
-                          </div>
-
-                          <Field
-                            label="Delivered UOM"
-                            value={
-                              item.deliveredUom
-                            }
-                            onChange={(
-                              value
-                            ) =>
-                              updateItem(
-                                item.id,
-                                "deliveredUom",
-                                value
-                              )
-                            }
-                          />
-
-                          {mismatch && (
-                            <div className="dn-mobile-warning">
-                              <AlertTriangle
-                                size={
-                                  14
-                                }
-                              />
-
-                              Ordered and
-                              delivered
-                              quantity are
-                              different.
-                            </div>
-                          )}
-                        </article>
-                      );
-                    }
-                  )}
-                </div>
-              </div>
-
-
-              {mismatchCount >
-                0 && (
-                <div className="dn-warning-banner">
-                  <AlertTriangle
-                    size={18}
-                  />
-
-                  <div>
-                    <strong>
-                      Quantity difference
-                      detected
-                    </strong>
-
-                    <span>
-                      {
-                        mismatchCount
-                      }{" "}
-                      item
-                      {mismatchCount >
-                      1
-                        ? "s"
-                        : ""}{" "}
-                      have different
-                      ordered and
-                      delivered
-                      quantities.
-                      Cross-check them
-                      before confirming.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-
-              <div className="dn-confirm-card">
-                <label className="dn-confirm-check">
-                  <input
-                    type="checkbox"
-                    checked={
-                      confirmed
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setConfirmed(
-                        event
-                          .target
-                          .checked
-                      )
-                    }
-                  />
-
-                  <span className="dn-custom-checkbox">
-                    <Check size={14} />
-                  </span>
-
-                  <span>
-                    <strong>
-                      I cross-checked
-                      this information
-                      with the physical
-                      delivery note.
-                    </strong>
-
-                    <small>
-                      I confirm the
-                      delivery note
-                      number, items and
-                      delivered
-                      quantities are
-                      correct.
-                    </small>
-                  </span>
-                </label>
-
-
-                <div className="dn-review-actions">
-                  <button
-                    type="button"
-                    className="dn-secondary-btn"
-                    onClick={retake}
-                    disabled={
-                      submitting
-                    }
-                  >
-                    <Camera size={16} />
-                    RETAKE PHOTO
-                  </button>
-
-                  <button
-                    type="button"
-                    className="dn-submit-btn"
-                    disabled={
-                      !reviewValid ||
-                      submitting
-                    }
-                    onClick={
-                      submitDeliveryNote
-                    }
-                  >
-                    {submitting ? (
-                      <LoaderCircle
-                        size={18}
-                        className="dn-spin"
-                      />
-                    ) : (
-                      <PackageCheck
-                        size={18}
-                      />
-                    )}
-
-                    {submitting
-                      ? "SUBMITTING..."
-                      : "CONFIRM & SUBMIT"}
-
-                    {!submitting && (
-                      <ChevronRight
-                        size={17}
-                      />
-                    )}
-                  </button>
-                </div>
-              </div>
+              <input ref={inputRef} className="dn-hidden" type="file" accept="image/*" capture="environment" onChange={handleFile} />
             </motion.section>
           )}
 
+          {phase === "preview" && (
+            <motion.section key="preview" className="dn-panel" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div className="dn-section-head"><div><span>STEP 01</span><h2>Check the photo</h2></div><button className="dn-ghost" onClick={clearAll}><RotateCcw size={16} /> Retake</button></div>
+              <div className="dn-preview-wrap"><img src={previewUrl} alt="Delivery note preview" /></div>
+              <div className="dn-photo-tips"><CheckCircle2 size={17} /><span>The full table should be sharp and straight enough to read every row.</span></div>
+              <button className="dn-primary dn-wide" onClick={scanDocument}><ScanLine size={18} /> Scan Table Now</button>
+            </motion.section>
+          )}
 
-        {/* ====================================================
-            SUCCESS
-        ==================================================== */}
+          {phase === "scanning" && (
+            <motion.section key="scanning" className="dn-panel dn-scanning" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div className="dn-scanner-animation"><div className="dn-sheet"><div className="dn-beam" /></div><Loader2 className="dn-spin" size={30} /></div>
+              <h2>{scanMessage}</h2>
+              <p>Finding text coordinates and reconstructing physical table rows.</p>
+              <div className="dn-progress"><motion.div animate={{ width: `${scanProgress}%` }} /></div>
+              <strong>{scanProgress}%</strong>
+            </motion.section>
+          )}
 
-        {step === "success" && (
-          <motion.section
-            className="dn-success-card"
-            initial={{
-              opacity: 0,
-              scale: 0.96,
-              y: 18,
-            }}
-            animate={{
-              opacity: 1,
-              scale: 1,
-              y: 0,
-            }}
-          >
-            <motion.div
-              className="dn-success-icon"
-              initial={{
-                scale: 0.5,
-              }}
-              animate={{
-                scale: 1,
-              }}
-              transition={{
-                type: "spring",
-                stiffness: 260,
-                damping: 18,
-              }}
-            >
-              <CheckCircle2
-                size={40}
-              />
-            </motion.div>
-
-            <span>
-              DELIVERY NOTE RECORDED
-            </span>
-
-            <h2>
-              Submission complete
-            </h2>
-
-            <p>
-              The verified delivery-note
-              data has been prepared for
-              storage. The captured photo
-              is no longer retained by
-              this page.
-            </p>
-
-            <div className="dn-success-meta">
-              <div>
-                <small>
-                  DELIVERY NOTE
-                </small>
-
-                <strong>
-                  {form?.deliveryNoteNumber ||
-                    "—"}
-                </strong>
+          {(phase === "review" || phase === "submitting") && (
+            <motion.section key="review" className="dn-review" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div className="dn-stats">
+                <div><span>ROWS FOUND</span><b>{stats.rows}</b></div>
+                <div><span>NEEDS REVIEW</span><b className={stats.review ? "warn" : "ok"}>{stats.review}</b></div>
+                <div><span>QTY MISMATCH</span><b className={stats.mismatches ? "warn" : "ok"}>{stats.mismatches}</b></div>
               </div>
 
-              <div>
-                <small>
-                  SUBMISSION ID
-                </small>
+              <section className="dn-panel">
+                <div className="dn-section-head"><div><span>STEP 02</span><h2>Delivery details</h2></div><button className="dn-ghost" onClick={() => setPhase("preview")}><RefreshCcw size={16} /> Rescan</button></div>
+                <div className="dn-form-grid">
+                  <label><span>Delivery Note No.</span><input value={note.deliveryNoteNumber} onChange={(e) => updateMeta("deliveryNoteNumber", e.target.value)} placeholder="CKWH/INT/46389" /></label>
+                  <label><span>Shipping Date</span><input type="datetime-local" value={note.shippingDate} onChange={(e) => updateMeta("shippingDate", e.target.value)} /></label>
+                  <label><span>Source Location</span><input value={note.sourceLocation} onChange={(e) => updateMeta("sourceLocation", e.target.value)} /></label>
+                  <label><span>Destination Location</span><input value={note.destinationLocation} onChange={(e) => updateMeta("destinationLocation", e.target.value)} /></label>
+                </div>
+              </section>
 
-                <strong>
-                  {submissionId}
-                </strong>
-              </div>
+              <section className="dn-panel">
+                <div className="dn-section-head"><div><span>STEP 03</span><h2>PRODUCT / ORDERED / DELIVERED</h2></div><button className="dn-ghost" onClick={addItem}><Plus size={16} /> Add row</button></div>
+                {!note.items.length ? (
+                  <div className="dn-empty"><TriangleAlert size={24} /><h3>No product rows were confidently reconstructed</h3><p>Retake the photo with the entire table visible, or add a row manually.</p></div>
+                ) : (
+                  <div className="dn-table-wrap">
+                    <table className="dn-table">
+                      <thead><tr><th>#</th><th>CODE</th><th>PRODUCT</th><th>ORDERED</th><th>UOM</th><th>DELIVERED</th><th>UOM</th><th>STATUS</th><th /></tr></thead>
+                      <tbody>
+                        {note.items.map((item, idx) => (
+                          <tr key={item.id} className={item.needsReview ? "needs-review" : ""}>
+                            <td>{idx + 1}</td>
+                            <td><input value={item.code} onChange={(e) => updateItem(item.id, "code", e.target.value.toUpperCase())} /></td>
+                            <td><input className="product" value={item.product} onChange={(e) => updateItem(item.id, "product", e.target.value)} /></td>
+                            <td><input inputMode="decimal" value={item.orderedQty} onChange={(e) => updateItem(item.id, "orderedQty", e.target.value)} /></td>
+                            <td><input value={item.orderedUom} onChange={(e) => updateItem(item.id, "orderedUom", e.target.value.toUpperCase())} /></td>
+                            <td><input inputMode="decimal" value={item.deliveredQty} onChange={(e) => updateItem(item.id, "deliveredQty", e.target.value)} /></td>
+                            <td><input value={item.deliveredUom} onChange={(e) => updateItem(item.id, "deliveredUom", e.target.value.toUpperCase())} /></td>
+                            <td>{item.needsReview ? <span className="dn-status warn">REVIEW</span> : <span className="dn-status ok">READY</span>}</td>
+                            <td><button className="dn-trash" onClick={() => removeItem(item.id)}><Trash2 size={16} /></button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-              <div>
-                <small>
-                  ITEMS
-                </small>
+                <div className="dn-mobile-items">
+                  {note.items.map((item, idx) => (
+                    <article className={`dn-item-card ${item.needsReview ? "needs-review" : ""}`} key={`m-${item.id}`}>
+                      <div className="dn-item-title"><b>Row {idx + 1}</b><button onClick={() => removeItem(item.id)}><X size={16} /></button></div>
+                      <div className="dn-mobile-grid">
+                        <label><span>Code</span><input value={item.code} onChange={(e) => updateItem(item.id, "code", e.target.value.toUpperCase())} /></label>
+                        <label className="wide"><span>Product</span><input value={item.product} onChange={(e) => updateItem(item.id, "product", e.target.value)} /></label>
+                        <label><span>Ordered</span><input value={item.orderedQty} onChange={(e) => updateItem(item.id, "orderedQty", e.target.value)} /></label>
+                        <label><span>Ordered UOM</span><input value={item.orderedUom} onChange={(e) => updateItem(item.id, "orderedUom", e.target.value.toUpperCase())} /></label>
+                        <label><span>Delivered</span><input value={item.deliveredQty} onChange={(e) => updateItem(item.id, "deliveredQty", e.target.value)} /></label>
+                        <label><span>Delivered UOM</span><input value={item.deliveredUom} onChange={(e) => updateItem(item.id, "deliveredUom", e.target.value.toUpperCase())} /></label>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
 
-                <strong>
-                  {form?.items
-                    ?.length || 0}
-                </strong>
-              </div>
+              <section className="dn-panel dn-confirm-panel">
+                <label className="dn-check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /><span><CheckCircle2 size={20} /><b>I cross-checked every row with the physical delivery note.</b><small>Rows highlighted for review must be corrected before submission.</small></span></label>
+                <button disabled={!canSubmit || phase === "submitting"} className="dn-primary dn-wide" onClick={submitNote}>{phase === "submitting" ? <Loader2 className="dn-spin" size={18} /> : <Save size={18} />}{phase === "submitting" ? "Submitting…" : "Confirm & Submit"}</button>
+              </section>
 
-              <div>
-                <small>
-                  SHIPPING DATE
-                </small>
+              <section className="dn-debug">
+                <button onClick={() => setShowDebug((v) => !v)}><ChevronDown size={16} className={showDebug ? "open" : ""} /> OCR debug ({ocrDebug.length} detected text boxes)</button>
+                {showDebug && <pre>{ocrDebug.map((x) => `[${x.score.toFixed(2)}] x:${Math.round(x.cx)} y:${Math.round(x.cy)}  ${x.text}`).join("\n")}</pre>}
+              </section>
+            </motion.section>
+          )}
 
-                <strong>
-                  {displayDate(
-                    form?.shippingDate
-                  )}
-                </strong>
-              </div>
-            </div>
-
-            <div className="dn-success-actions">
-              <button
-                type="button"
-                className="dn-primary-btn"
-                onClick={
-                  newDeliveryNote
-                }
-              >
-                <Plus size={17} />
-                SCAN ANOTHER NOTE
-              </button>
-
-              <button
-                type="button"
-                className="dn-secondary-btn"
-                onClick={onBack}
-              >
-                <ArrowLeft size={16} />
-                BACK TO DASHBOARD
-              </button>
-            </div>
-          </motion.section>
-        )}
+          {phase === "success" && (
+            <motion.section key="success" className="dn-panel dn-success" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
+              <div className="dn-success-icon"><CheckCircle2 size={44} /></div>
+              <span>DELIVERY NOTE READY</span>
+              <h2>{note.deliveryNoteNumber}</h2>
+              <p>{ENABLE_BACKEND_SUBMIT ? "Verified data has been submitted." : "Live OCR is working. Backend storage is still disabled, so this test was not permanently saved."}</p>
+              <small>Reference: {submissionId}</small>
+              <button className="dn-primary" onClick={clearAll}><Camera size={18} /> Scan Another Note</button>
+            </motion.section>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );
