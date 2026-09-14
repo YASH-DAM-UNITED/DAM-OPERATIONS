@@ -57,7 +57,7 @@ export function loadOpenCV() {
     }
 
     const script = document.createElement("script");
-    script.src = "https://docs.opencv.org/4.x/opencv.js";
+    script.src = "/opencv.js";
     script.async = true;
     script.defer = true;
     script.dataset.damOpencv = "true";
