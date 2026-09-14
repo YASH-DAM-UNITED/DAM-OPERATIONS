@@ -52,7 +52,7 @@ async function loadModel() {
     model = await AutoModelForVision2Seq.from_pretrained(MODEL_ID, {
       device: "webgpu",
       dtype: {
-        embed_tokens: "fp16",
+        embed_tokens: "fp32",
         vision_encoder: "q4",
         decoder_model_merged: "q4",
       },
