@@ -60,7 +60,9 @@ const SUBMIT_ENDPOINT =
   "/api/staff/bart/delivery-note/submit";
 
 const OCR_LANGUAGE = "eng";
-const OCR_MAX_DIMENSION = 2200;
+const OCR_MAX_DIMENSION = 2600;
+const TABLE_TOP_RATIO = 0.28;
+const TABLE_BOTTOM_RATIO = 0.94;
 
 
 /* ============================================================
@@ -174,22 +176,27 @@ function normalizeUom(value) {
 
   if (!u) return "";
 
-  // Repair very common OCR confusions before canonicalizing.
+  // OCR repair. Only UOM text is touched here — product names are left alone.
   u = u
-    .replace(/Bott[Il1]e/gi, "Bottle")
-    .replace(/Ga[Il1]{2}on/gi, "Gallon")
-    .replace(/\bm[I1]\b/gi, "ML")
-    .replace(/\bLtr\b/gi, "LTR");
+    .replace(/B[0O]TT(?:LE|IE|1E)/gi, "Bottle")
+    .replace(/BOTT[Il1]E/gi, "Bottle")
+    .replace(/GA[Il1]{2}[0O]N/gi, "Gallon")
+    .replace(/P[\s.]?C[\s.]?S/gi, "PCS")
+    .replace(/P[\s.]?C\b/gi, "PCS")
+    .replace(/\bm[I1l]\b/gi, "ML")
+    .replace(/\bLtr\b/gi, "L")
+    .replace(/\bLitre?s?\b/gi, "L")
+    .replace(/\bLiter?s?\b/gi, "L");
 
-  const size = u.match(/(\d+(?:[.,]\d+)?)\s*(ML|L|LTR|LITER|LITRE)\b/i);
+  const size = u.match(/(\d+(?:[.,]\d+)?)\s*(ML|L)\b/i);
   const sizeText = size
-    ? `${normalizeNumber(size[1])} ${/^m/i.test(size[2]) ? "ML" : "L"}`
+    ? `${normalizeNumber(size[1])} ${size[2].toUpperCase()}`
     : "";
 
   if (/\b(?:PCS?|PIECES?)\b/i.test(u)) return "PCS";
   if (/\bBOTTLE\b/i.test(u)) return sizeText ? `BOTTLE ${sizeText}` : "BOTTLE";
   if (/\bGALLON\b/i.test(u)) return sizeText ? `GALLON ${sizeText}` : "GALLON";
-  if (/\b(?:GRAM|GRAMS|GM|GMS)\b/i.test(u)) return "GRAM";
+  if (/\b(?:GRAM|GRAMS|GM|GMS|GR)\b/i.test(u)) return "GRAM";
   if (/\b(?:KG|KGS|KILOGRAM|KILOGRAMS)\b/i.test(u)) return "KG";
   if (/\b(?:ML|MILLILITER|MILLILITRE)\b/i.test(u)) return "ML";
   if (/\b(?:LTR|LITER|LITRE|LITERS|LITRES)\b/i.test(u)) return "L";
@@ -202,8 +209,8 @@ function normalizeUom(value) {
   return u.toUpperCase();
 }
 
-const UOM_WORD = String.raw`(?:P[\s.]?C[\s.]?S?|PIECES?|BOTT(?:LE|IE)|GALLON|GRAMS?|GMS?|GM|KGS?|KG|M[LI1]|ML|LTR|LITER|LITRE|BOX(?:ES)?|PACKS?|BAGS?|CANS?|JARS?)`;
-const UOM_SIZE = String.raw`(?:\s+\d+(?:[.,]\d+)?\s*(?:ML|M[LI1]|L|LTR|LITER|LITRE))?`;
+const UOM_WORD = String.raw`(?:P[\s.]?C[\s.]?S?|PIECES?|B[0O]TT(?:LE|IE|1E)|BOTT[Il1]E|GA[Il1]{2}[0O]N|GALLON|GRAMS?|GMS?|GM|GR|KGS?|KG|M[LIl1]|ML|LTR|LITER|LITRE|BOX(?:ES)?|PACKS?|BAGS?|CANS?|JARS?)`;
+const UOM_SIZE = String.raw`(?:\s+\d+(?:[.,]\d+)?\s*(?:ML|M[LIl1]|L|LTR|LITER|LITRE))?`;
 
 function parseQtyUomPairs(value) {
   const pairs = [];
@@ -214,10 +221,9 @@ function parseQtyUomPairs(value) {
 
   let match;
   while ((match = regex.exec(value)) !== null) {
-    const rawUom = normaliseLine(match[2]);
     pairs.push({
       qty: normalizeNumber(match[1]),
-      uom: normalizeUom(rawUom),
+      uom: normalizeUom(match[2]),
       index: match.index + (match[0].length - match[0].trimStart().length),
       end: regex.lastIndex,
     });
@@ -228,39 +234,50 @@ function parseQtyUomPairs(value) {
 function repairProductName(value) {
   return normaliseLine(value)
     .replace(/^[-:–—]+\s*/, "")
-    .replace(/\b(?:PRODUCT|ORDERED|DELIVERED)\b/gi, " ")
+    .replace(/\b(?:PRODUCT|ORDERED|DELIVERED|QTY|QUANTITY)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+// DAM item codes are the strongest row anchor. The OCR may lose brackets or
+// insert spaces, so accept CB 134 / [CB134] / B 016 / S046 etc.
+const ITEM_CODE_REGEX = /(?:\[\s*)?\b([A-Z]{1,3})\s*[- ]?\s*(\d{3,4})\b(?:\s*\])?/gi;
+
+function getCodeMatches(text) {
+  const regex = new RegExp(ITEM_CODE_REGEX.source, "gi");
+  return [...text.matchAll(regex)].map((match) => ({
+    match,
+    index: match.index ?? 0,
+    code: `${match[1]}${match[2]}`.toUpperCase(),
+  }));
+}
+
 function parseItemBlock(block) {
   const line = normaliseLine(block);
-  const codeMatch = line.match(/(?:\[\s*)?\b([A-Z]{1,3})\s*[- ]?\s*(\d{3,4})\b(?:\s*\])?/i);
+  const codeMatch = line.match(new RegExp(ITEM_CODE_REGEX.source, "i"));
   if (!codeMatch) return null;
 
   const code = `${codeMatch[1]}${codeMatch[2]}`.toUpperCase();
-  const afterCode = normaliseLine(
-    line.slice((codeMatch.index || 0) + codeMatch[0].length)
-  );
+  const afterCode = normaliseLine(line.slice((codeMatch.index || 0) + codeMatch[0].length));
   const pairs = parseQtyUomPairs(afterCode);
 
+  // Never throw away a detected table row. If quantities are unclear, keep
+  // the row so staff can repair it on the review screen.
   if (!pairs.length) {
     return {
       code,
-      product: repairProductName(afterCode),
+      product: repairProductName(afterCode) || "OCR REVIEW REQUIRED",
       orderedQty: "",
       orderedUom: "",
       deliveredQty: "",
       deliveredUom: "",
+      needsReview: true,
     };
   }
 
-  // DAM notes place ORDERED and DELIVERED at the right side of each product
-  // row. Product names may contain sizes such as "600ml", so always take the
-  // LAST two quantity/UOM pairs rather than the first two numeric-looking parts.
   const chosen = pairs.slice(-2);
   const firstPair = chosen[0];
-  const product = repairProductName(afterCode.slice(0, firstPair.index));
+  const product = repairProductName(afterCode.slice(0, firstPair.index)) || "OCR REVIEW REQUIRED";
 
   if (chosen.length === 1) {
     return {
@@ -270,6 +287,7 @@ function parseItemBlock(block) {
       orderedUom: chosen[0].uom,
       deliveredQty: chosen[0].qty,
       deliveredUom: chosen[0].uom,
+      needsReview: true,
     };
   }
 
@@ -280,27 +298,37 @@ function parseItemBlock(block) {
     orderedUom: chosen[0].uom,
     deliveredQty: chosen[1].qty,
     deliveredUom: chosen[1].uom,
+    needsReview: false,
   };
 }
 
 function buildItemBlocks(text) {
-  // Work on a flattened English-only stream. This survives Tesseract wrapping a
-  // single product row over 2-3 lines and survives Arabic text between columns.
-  const flat = normaliseLine(text.replace(/\n/g, " "));
-  const codeRegex = /(?:\[\s*)?\b[A-Z]{1,3}\s*[- ]?\s*\d{3,4}\b(?:\s*\])?/gi;
-  const matches = [...flat.matchAll(codeRegex)];
+  // Arabic is removed CHARACTER-BY-CHARACTER. English on the same bilingual
+  // line is preserved. Then each product-code anchor owns everything until
+  // the next product-code anchor, which rebuilds wrapped OCR rows.
+  const cleaned = normaliseOcrText(text);
+  const flat = normaliseLine(cleaned.replace(/\n/g, " "));
+  const matches = getCodeMatches(flat);
   const blocks = [];
 
   for (let i = 0; i < matches.length; i += 1) {
-    const start = matches[i].index ?? 0;
+    const start = matches[i].index;
     const next = matches[i + 1]?.index ?? flat.length;
     let block = flat.slice(start, next).trim();
 
-    block = block.split(/\b(?:TOTAL|SIGNATURE|RECEIVED BY|PREPARED BY|EMAIL|PAGE\s+\d+)\b/i)[0].trim();
+    block = block
+      .split(/\b(?:TOTAL|SIGNATURE|RECEIVED BY|PREPARED BY|EMAIL|PAGE\s+\d+|REMARKS?)\b/i)[0]
+      .trim();
+
     if (block) blocks.push(block);
   }
 
   return blocks;
+}
+
+function itemCompleteness(item) {
+  return [item.product, item.orderedQty, item.orderedUom, item.deliveredQty, item.deliveredUom]
+    .filter((v) => cleanText(v) && v !== "OCR REVIEW REQUIRED").length;
 }
 
 function dedupeItems(items) {
@@ -311,27 +339,28 @@ function dedupeItems(items) {
     const key = item.code.toUpperCase();
     const existing = map.get(key);
 
-    if (!existing) {
+    if (!existing || itemCompleteness(item) > itemCompleteness(existing)) {
       map.set(key, item);
-      continue;
     }
-
-    // Prefer whichever duplicate has more complete OCR information.
-    const score = (x) => [x.product, x.orderedQty, x.orderedUom, x.deliveredQty, x.deliveredUom]
-      .filter(Boolean).length;
-    if (score(item) > score(existing)) map.set(key, item);
   }
 
   return [...map.values()];
 }
 
-function parseDeliveryNoteText(rawText) {
-  const text = normaliseOcrText(rawText);
-  const lines = text
-    .split("\n")
-    .map(normaliseLine)
-    .filter(Boolean);
+function parseItemsFromManyTexts(texts) {
+  const all = [];
+  for (const text of texts.filter(Boolean)) {
+    for (const block of buildItemBlocks(text)) {
+      const item = parseItemBlock(block);
+      if (item?.code) all.push(item);
+    }
+  }
+  return dedupeItems(all);
+}
 
+function parseDeliveryNoteText(rawText, tableTexts = []) {
+  const text = normaliseOcrText(rawText);
+  const lines = text.split("\n").map(normaliseLine).filter(Boolean);
   const flattened = lines.join("\n");
 
   const deliveryNoteNumber = extractField(flattened, [
@@ -354,12 +383,7 @@ function parseDeliveryNoteText(rawText) {
     /Destination\s*[:#-]?\s*([^\n]+)/i,
   ]);
 
-  const itemBlocks = buildItemBlocks(text);
-  const items = dedupeItems(
-    itemBlocks
-      .map(parseItemBlock)
-      .filter((item) => item && item.code && item.product)
-  );
+  const items = parseItemsFromManyTexts([text, ...tableTexts]);
 
   return {
     deliveryNoteNumber,
@@ -371,55 +395,93 @@ function parseDeliveryNoteText(rawText) {
   };
 }
 
-async function preprocessImage(file) {
+async function loadImageFromFile(file) {
   const objectUrl = URL.createObjectURL(file);
-
   try {
     const image = new Image();
     image.decoding = "async";
     image.src = objectUrl;
-
     await new Promise((resolve, reject) => {
       image.onload = resolve;
       image.onerror = () => reject(new Error("Unable to read the captured image."));
     });
-
-    const largest = Math.max(image.naturalWidth, image.naturalHeight);
-    const scale = largest > OCR_MAX_DIMENSION ? OCR_MAX_DIMENSION / largest : 1;
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) throw new Error("Image processing is not supported on this device.");
-
-    ctx.drawImage(image, 0, 0, width, height);
-    const pixels = ctx.getImageData(0, 0, width, height);
-    const data = pixels.data;
-
-    // Grayscale + gentle contrast boost. This usually helps printed delivery notes.
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      const contrast = Math.max(0, Math.min(255, (gray - 128) * 1.35 + 128));
-      data[i] = contrast;
-      data[i + 1] = contrast;
-      data[i + 2] = contrast;
-    }
-
-    ctx.putImageData(pixels, 0, 0);
-
-    return await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Unable to prepare the image for OCR."))),
-        "image/jpeg",
-        0.92
-      );
-    });
+    return image;
   } finally {
+    // The decoded Image remains usable after the URL is revoked.
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+function canvasToBlob(canvas, quality = 0.94) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Unable to prepare the image for OCR."))),
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
+function drawProcessedCanvas(image, crop = null, thresholdMode = false) {
+  const sx = crop?.x ?? 0;
+  const sy = crop?.y ?? 0;
+  const sw = crop?.width ?? image.naturalWidth;
+  const sh = crop?.height ?? image.naturalHeight;
+
+  const largest = Math.max(sw, sh);
+  const scale = largest > OCR_MAX_DIMENSION ? OCR_MAX_DIMENSION / largest : 1;
+  const width = Math.max(1, Math.round(sw * scale));
+  const height = Math.max(1, Math.round(sh * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Image processing is not supported on this device.");
+
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height);
+  const data = pixels.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    const boosted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
+    const out = thresholdMode ? (boosted < 176 ? 0 : 255) : boosted;
+    data[i] = out;
+    data[i + 1] = out;
+    data[i + 2] = out;
+  }
+
+  ctx.putImageData(pixels, 0, 0);
+  return canvas;
+}
+
+async function prepareOcrImages(file) {
+  const image = await loadImageFromFile(file);
+
+  const fullCanvas = drawProcessedCanvas(image, null, false);
+  const fullBlob = await canvasToBlob(fullCanvas);
+
+  // DAM table is consistently in the middle/lower portion of the page.
+  // We OCR this region separately so the header/address/Arabic cannot drown out
+  // the PRODUCT / ORDERED / DELIVERED rows.
+  const tableY = Math.round(image.naturalHeight * TABLE_TOP_RATIO);
+  const tableBottom = Math.round(image.naturalHeight * TABLE_BOTTOM_RATIO);
+  const tableCrop = {
+    x: 0,
+    y: tableY,
+    width: image.naturalWidth,
+    height: Math.max(1, tableBottom - tableY),
+  };
+
+  const tableSoftCanvas = drawProcessedCanvas(image, tableCrop, false);
+  const tableHardCanvas = drawProcessedCanvas(image, tableCrop, true);
+
+  return {
+    fullBlob,
+    tableSoftBlob: await canvasToBlob(tableSoftCanvas),
+    tableHardBlob: await canvasToBlob(tableHardCanvas),
+  };
 }
 
 function normaliseItem(item = {}) {
@@ -431,6 +493,7 @@ function normaliseItem(item = {}) {
     orderedUom: cleanText(item.orderedUom),
     deliveredQty: cleanText(item.deliveredQty),
     deliveredUom: cleanText(item.deliveredUom),
+    needsReview: Boolean(item.needsReview),
   };
 }
 
@@ -776,7 +839,7 @@ export default function BartDeliveryNotes({
     let worker;
 
     try {
-      const preparedImage = await preprocessImage(file);
+      const preparedImages = await prepareOcrImages(file);
 
       setOcrStatus("Loading OCR engine");
 
@@ -792,30 +855,54 @@ export default function BartDeliveryNotes({
         },
       });
 
-      // DAM delivery notes are dense printed tables. Preserve spaces so the
-      // quantity/UOM columns are easier to reconstruct, and use automatic page
-      // segmentation for the full paper. OCR language stays English-only, so
-      // Arabic print is intentionally ignored.
+      // PASS 1 — full page for delivery-note number/date/source/destination.
       await worker.setParameters({
         preserve_interword_spaces: "1",
         tessedit_pageseg_mode: "3",
       });
 
-      setOcrStatus("Reading delivery note");
+      setOcrStatus("Reading document header");
+      const fullResult = await worker.recognize(preparedImages.fullBlob);
+      const rawText = fullResult?.data?.text || "";
 
-      const result = await worker.recognize(preparedImage);
-      const rawText = result?.data?.text || "";
-      setRawOcrText(rawText);
+      // PASS 2 — table-only, assume a uniform block. This is the primary item pass.
+      await worker.setParameters({
+        preserve_interword_spaces: "1",
+        tessedit_pageseg_mode: "6",
+      });
+      setOcrStatus("Reading PRODUCT / ORDERED / DELIVERED table");
+      const tableSoftResult = await worker.recognize(preparedImages.tableSoftBlob);
+      const tableSoftText = tableSoftResult?.data?.text || "";
+
+      // PASS 3 — high-contrast table. Different preprocessing catches faint row
+      // text, brackets and UOM characters missed by the first table pass.
+      await worker.setParameters({
+        preserve_interword_spaces: "1",
+        tessedit_pageseg_mode: "4",
+      });
+      setOcrStatus("Cross-checking every table row");
+      const tableHardResult = await worker.recognize(preparedImages.tableHardBlob);
+      const tableHardText = tableHardResult?.data?.text || "";
+
+      const debugText = [
+        "===== FULL PAGE =====",
+        rawText,
+        "===== TABLE PASS 1 =====",
+        tableSoftText,
+        "===== TABLE PASS 2 =====",
+        tableHardText,
+      ].join("\n");
+      setRawOcrText(debugText);
       setOcrProgress(100);
-      setOcrStatus("Parsing fields");
+      setOcrStatus("Rebuilding table rows");
 
-      if (!rawText.trim()) {
+      if (!rawText.trim() && !tableSoftText.trim() && !tableHardText.trim()) {
         throw new Error(
-          "No readable text was detected. Retake the photo with the full paper visible and better lighting."
+          "No readable text was detected. Retake the photo with the full paper visible, flat and well lit."
         );
       }
 
-      const parsed = parseDeliveryNoteText(rawText);
+      const parsed = parseDeliveryNoteText(rawText, [tableSoftText, tableHardText]);
       const normalized = normaliseResult(parsed);
 
       // We allow review even if some fields are missed so staff can correct them manually.
