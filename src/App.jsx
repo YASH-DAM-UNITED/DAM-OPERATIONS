@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import {
@@ -26,8 +26,8 @@ import {
 import "./index.css";
 import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
-import MoomaPortal from "./mooma/MoomaPortal.jsx";
-import "./mooma/Mooma.css";
+import AdminBrandGateway from "./AdminBrandGateway.jsx";
+import BartAdminPortal from "./BartAdminPortal.jsx";
 
 /* =========================================================
    API
@@ -901,9 +901,6 @@ function BranchScreen({
   const [selected, setSelected] =
     useState(null);
 
-  const readyToEnterRef =
-    useRef(null);
-
   async function loadBranches() {
     setLoading(true);
     setError("");
@@ -1254,29 +1251,11 @@ function BranchScreen({
                               ? "selected"
                               : ""
                           }`}
-                          onClick={() => {
+                          onClick={() =>
                             setSelected(
                               branch
-                            );
-
-                            window.requestAnimationFrame(
-                              () => {
-                                window.setTimeout(
-                                  () => {
-                                    readyToEnterRef.current?.scrollIntoView(
-                                      {
-                                        behavior:
-                                          "smooth",
-                                        block:
-                                          "center",
-                                      }
-                                    );
-                                  },
-                                  150
-                                );
-                              }
-                            );
-                          }}
+                            )
+                          }
                           initial={{
                             opacity: 0,
                             x: -15,
@@ -1356,7 +1335,6 @@ function BranchScreen({
                 <AnimatePresence>
                   {selected && (
                     <motion.div
-                      ref={readyToEnterRef}
                       className="branch-selection-footer"
                       initial={{
                         opacity: 0,
@@ -1775,6 +1753,13 @@ function App() {
   ======================================================= */
 
   function portalClick(portal) {
+    if (portal.id === "admin") {
+      setActivePortal(null);
+      setSelectedBrand(null);
+      setPage("admin-brands");
+      return;
+    }
+
     if (portal.id === "staff") {
       setActivePortal(null);
 
@@ -1789,30 +1774,23 @@ function App() {
   /* =======================================================
      BRAND
   ======================================================= */
-function chooseBrand(brand) {
-  setSelectedBrand(brand);
 
-  setSelectedBranch(null);
+  function chooseBrand(brand) {
+    /*
+      BART IS LIVE.
 
-  setAuthenticatedBranch(null);
+      GLOR + MOOMA are kept
+      in the UI but backend comes later.
+    */
 
-  
-  /*
-    MOOMA IS NOW ITS OWN
-    INDEPENDENT FRONTEND SYSTEM.
-  */
-  if (brand.id === "mooma") {
-    setPage("mooma");
+    setSelectedBrand(brand);
 
-    return;
+    setSelectedBranch(null);
+
+    setAuthenticatedBranch(null);
+
+    setPage("branches");
   }
-
-  /*
-    KEEP EXISTING BART / OTHER
-    FLOW UNCHANGED.
-  */
-  setPage("branches");
-}
 
   /* =======================================================
      BRANCH
@@ -1922,6 +1900,43 @@ function chooseBrand(brand) {
         </motion.div>
       )}
 
+      {/* ADMIN BRAND GATEWAY */}
+
+      {page === "admin-brands" && (
+        <AdminBrandGateway
+          key="admin-brands"
+          onBack={() => setPage("home")}
+          onSelect={(brand) => {
+            setSelectedBrand(brand);
+            if (brand.id === "bart") setPage("bart-admin");
+            else setPage("admin-brand-pending");
+          }}
+        />
+      )}
+
+      {/* BART ADMIN */}
+
+      {page === "bart-admin" && selectedBrand?.id === "bart" && (
+        <BartAdminPortal
+          key="bart-admin"
+          onBack={() => {
+            setSelectedBrand(null);
+            setPage("admin-brands");
+          }}
+        />
+      )}
+
+      {/* MOOMA / GLOR ADMIN DATA CONNECTION PLACEHOLDER */}
+
+      {page === "admin-brand-pending" && selectedBrand && (
+        <motion.div key={`pending-${selectedBrand.id}`} className="admin-pending-screen" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+          <button onClick={() => setPage("admin-brands")}>← ALL BRANDS</button>
+          <span>ADMIN COMMAND / {selectedBrand.name}</span>
+          <h1>{selectedBrand.name} is ready for its dedicated Admin data connection.</h1>
+          <p>The brand stays isolated. Connect its Admin endpoints and this shell can use the same deep command architecture without mixing BART data.</p>
+        </motion.div>
+      )}
+
       {/* BRAND SELECTION */}
 
       {page === "brands" && (
@@ -1935,54 +1950,6 @@ function chooseBrand(brand) {
           }
         />
       )}
-
-
-
-
-
-
-
-
-
-
-
-
-      {/* ======================================================
-    MOOMA INDEPENDENT PORTAL
-====================================================== */}
-
-{page === "mooma" &&
-  selectedBrand?.id ===
-    "mooma" && (
-    <motion.div
-      key="mooma-portal"
-      initial={{
-        opacity: 0,
-      }}
-      animate={{
-        opacity: 1,
-      }}
-      exit={{
-        opacity: 0,
-      }}
-    >
-      <MoomaPortal
-        onBack={() => {
-          setSelectedBrand(
-            null
-          );
-
-          setSelectedBranch(
-            null
-          );
-
-          setPage(
-            "brands"
-          );
-        }}
-      />
-    </motion.div>
-  )}
 
       {/* REAL BRANCH LIST */}
 
