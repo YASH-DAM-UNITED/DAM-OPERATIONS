@@ -27,6 +27,7 @@ import {
 import "./index.css";
 import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
+import MoomaPortal from "./mooma/MoomaPortal.jsx";
 import AdminBrandGateway from "./AdminBrandGateway.jsx";
 import BartAdminPortal from "./BartAdminPortal.jsx";
 
@@ -1777,19 +1778,18 @@ function App() {
   ======================================================= */
 
   function chooseBrand(brand) {
-    /*
-      BART IS LIVE.
-
-      GLOR + MOOMA are kept
-      in the UI but backend comes later.
-    */
-
     setSelectedBrand(brand);
-
     setSelectedBranch(null);
-
     setAuthenticatedBranch(null);
 
+    // MOOMA already has its own complete operational portal.
+    // Keep it isolated from the BART branch/login flow.
+    if (brand.id === "mooma") {
+      setPage("mooma-portal");
+      return;
+    }
+
+    // Existing BART/GLOR flow remains untouched.
     setPage("branches");
   }
 
@@ -1949,6 +1949,20 @@ function App() {
           selectBrand={
             chooseBrand
           }
+        />
+      )}
+
+      {/* MOOMA STAFF PORTAL — EXISTING MOOMA OPERATIONS */}
+
+      {page === "mooma-portal" && selectedBrand?.id === "mooma" && (
+        <MoomaPortal
+          key="mooma-portal"
+          onBack={() => {
+            setSelectedBrand(null);
+            setSelectedBranch(null);
+            setAuthenticatedBranch(null);
+            setPage("brands");
+          }}
         />
       )}
 
