@@ -6222,10 +6222,27 @@ function adminProcessStock(stockResults, selectedDate, branchNames) {
   }
 
   const finalize = (map) => Array.from(map.values())
-    .map((item) => ({
-      ...item,
-      total: branchNames.reduce((sum, name) => sum + adminNumber(item.branches[name]), 0),
-    }))
+    .map((item) => {
+      const total = branchNames.reduce(
+        (sum, name) => sum + adminNumber(item.branches[name]),
+        0
+      );
+
+      // Keep the canonical nested structure AND expose flat aliases used by
+      // the React Admin portal. This makes Item Name / SKU / UOM and every
+      // branch quantity available directly on each row without changing the
+      // existing Google-sheet parser or Staff/MOOMA APIs.
+      return {
+        ...item,
+        "Item Name": item.itemName,
+        SKU: item.sku,
+        UOM: item.uom,
+        Category: item.category,
+        ...item.branches,
+        total,
+        Total: total,
+      };
+    })
     .sort((a, b) => a.itemName.localeCompare(b.itemName));
 
   return { daily: finalize(daily), weekly: finalize(weekly) };
