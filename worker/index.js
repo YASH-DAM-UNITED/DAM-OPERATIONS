@@ -5835,8 +5835,6 @@ const ADMIN_TTL = {
   STOCK_SHEET: 2 * 60 * 1000,
   INVENTORY: 2 * 60 * 1000,
   MANAGERS: 10 * 60 * 1000,
-  TRANSFERS: 20 * 1000,
-  HISTORICAL: 30 * 60 * 1000,
 };
 
 const ADMIN_FOOD_SKUS = new Set([
@@ -5875,62 +5873,17 @@ function adminCacheSet(key, value, ttl) {
   return value;
 }
 
-function adminEdgeCacheRequest(key) {
-  return new Request(`https://dam-admin-cache.internal/${encodeURIComponent(key)}`, { method: "GET" });
-}
-
-async function adminEdgeCacheGet(key) {
-  try {
-    if (typeof caches === "undefined" || !caches.default) return null;
-    const response = await caches.default.match(adminEdgeCacheRequest(key));
-    if (!response) return null;
-    const payload = await response.json();
-    if (!payload || payload.expiresAt <= Date.now()) return null;
-    return payload.value;
-  } catch {
-    return null;
-  }
-}
-
-async function adminEdgeCacheSet(key, value, ttl) {
-  try {
-    if (typeof caches === "undefined" || !caches.default) return;
-    const seconds = Math.max(1, Math.floor(ttl / 1000));
-    const response = new Response(JSON.stringify({ value, expiresAt: Date.now() + ttl }), {
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": `public, max-age=${seconds}`,
-      },
-    });
-    await caches.default.put(adminEdgeCacheRequest(key), response);
-  } catch (error) {
-    console.warn("ADMIN EDGE CACHE PUT FAILED", key, error?.message || error);
-  }
-}
-
 async function adminCached(key, ttl, force, factory) {
   if (!force) {
-    const memoryHit = adminCacheGet(key);
-    if (memoryHit !== null) return { value: memoryHit, source: "MEMORY" };
-
-    // Cloudflare Cache API is shared by requests in the same edge location and
-    // protects Google from a burst of many Admin sessions landing together.
-    const edgeHit = await adminEdgeCacheGet(key);
-    if (edgeHit !== null) {
-      adminCacheSet(key, edgeHit, ttl);
-      return { value: edgeHit, source: "EDGE_CACHE" };
-    }
+    const hit = adminCacheGet(key);
+    if (hit !== null) return { value: hit, source: "MEMORY" };
   }
-
-  // Per-isolate promise coalescing: one Google read per key while a refresh is active.
   if (ADMIN_INFLIGHT.has(key)) {
     return { value: await ADMIN_INFLIGHT.get(key), source: "COALESCED" };
   }
-
   const promise = (async () => {
     const value = await factory();
     adminCacheSet(key, value, ttl);
-    await adminEdgeCacheSet(key, value, ttl);
     return value;
   })();
   ADMIN_INFLIGHT.set(key, promise);
@@ -5964,50 +5917,76 @@ function getAdminGoogleAccounts(env) {
 }
 
 let adminGoogleAccountCounter = 0;
-function rotatedAdminGoogleAccounts(env) {
+
+function orderedAdminGoogleAccounts(env, preferredIndex = null) {
   const accounts = getAdminGoogleAccounts(env);
-  const start = adminGoogleAccountCounter++ % accounts.length;
+  if (accounts.length <= 1) return accounts;
+
+  // Branch reads can explicitly prefer account 1 or 2 so a full Admin load
+  // is distributed evenly. Other Admin reads use round-robin automatically.
+  const start = Number.isInteger(preferredIndex)
+    ? Math.abs(preferredIndex) % accounts.length
+    : adminGoogleAccountCounter++ % accounts.length;
+
   return [...accounts.slice(start), ...accounts.slice(0, start)];
 }
 
-async function adminGoogleRequest(env, factory) {
-  const accounts = rotatedAdminGoogleAccounts(env);
+async function adminGoogleRequest(env, factory, preferredIndex = null) {
+  const accounts = orderedAdminGoogleAccounts(env, preferredIndex);
   let lastError = null;
+
+  // Try the preferred account first. On quota/permission/temporary failure,
+  // automatically fail over to the other Admin service account.
   for (const account of accounts) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const token = await getGoogleAccessToken(account);
         const response = await factory(token, account);
+
         if (response.ok) return response;
+
         const retryable = [429, 500, 502, 503, 504].includes(response.status);
-        if (!retryable) {
-          if (response.status === 403) {
-            lastError = new Error(`${account.id} unavailable (403)`);
-            break;
-          }
-          return response;
-        }
-        lastError = new Error(`${account.id} temporary Google error ${response.status}`);
+        const switchAccount = response.status === 403;
+
+        if (!retryable && !switchAccount) return response;
+
+        lastError = new Error(
+          `${account.id} Google Sheets error ${response.status}`
+        );
+
+        // 403 usually means this account cannot read that sheet. Do not waste
+        // retries on the same account; immediately try the other Admin account.
+        if (switchAccount) break;
       } catch (error) {
         lastError = error;
       }
-      await sleep(250 * Math.pow(2, attempt) + Math.floor(Math.random() * 180));
+
+      if (attempt < 2) {
+        await sleep(250 * Math.pow(2, attempt) + Math.floor(Math.random() * 180));
+      }
     }
   }
+
   throw lastError || new Error("All ADMIN Google service accounts failed.");
 }
 
-async function adminGetSheetValues(env, spreadsheetId, range) {
+async function adminGetSheetValues(env, spreadsheetId, range, preferredIndex = null) {
   const url =
     `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}` +
     `/values/${encodeURIComponent(range)}`;
-  const response = await adminGoogleRequest(env, (token, account) => {
-    console.log("ADMIN GOOGLE READ:", account.id, range);
-    return fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  });
+
+  const response = await adminGoogleRequest(
+    env,
+    (token, account) => {
+      console.log("ADMIN GOOGLE READ:", account.id, range);
+      return fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    },
+    preferredIndex
+  );
+
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data?.error?.message || "Admin Google Sheets read failed.");
@@ -6113,12 +6092,17 @@ async function adminReadBartMaster(env, force = false) {
   return result.value;
 }
 
-async function adminReadBranchStock(env, branch, force = false) {
+async function adminReadBranchStock(env, branch, force = false, preferredAccountIndex = null) {
   const result = await adminCached(
     `admin:stock:${branch.code}`,
     ADMIN_TTL.STOCK_SHEET,
     force,
-    () => adminGetSheetValues(env, branch.sheetId, "Stocks!A:ZZ")
+    () => adminGetSheetValues(
+      env,
+      branch.sheetId,
+      "Stocks!A:ZZ",
+      preferredAccountIndex
+    )
   );
   return { branch, rows: result.value, source: result.source };
 }
@@ -6139,16 +6123,49 @@ async function adminMapLimit(items, limit, mapper) {
 
 async function adminLoadAllStocks(env, force = false) {
   const branches = await adminReadBartMaster(env, force);
-  const results = await adminMapLimit(branches, 6, async (branch) => {
+  const accountCount = getAdminGoogleAccounts(env).length;
+
+  // Keep concurrency controlled. With two Admin accounts and limit 8,
+  // normal branch reads are split approximately 4 + 4 at a time.
+  // This loads the full branch network quickly without blasting Google with
+  // 31 uncontrolled simultaneous requests.
+  const concurrency = accountCount >= 2 ? 8 : 4;
+
+  const results = await adminMapLimit(branches, concurrency, async (branch, index) => {
     try {
-      const stock = await adminReadBranchStock(env, branch, force);
-      return { ...stock, ok: true };
+      const preferredAccountIndex = accountCount >= 2 ? index % accountCount : 0;
+      const stock = await adminReadBranchStock(
+        env,
+        branch,
+        force,
+        preferredAccountIndex
+      );
+      return {
+        ...stock,
+        ok: true,
+        preferredAdminAccount: preferredAccountIndex + 1,
+      };
     } catch (error) {
       console.error("ADMIN BRANCH LOAD FAILED", branch.code, error);
-      return { branch, rows: [], source: "ERROR", ok: false, error: error.message };
+      return {
+        branch,
+        rows: [],
+        source: "ERROR",
+        ok: false,
+        error: error.message,
+      };
     }
   });
-  return { branches, results };
+
+  return {
+    branches,
+    results,
+    adminPool: {
+      accountsConfigured: accountCount,
+      concurrency,
+      mode: accountCount >= 2 ? "DUAL_ACCOUNT_BALANCED" : "SINGLE_ACCOUNT",
+    },
+  };
 }
 
 function adminNumber(value) {
@@ -6170,247 +6187,55 @@ function adminDetectCategory(sku) {
   return "UNCATEGORIZED DETECTED";
 }
 
-function adminIdentityText(value) {
-  return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function adminSkuText(value) {
-  return adminIdentityText(value).replace(/\s+/g, "").toUpperCase();
-}
-
-function adminItemKey(item, sku, uom) {
-  const cleanSku = adminSkuText(sku);
-  const cleanUom = adminIdentityText(uom).toUpperCase();
-  if (cleanSku && !["-", "NONE", "NAN"].includes(cleanSku)) {
-    // SKU + UOM is safer than SKU alone when a source legitimately uses multiple UOMs.
-    return `SKU:${cleanSku}|UOM:${cleanUom}`;
-  }
-  return `ITEM:${adminIdentityText(item).toUpperCase()}|UOM:${cleanUom}`;
-}
-
-function adminDateCandidates(selectedDate) {
-  const raw = adminIdentityText(selectedDate);
-  const out = new Set([raw]);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  if (!m) return out;
-  const [, y, mm, dd] = m;
-  const M = String(Number(mm));
-  const D = String(Number(dd));
-  for (const sep of ["/", "-", "."]) {
-    out.add(`${dd}${sep}${mm}${sep}${y}`);
-    out.add(`${D}${sep}${M}${sep}${y}`);
-    out.add(`${mm}${sep}${dd}${sep}${y}`);
-    out.add(`${M}${sep}${D}${sep}${y}`);
-  }
-  return out;
-}
-
-function adminFindDateColumn(headers, selectedDate) {
-  const wanted = adminIdentityText(selectedDate);
-  let index = headers.findIndex((h) => adminIdentityText(h) === wanted);
-  if (index >= 0) return { index, header: adminIdentityText(headers[index]), exact: true };
-  const candidates = adminDateCandidates(selectedDate);
-  index = headers.findIndex((h) => candidates.has(adminIdentityText(h)));
-  return { index, header: index >= 0 ? adminIdentityText(headers[index]) : "", exact: false };
-}
-
 function adminProcessStock(stockResults, selectedDate, branchNames) {
   const daily = new Map();
   const weekly = new Map();
-  const branchStatus = [];
 
   for (const entry of stockResults) {
-    if (!entry?.ok || !entry.rows?.length) {
-      if (entry?.branch) branchStatus.push({
-        code: entry.branch.code,
-        name: entry.branch.name,
-        sheetLoaded: false,
-        dateFound: false,
-        status: "FETCH_FAILED",
-        error: entry.error || "Branch sheet could not be loaded",
-      });
-      continue;
-    }
-
+    if (!entry?.ok || !entry.rows?.length) continue;
     const raw = entry.rows;
-    const headers = raw[0] || [];
-    const dateMatch = adminFindDateColumn(headers, selectedDate);
+    const headers = (raw[0] || []).map((x) => String(x).trim());
+    const dateIndex = headers.indexOf(selectedDate);
     let mode = null;
-    let dailyMarker = false;
-    let weeklyMarker = false;
-    let dailyRows = 0;
-    let weeklyRows = 0;
 
     for (const row of raw) {
       const text = (row || []).map((x) => String(x)).join(" ").toLowerCase();
-      if (text.includes("daily item")) { mode = "daily"; dailyMarker = true; continue; }
-      if (text.includes("weekly item")) { mode = "weekly"; weeklyMarker = true; continue; }
+      if (text.includes("daily item")) { mode = "daily"; continue; }
+      if (text.includes("weekly item")) { mode = "weekly"; continue; }
       if (!mode) continue;
 
-      const item = adminIdentityText(row?.[0]);
-      const sku = adminSkuText(row?.[1]);
-      const uom = adminIdentityText(row?.[2]).toUpperCase();
+      const item = String(row?.[0] || "").trim();
+      const sku = String(row?.[1] || "").replace(/\s+/g, "").trim();
+      const uom = String(row?.[2] || "").trim();
       if (!item) continue;
 
-      if (mode === "daily") dailyRows++; else weeklyRows++;
-      const key = adminItemKey(item, sku, uom);
+      const key = `${item}_${sku}_${uom}`;
       const target = mode === "daily" ? daily : weekly;
       if (!target.has(key)) {
-        const base = {
-          itemName: item,
-          sku,
-          uom,
-          category: adminDetectCategory(sku),
-          branches: {},
-          availability: {},
-        };
-        for (const name of branchNames) {
-          base.branches[name] = 0;
-          base.availability[name] = "NOT_LOADED";
-        }
+        const base = { itemName: item, sku, uom, category: adminDetectCategory(sku), branches: {} };
+        for (const name of branchNames) base.branches[name] = 0;
         target.set(key, base);
       }
-
-      const record = target.get(key);
-      if (dateMatch.index >= 0) {
-        record.branches[entry.branch.name] = adminNumber(row?.[dateMatch.index]);
-        record.availability[entry.branch.name] = "AVAILABLE";
-      } else {
-        // Keep numeric compatibility for the existing UI, but availability tells Admin
-        // that this is missing data and NOT a confirmed zero stock.
-        record.branches[entry.branch.name] = 0;
-        record.availability[entry.branch.name] = "DATE_MISSING";
-      }
+      const qty = dateIndex >= 0 ? adminNumber(row?.[dateIndex]) : 0;
+      target.get(key).branches[entry.branch.name] = qty;
     }
-
-    const status = !dateMatch.header
-      ? "DATE_MISSING"
-      : (!dailyMarker || !weeklyMarker ? "STRUCTURE_PARTIAL" : "COMPLETE");
-    branchStatus.push({
-      code: entry.branch.code,
-      name: entry.branch.name,
-      sheetLoaded: true,
-      dateFound: dateMatch.index >= 0,
-      matchedHeader: dateMatch.header,
-      exactDateHeader: dateMatch.exact,
-      dailyMarker,
-      weeklyMarker,
-      dailyRows,
-      weeklyRows,
-      status,
-    });
   }
 
   const finalize = (map) => Array.from(map.values())
-    .map((item) => {
-      const total = branchNames.reduce((sum, name) =>
-        item.availability[name] === "AVAILABLE" ? sum + adminNumber(item.branches[name]) : sum, 0);
-      return {
-        ...item,
-        total,
-        // Flat aliases preserve the existing React UI and Streamlit-shaped consumers.
-        "Item Name": item.itemName,
-        SKU: item.sku,
-        UOM: item.uom,
-        Category: item.category,
-        Total: total,
-        ...item.branches,
-      };
-    })
-    .sort((a, b) => String(a.itemName).localeCompare(String(b.itemName), undefined, { sensitivity: "base" }));
+    .map((item) => ({
+      ...item,
+      total: branchNames.reduce((sum, name) => sum + adminNumber(item.branches[name]), 0),
+    }))
+    .sort((a, b) => a.itemName.localeCompare(b.itemName));
 
-  const completeBranches = branchStatus.filter((x) => x.status === "COMPLETE");
-  const missingDateBranches = branchStatus.filter((x) => x.status === "DATE_MISSING");
-  const partialBranches = branchStatus.filter((x) => x.status === "STRUCTURE_PARTIAL");
-  const fetchFailedBranches = branchStatus.filter((x) => x.status === "FETCH_FAILED");
-
-  return {
-    daily: finalize(daily),
-    weekly: finalize(weekly),
-    branchStatus,
-    completeness: {
-      completeCount: completeBranches.length,
-      missingDateCount: missingDateBranches.length,
-      partialCount: partialBranches.length,
-      fetchFailedCount: fetchFailedBranches.length,
-      completeBranches: completeBranches.map((x) => ({ code: x.code, name: x.name })),
-      missingDateBranches: missingDateBranches.map((x) => ({ code: x.code, name: x.name })),
-      partialBranches: partialBranches.map((x) => ({ code: x.code, name: x.name })),
-    },
-  };
-}
-
-function adminTransferDate(value) {
-  const raw = adminIdentityText(value);
-  if (!raw) return "";
-  const iso = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const dmy = raw.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);
-  if (dmy) return `${dmy[3]}-${String(Number(dmy[2])).padStart(2,"0")}-${String(Number(dmy[1])).padStart(2,"0")}`;
-  const parsed = new Date(raw);
-  if (Number.isFinite(parsed.getTime())) {
-    return `${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,"0")}-${String(parsed.getDate()).padStart(2,"0")}`;
-  }
-  return "";
-}
-
-async function adminReadTransfers(env, force = false) {
-  const result = await adminCached("admin:transfers:all", ADMIN_TTL.TRANSFERS, force, async () => {
-    const rows = await adminGetSheetValues(env, env.MASTER_SHEET_ID, "Transfers!A:Z");
-    if (!rows.length) return [];
-    const headers = rows[0].map(normalizeHeader);
-    const idx = (name) => headers.indexOf(normalizeHeader(name));
-    const id = idx("ID"), origin = idx("Origin"), destination = idx("Destination");
-    const items = idx("Items"), quantities = idx("Quantities"), reason = idx("Reason");
-    const status = idx("Status"), timestamp = idx("Timestamp");
-    if (id < 0 || origin < 0 || destination < 0) throw new Error("Required Transfers columns missing.");
-    return rows.slice(1).filter((r) => adminIdentityText(r[id])).map((r) => ({
-      id: adminIdentityText(r[id]),
-      origin: adminIdentityText(r[origin]),
-      destination: adminIdentityText(r[destination]),
-      items: items >= 0 ? String(r[items] || "") : "",
-      quantities: quantities >= 0 ? String(r[quantities] || "") : "",
-      reason: reason >= 0 ? String(r[reason] || "") : "",
-      status: status >= 0 ? adminIdentityText(r[status]) || "Pending" : "Pending",
-      timestamp: timestamp >= 0 ? adminIdentityText(r[timestamp]) : "",
-    }));
-  });
-  return { source: result.source, rows: result.value };
-}
-
-function adminTransferSummary(transfers, date) {
-  const rows = transfers.filter((t) => adminTransferDate(t.timestamp) === date);
-  const statusCounts = {};
-  const branchActivity = {};
-  for (const t of rows) {
-    const st = adminIdentityText(t.status || "Pending").toUpperCase();
-    statusCounts[st] = (statusCounts[st] || 0) + 1;
-    for (const name of [t.origin, t.destination]) {
-      if (!name) continue;
-      branchActivity[name] = (branchActivity[name] || 0) + 1;
-    }
-  }
-  return {
-    date,
-    count: rows.length,
-    statusCounts,
-    branchActivity,
-    records: rows,
-  };
+  return { daily: finalize(daily), weekly: finalize(weekly) };
 }
 
 async function adminInventory(env, selectedDate, force = false) {
   const date = String(selectedDate || getJeddahYesterdayISO()).trim();
   const cacheKey = `admin:inventory:${date}`;
   const result = await adminCached(cacheKey, ADMIN_TTL.INVENTORY, force, async () => {
-    const [loaded, transferData] = await Promise.all([
-      adminLoadAllStocks(env, force),
-      adminReadTransfers(env, force).catch((error) => ({ source: "ERROR", rows: [], error: error.message })),
-    ]);
+    const loaded = await adminLoadAllStocks(env, force);
     const branchNames = loaded.branches.map((b) => b.name);
     const processed = adminProcessStock(loaded.results, date, branchNames);
     const failedBranches = loaded.results.filter((x) => !x.ok).map((x) => ({
@@ -6424,18 +6249,11 @@ async function adminInventory(env, selectedDate, force = false) {
       branchCount: loaded.branches.length,
       loadedBranchCount: loaded.results.filter((x) => x.ok).length,
       failedBranches,
-      transfers: adminTransferSummary(transferData.rows || [], date),
-      transferSource: transferData.source,
+      adminPool: loaded.adminPool,
       ...processed,
     };
   });
-  return {
-    success: true,
-    source: result.source,
-    generatedAt: new Date().toISOString(),
-    cache: { ttlMs: ADMIN_TTL.INVENTORY, forceRefresh: Boolean(force) },
-    ...result.value,
-  };
+  return { success: true, source: result.source, generatedAt: new Date().toISOString(), ...result.value };
 }
 
 async function adminManagerMapping(env, force = false) {
@@ -6488,58 +6306,22 @@ function adminDateList(startDate, endDate) {
 
 async function adminDateRange(env, startDate, endDate, force = false) {
   const dates = adminDateList(startDate, endDate);
-  const key = `admin:date-range:${startDate}:${endDate}`;
-  const result = await adminCached(key, ADMIN_TTL.HISTORICAL, force, async () => {
-    const loaded = await adminLoadAllStocks(env, force);
-    const branchNames = loaded.branches.map((b) => b.name);
-    const byDate = {};
-    for (const date of dates) byDate[date] = adminProcessStock(loaded.results, date, branchNames);
-
-    // Intelligence is intentionally limited to DRY + MISC. FOOD is consumption-only per Admin plan.
-    const movement = new Map();
-    for (let i = 1; i < dates.length; i++) {
-      const prev = byDate[dates[i - 1]];
-      const curr = byDate[dates[i]];
-      for (const schedule of ["daily", "weekly"]) {
-        const prevMap = new Map((prev[schedule] || []).map((x) => [adminItemKey(x.itemName, x.sku, x.uom), x]));
-        for (const item of curr[schedule] || []) {
-          if (item.category === "FOOD ITEMS") continue;
-          const key2 = adminItemKey(item.itemName, item.sku, item.uom);
-          const old = prevMap.get(key2);
-          if (!old) continue;
-          let absoluteMovement = 0;
-          let netChange = 0;
-          for (const branch of branchNames) {
-            if (item.availability?.[branch] !== "AVAILABLE" || old.availability?.[branch] !== "AVAILABLE") continue;
-            const delta = adminNumber(item.branches[branch]) - adminNumber(old.branches[branch]);
-            absoluteMovement += Math.abs(delta);
-            netChange += delta;
-          }
-          const row = movement.get(key2) || {
-            itemName: item.itemName, sku: item.sku, uom: item.uom,
-            category: item.category, schedule, absoluteMovement: 0, netChange: 0, observations: 0,
-          };
-          row.absoluteMovement += absoluteMovement;
-          row.netChange += netChange;
-          row.observations += 1;
-          movement.set(key2, row);
-        }
-      }
-    }
-    const intelligence = Array.from(movement.values()).sort((a,b) => b.absoluteMovement - a.absoluteMovement);
-    return {
-      startDate, endDate, dates,
-      branches: loaded.branches.map((b) => ({ code: b.code, name: b.name })),
-      failedBranches: loaded.results.filter((x) => !x.ok).map((x) => ({ code: x.branch.code, name: x.branch.name, error: x.error })),
-      byDate,
-      intelligence: {
-        dryAndMiscOnly: true,
-        fastestMovement: intelligence.slice(0, 50),
-        slowestMovement: [...intelligence].sort((a,b) => a.absoluteMovement - b.absoluteMovement).slice(0, 50),
-      },
-    };
-  });
-  return { success: true, source: result.source, generatedAt: new Date().toISOString(), ...result.value };
+  const loaded = await adminLoadAllStocks(env, force);
+  const branchNames = loaded.branches.map((b) => b.name);
+  const byDate = {};
+  for (const date of dates) {
+    byDate[date] = adminProcessStock(loaded.results, date, branchNames);
+  }
+  return {
+    success: true,
+    startDate,
+    endDate,
+    dates,
+    branches: loaded.branches.map((b) => ({ code: b.code, name: b.name })),
+    failedBranches: loaded.results.filter((x) => !x.ok).map((x) => ({ code: x.branch.code, name: x.branch.name, error: x.error })),
+    byDate,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 function clearAdminCache() {
