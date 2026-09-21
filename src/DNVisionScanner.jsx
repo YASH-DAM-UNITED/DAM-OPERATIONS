@@ -10,8 +10,9 @@ import {
 } from "./DNVisionImagePrep";
 
 import {
-  askDNVision,
-} from "./DNVisionEngine";
+  checkDNVisionDevice,
+  getDNVisionDeviceSummary,
+} from "./DNVisionDeviceCheck";
 
 
 export default function DNVisionScanner({
@@ -35,16 +36,13 @@ export default function DNVisionScanner({
   const [status, setStatus] =
     useState("Waiting for delivery note");
 
-  const [aiRunning, setAiRunning] =
+  const [deviceChecking, setDeviceChecking] =
     useState(false);
 
-  const [aiProgress, setAiProgress] =
+  const [deviceResult, setDeviceResult] =
     useState(null);
 
-  const [aiAnswer, setAiAnswer] =
-    useState("");
-
-  const [aiError, setAiError] =
+  const [deviceError, setDeviceError] =
     useState("");
 
 
@@ -64,13 +62,106 @@ export default function DNVisionScanner({
 
 
   /* ============================================================
+     RUN DEVICE CHECK
+  ============================================================ */
+
+  async function runDeviceCheck() {
+    if (deviceChecking) {
+      return;
+    }
+
+    try {
+      setDeviceChecking(true);
+
+      setDeviceResult(null);
+
+      setDeviceError("");
+
+      setStatus(
+        "Checking device AI capabilities..."
+      );
+
+
+      const result =
+        await checkDNVisionDevice();
+
+
+      const summary =
+        getDNVisionDeviceSummary(
+          result
+        );
+
+
+      console.log(
+        "DNVision device result:",
+        result
+      );
+
+
+      console.log(
+        "DNVision device summary:",
+        summary
+      );
+
+
+      setDeviceResult(
+        summary
+      );
+
+
+      if (
+        summary?.mode ===
+        "WEBGPU"
+      ) {
+        setStatus(
+          "Device check complete — WebGPU available"
+        );
+      }
+
+      else if (
+        summary?.mode ===
+        "WASM"
+      ) {
+        setStatus(
+          "Device check complete — WASM fallback available"
+        );
+      }
+
+      else {
+        setStatus(
+          "Device check complete — local AI unsupported"
+        );
+      }
+
+    } catch (error) {
+      console.error(
+        "DNVision device check error:",
+        error
+      );
+
+      setDeviceError(
+        error?.message ||
+          "Device check failed"
+      );
+
+      setStatus(
+        "Device check failed"
+      );
+
+    } finally {
+      setDeviceChecking(false);
+    }
+  }
+
+
+  /* ============================================================
      OPEN CAMERA / GALLERY
   ============================================================ */
 
   function openCamera() {
     if (
       processing ||
-      aiRunning
+      deviceChecking
     ) {
       return;
     }
@@ -103,16 +194,23 @@ export default function DNVisionScanner({
       return;
     }
 
+
     if (imagePreview) {
       URL.revokeObjectURL(
         imagePreview
       );
     }
 
-    const previewURL =
-      URL.createObjectURL(file);
 
-    setImageFile(file);
+    const previewURL =
+      URL.createObjectURL(
+        file
+      );
+
+
+    setImageFile(
+      file
+    );
 
     setImagePreview(
       previewURL
@@ -121,13 +219,6 @@ export default function DNVisionScanner({
     setPreparedImage(
       null
     );
-
-    // Reset previous AI result
-    setAiAnswer("");
-
-    setAiError("");
-
-    setAiProgress(null);
 
     setStatus(
       "Delivery note image ready"
@@ -142,16 +233,18 @@ export default function DNVisionScanner({
   function removeImage() {
     if (
       processing ||
-      aiRunning
+      deviceChecking
     ) {
       return;
     }
+
 
     if (imagePreview) {
       URL.revokeObjectURL(
         imagePreview
       );
     }
+
 
     setImageFile(
       null
@@ -165,15 +258,10 @@ export default function DNVisionScanner({
       null
     );
 
-    setAiAnswer("");
-
-    setAiError("");
-
-    setAiProgress(null);
-
     setStatus(
       "Waiting for delivery note"
     );
+
 
     if (inputRef.current) {
       inputRef.current.value =
@@ -195,6 +283,7 @@ export default function DNVisionScanner({
       return;
     }
 
+
     try {
       setProcessing(
         true
@@ -204,43 +293,44 @@ export default function DNVisionScanner({
         null
       );
 
-      setAiAnswer("");
-
-      setAiError("");
-
-      setAiProgress(null);
-
       setStatus(
         "Preparing delivery note image..."
       );
+
 
       const result =
         await prepareDNVisionImage(
           imageFile
         );
 
+
       setPreparedImage(
         result
       );
+
 
       console.log(
         "DNVision prepared image:",
         result
       );
 
+
       setStatus(
         "Image preparation successful"
       );
+
     } catch (error) {
       console.error(
         "DNVision preparation error:",
         error
       );
 
+
       setStatus(
         error?.message ||
           "Image preparation failed"
       );
+
     } finally {
       setProcessing(
         false
@@ -250,123 +340,13 @@ export default function DNVisionScanner({
 
 
   /* ============================================================
-     TEST DNVISION AI
-  ============================================================ */
-
-  async function testDNVision() {
-    if (!preparedImage?.blob) {
-      setAiError(
-        "Prepare the delivery note image first."
-      );
-
-      return;
-    }
-
-    if (aiRunning) {
-      return;
-    }
-
-    try {
-      setAiRunning(
-        true
-      );
-
-      setAiAnswer(
-        ""
-      );
-
-      setAiError(
-        ""
-      );
-
-      setAiProgress(
-        null
-      );
-
-      setStatus(
-        "Starting DNVision AI..."
-      );
-
-
-      const result =
-        await askDNVision(
-          preparedImage.blob,
-
-          "What is the delivery note number?",
-
-          (progressInfo) => {
-            console.log(
-              "DNVision progress:",
-              progressInfo
-            );
-
-            if (
-              typeof progressInfo?.progress ===
-              "number"
-            ) {
-              setAiProgress(
-                progressInfo.progress
-              );
-            }
-
-            if (
-              progressInfo?.message
-            ) {
-              setStatus(
-                progressInfo.message
-              );
-            }
-          }
-        );
-
-
-      console.log(
-        "DNVision result:",
-        result
-      );
-
-
-      setAiAnswer(
-        result?.answer ||
-          "No answer detected"
-      );
-
-
-      setStatus(
-        "DNVision scan complete"
-      );
-
-    } catch (error) {
-      console.error(
-        "DNVision AI error:",
-        error
-      );
-
-      setAiError(
-        error?.message ||
-          "DNVision scan failed"
-      );
-
-      setStatus(
-        "DNVision scan failed"
-      );
-
-    } finally {
-      setAiRunning(
-        false
-      );
-    }
-  }
-
-
-  /* ============================================================
-     BACK TO DASHBOARD
+     BACK
   ============================================================ */
 
   function handleBack() {
     if (
       processing ||
-      aiRunning
+      deviceChecking
     ) {
       return;
     }
@@ -393,14 +373,14 @@ export default function DNVisionScanner({
             onClick={handleBack}
             disabled={
               processing ||
-              aiRunning
+              deviceChecking
             }
             style={{
               ...styles.backButton,
 
               opacity:
                 processing ||
-                aiRunning
+                deviceChecking
                   ? 0.5
                   : 1,
             }}
@@ -425,19 +405,23 @@ export default function DNVisionScanner({
             DN
           </div>
 
+
           <div>
 
             <div style={styles.eyebrow}>
               DELIVERY NOTE SYSTEM
             </div>
 
+
             <h1 style={styles.title}>
               DNVision
             </h1>
 
+
             <p style={styles.subtitle}>
               Scan and verify delivery
               notes for{" "}
+
               <strong>
                 {branch?.name ||
                   "BART Branch"}
@@ -449,7 +433,192 @@ export default function DNVisionScanner({
         </div>
 
 
-        {/* MAIN CARD */}
+        {/* ====================================================
+            DEVICE CHECK
+        ==================================================== */}
+
+        <div style={styles.deviceCard}>
+
+          <div style={styles.deviceHeader}>
+
+            <div>
+
+              <div style={styles.sectionLabel}>
+                LOCAL AI CHECK
+              </div>
+
+
+              <h2 style={styles.deviceTitle}>
+                DNVision Device Check
+              </h2>
+
+
+              <p style={styles.deviceDescription}>
+                Check whether this device
+                can run DNVision locally
+                without a paid AI API.
+              </p>
+
+            </div>
+
+
+            {deviceResult && (
+
+              <div
+                style={{
+                  ...styles.modeBadge,
+
+                  background:
+                    deviceResult.mode ===
+                    "WEBGPU"
+                      ? "#dcfce7"
+                      : deviceResult.mode ===
+                        "WASM"
+                      ? "#fef3c7"
+                      : "#fee2e2",
+
+                  color:
+                    deviceResult.mode ===
+                    "WEBGPU"
+                      ? "#166534"
+                      : deviceResult.mode ===
+                        "WASM"
+                      ? "#92400e"
+                      : "#991b1b",
+                }}
+              >
+                {deviceResult.mode}
+              </div>
+
+            )}
+
+          </div>
+
+
+          <button
+            type="button"
+            onClick={runDeviceCheck}
+            disabled={deviceChecking}
+            style={{
+              ...styles.primaryButton,
+
+              opacity:
+                deviceChecking
+                  ? 0.6
+                  : 1,
+            }}
+          >
+
+            {deviceChecking
+              ? "Checking Device..."
+              : deviceResult
+              ? "Run Device Check Again"
+              : "Run Device Check"}
+
+          </button>
+
+
+          {/* DEVICE RESULTS */}
+
+          {deviceResult && (
+
+            <div style={styles.deviceResults}>
+
+              <DeviceRow
+                label="Browser"
+                value={
+                  deviceResult.browser
+                }
+              />
+
+
+              <DeviceRow
+                label="WebGPU"
+                value={
+                  deviceResult.webGPU
+                }
+                good={
+                  deviceResult.webGPU ===
+                  "YES"
+                }
+              />
+
+
+              <DeviceRow
+                label="GPU Adapter"
+                value={
+                  deviceResult.gpuAdapter
+                }
+                good={
+                  deviceResult.gpuAdapter ===
+                  "AVAILABLE"
+                }
+              />
+
+
+              <DeviceRow
+                label="WebAssembly"
+                value={
+                  deviceResult.wasm
+                }
+                good={
+                  deviceResult.wasm ===
+                  "YES"
+                }
+              />
+
+
+              <DeviceRow
+                label="CPU Threads"
+                value={
+                  deviceResult.cpuThreads
+                }
+              />
+
+
+              <DeviceRow
+                label="Device Memory"
+                value={
+                  deviceResult.memory
+                }
+              />
+
+
+              <DeviceRow
+                label="Recommended Mode"
+                value={
+                  deviceResult.mode
+                }
+                good={
+                  deviceResult.mode ===
+                  "WEBGPU"
+                }
+              />
+
+
+              <div style={styles.deviceMessage}>
+                {deviceResult.message}
+              </div>
+
+            </div>
+
+          )}
+
+
+          {deviceError && (
+
+            <div style={styles.errorBox}>
+              {deviceError}
+            </div>
+
+          )}
+
+        </div>
+
+
+        {/* ====================================================
+            SCANNER
+        ==================================================== */}
 
         <div style={styles.card}>
 
@@ -465,8 +634,6 @@ export default function DNVisionScanner({
           />
 
 
-          {/* EMPTY STATE */}
-
           {!imagePreview && (
 
             <div style={styles.emptyState}>
@@ -475,9 +642,11 @@ export default function DNVisionScanner({
                 📄
               </div>
 
+
               <h2 style={styles.emptyTitle}>
                 Scan Delivery Note
               </h2>
+
 
               <p style={styles.emptyText}>
                 Capture the complete
@@ -487,12 +656,11 @@ export default function DNVisionScanner({
                 details are visible.
               </p>
 
+
               <button
                 type="button"
                 onClick={openCamera}
-                style={
-                  styles.primaryButton
-                }
+                style={styles.primaryButton}
               >
                 Take / Select Photo
               </button>
@@ -502,8 +670,6 @@ export default function DNVisionScanner({
           )}
 
 
-          {/* ORIGINAL IMAGE PREVIEW */}
-
           {imagePreview && (
 
             <>
@@ -512,14 +678,13 @@ export default function DNVisionScanner({
                 DELIVERY NOTE PHOTO
               </div>
 
+
               <div style={styles.previewBox}>
 
                 <img
                   src={imagePreview}
                   alt="Delivery note"
-                  style={
-                    styles.previewImage
-                  }
+                  style={styles.previewImage}
                 />
 
               </div>
@@ -530,19 +695,8 @@ export default function DNVisionScanner({
                 <button
                   type="button"
                   onClick={openCamera}
-                  disabled={
-                    processing ||
-                    aiRunning
-                  }
-                  style={{
-                    ...styles.secondaryButton,
-
-                    opacity:
-                      processing ||
-                      aiRunning
-                        ? 0.5
-                        : 1,
-                  }}
+                  disabled={processing}
+                  style={styles.secondaryButton}
                 >
                   Change Photo
                 </button>
@@ -551,19 +705,8 @@ export default function DNVisionScanner({
                 <button
                   type="button"
                   onClick={removeImage}
-                  disabled={
-                    processing ||
-                    aiRunning
-                  }
-                  style={{
-                    ...styles.secondaryButton,
-
-                    opacity:
-                      processing ||
-                      aiRunning
-                        ? 0.5
-                        : 1,
-                  }}
+                  disabled={processing}
+                  style={styles.secondaryButton}
                 >
                   Remove
                 </button>
@@ -574,10 +717,7 @@ export default function DNVisionScanner({
               <button
                 type="button"
                 onClick={prepareImage}
-                disabled={
-                  processing ||
-                  aiRunning
-                }
+                disabled={processing}
                 style={{
                   ...styles.primaryButton,
 
@@ -585,8 +725,7 @@ export default function DNVisionScanner({
                     "14px",
 
                   opacity:
-                    processing ||
-                    aiRunning
+                    processing
                       ? 0.6
                       : 1,
                 }}
@@ -615,13 +754,14 @@ export default function DNVisionScanner({
 
                 background:
                   processing ||
-                  aiRunning
+                  deviceChecking
                     ? "#f59e0b"
                     : preparedImage
                     ? "#22c55e"
                     : "#94a3b8",
               }}
             />
+
 
             <span>
               {status}
@@ -630,7 +770,7 @@ export default function DNVisionScanner({
           </div>
 
 
-          {/* PREPARED IMAGE RESULT */}
+          {/* PREPARED IMAGE */}
 
           {preparedImage && (
 
@@ -640,19 +780,12 @@ export default function DNVisionScanner({
 
                 <div>
 
-                  <div
-                    style={
-                      styles.sectionLabel
-                    }
-                  >
+                  <div style={styles.sectionLabel}>
                     DNVISION IMAGE
                   </div>
 
-                  <h2
-                    style={
-                      styles.resultTitle
-                    }
-                  >
+
+                  <h2 style={styles.resultTitle}>
                     Image preparation
                     successful
                   </h2>
@@ -660,11 +793,7 @@ export default function DNVisionScanner({
                 </div>
 
 
-                <div
-                  style={
-                    styles.successBadge
-                  }
-                >
+                <div style={styles.successBadge}>
                   READY
                 </div>
 
@@ -678,10 +807,12 @@ export default function DNVisionScanner({
                   value={`${preparedImage.originalWidth} × ${preparedImage.originalHeight}`}
                 />
 
+
                 <InfoCard
                   label="Prepared"
                   value={`${preparedImage.width} × ${preparedImage.height}`}
                 />
+
 
                 <InfoCard
                   label="Original Size"
@@ -689,6 +820,7 @@ export default function DNVisionScanner({
                     preparedImage.originalSize
                   )}
                 />
+
 
                 <InfoCard
                   label="Prepared Size"
@@ -703,6 +835,7 @@ export default function DNVisionScanner({
               <div
                 style={{
                   ...styles.sectionLabel,
+
                   marginTop:
                     "22px",
                 }}
@@ -718,131 +851,8 @@ export default function DNVisionScanner({
                     preparedImage.dataUrl
                   }
                   alt="Prepared delivery note"
-                  style={
-                    styles.previewImage
-                  }
+                  style={styles.previewImage}
                 />
-
-              </div>
-
-
-              {/* ==============================================
-                  DNVISION AI TEST
-              ============================================== */}
-
-              <div style={styles.aiSection}>
-
-                <div style={styles.sectionLabel}>
-                  DNVISION AI TEST
-                </div>
-
-
-                <h2 style={styles.aiTitle}>
-                  Read Delivery Note Number
-                </h2>
-
-
-                <p style={styles.aiDescription}>
-                  This first test checks
-                  whether DNVision can read
-                  the delivery note number
-                  from this document.
-                </p>
-
-
-                <button
-                  type="button"
-                  onClick={testDNVision}
-                  disabled={aiRunning}
-                  style={{
-                    ...styles.primaryButton,
-
-                    opacity:
-                      aiRunning
-                        ? 0.6
-                        : 1,
-                  }}
-                >
-
-                  {aiRunning
-                    ? "DNVision Reading..."
-                    : "Test DNVision"}
-
-                </button>
-
-
-                {/* MODEL DOWNLOAD / LOAD PROGRESS */}
-
-                {aiRunning &&
-                  aiProgress !== null && (
-
-                    <div style={styles.progressArea}>
-
-                      <div style={styles.progressTrack}>
-
-                        <div
-                          style={{
-                            ...styles.progressBar,
-
-                            width:
-                              `${Math.max(
-                                0,
-                                Math.min(
-                                  100,
-                                  aiProgress
-                                )
-                              )}%`,
-                          }}
-                        />
-
-                      </div>
-
-
-                      <div style={styles.progressText}>
-                        {Math.max(
-                          0,
-                          Math.min(
-                            100,
-                            aiProgress
-                          )
-                        )}
-                        % loading
-                      </div>
-
-                    </div>
-
-                  )}
-
-
-                {/* AI ANSWER */}
-
-                {aiAnswer && (
-
-                  <div style={styles.answerBox}>
-
-                    <div style={styles.answerLabel}>
-                      DETECTED DELIVERY NOTE NUMBER
-                    </div>
-
-
-                    <div style={styles.answerValue}>
-                      {aiAnswer}
-                    </div>
-
-                  </div>
-
-                )}
-
-
-                {/* AI ERROR */}
-
-                {aiError && (
-
-                  <div style={styles.errorBox}>
-                    {aiError}
-                  </div>
-
-                )}
 
               </div>
 
@@ -853,6 +863,41 @@ export default function DNVisionScanner({
         </div>
 
       </div>
+
+    </div>
+  );
+}
+
+
+/* ============================================================
+   DEVICE RESULT ROW
+============================================================ */
+
+function DeviceRow({
+  label,
+  value,
+  good = false,
+}) {
+  return (
+    <div style={styles.deviceRow}>
+
+      <span style={styles.deviceRowLabel}>
+        {label}
+      </span>
+
+
+      <strong
+        style={{
+          ...styles.deviceRowValue,
+
+          color:
+            good
+              ? "#15803d"
+              : "#0f172a",
+        }}
+      >
+        {value}
+      </strong>
 
     </div>
   );
@@ -873,6 +918,7 @@ function InfoCard({
       <span style={styles.infoLabel}>
         {label}
       </span>
+
 
       <strong style={styles.infoValue}>
         {value}
@@ -1077,6 +1123,163 @@ const styles = {
       1.5,
   },
 
+
+  /* DEVICE CHECK */
+
+  deviceCard: {
+    background:
+      "#ffffff",
+
+    border:
+      "1px solid #e5e7eb",
+
+    borderRadius:
+      "20px",
+
+    padding:
+      "22px",
+
+    marginBottom:
+      "18px",
+
+    boxShadow:
+      "0 10px 35px rgba(15,23,42,0.05)",
+  },
+
+
+  deviceHeader: {
+    display:
+      "flex",
+
+    justifyContent:
+      "space-between",
+
+    alignItems:
+      "flex-start",
+
+    gap:
+      "15px",
+
+    marginBottom:
+      "18px",
+  },
+
+
+  deviceTitle: {
+    margin:
+      0,
+
+    fontSize:
+      "20px",
+
+    color:
+      "#0f172a",
+  },
+
+
+  deviceDescription: {
+    margin:
+      "6px 0 0",
+
+    color:
+      "#64748b",
+
+    fontSize:
+      "13px",
+
+    lineHeight:
+      1.5,
+  },
+
+
+  modeBadge: {
+    padding:
+      "7px 10px",
+
+    borderRadius:
+      "999px",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      "900",
+  },
+
+
+  deviceResults: {
+    marginTop:
+      "18px",
+
+    border:
+      "1px solid #e5e7eb",
+
+    borderRadius:
+      "12px",
+
+    overflow:
+      "hidden",
+  },
+
+
+  deviceRow: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "20px",
+
+    padding:
+      "12px 14px",
+
+    borderBottom:
+      "1px solid #eef2f7",
+  },
+
+
+  deviceRowLabel: {
+    color:
+      "#64748b",
+
+    fontSize:
+      "13px",
+  },
+
+
+  deviceRowValue: {
+    textAlign:
+      "right",
+
+    fontSize:
+      "13px",
+  },
+
+
+  deviceMessage: {
+    padding:
+      "14px",
+
+    background:
+      "#f8fafc",
+
+    color:
+      "#475569",
+
+    fontSize:
+      "13px",
+
+    lineHeight:
+      1.5,
+  },
+
+
+  /* SCANNER */
 
   card: {
     background:
@@ -1420,148 +1623,6 @@ const styles = {
 
     fontSize:
       "14px",
-  },
-
-
-  /* ==========================================================
-     DNVISION AI STYLES
-  ========================================================== */
-
-  aiSection: {
-    marginTop:
-      "24px",
-
-    paddingTop:
-      "22px",
-
-    borderTop:
-      "1px solid #e5e7eb",
-  },
-
-
-  aiTitle: {
-    margin:
-      "0 0 8px",
-
-    fontSize:
-      "19px",
-
-    color:
-      "#0f172a",
-  },
-
-
-  aiDescription: {
-    margin:
-      "0 0 16px",
-
-    color:
-      "#64748b",
-
-    fontSize:
-      "14px",
-
-    lineHeight:
-      1.5,
-  },
-
-
-  progressArea: {
-    marginTop:
-      "14px",
-  },
-
-
-  progressTrack: {
-    width:
-      "100%",
-
-    height:
-      "8px",
-
-    background:
-      "#e2e8f0",
-
-    borderRadius:
-      "999px",
-
-    overflow:
-      "hidden",
-  },
-
-
-  progressBar: {
-    height:
-      "100%",
-
-    background:
-      "#111827",
-
-    transition:
-      "width 0.2s ease",
-  },
-
-
-  progressText: {
-    marginTop:
-      "6px",
-
-    fontSize:
-      "12px",
-
-    color:
-      "#64748b",
-  },
-
-
-  answerBox: {
-    marginTop:
-      "16px",
-
-    padding:
-      "16px",
-
-    borderRadius:
-      "12px",
-
-    background:
-      "#ecfdf5",
-
-    border:
-      "1px solid #a7f3d0",
-  },
-
-
-  answerLabel: {
-    fontSize:
-      "11px",
-
-    fontWeight:
-      "800",
-
-    color:
-      "#047857",
-
-    marginBottom:
-      "6px",
-
-    letterSpacing:
-      "0.04em",
-  },
-
-
-  answerValue: {
-    fontSize:
-      "22px",
-
-    fontWeight:
-      "900",
-
-    color:
-      "#064e3b",
-
-    wordBreak:
-      "break-word",
   },
 
 
