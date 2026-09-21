@@ -1,11 +1,23 @@
 import React, { useRef, useState } from "react";
 
+import {
+  prepareDNVisionImage,
+  formatDNVisionBytes,
+} from "./DNVisionImagePrep";
+
 export default function DNVisionScanner() {
   const inputRef = useRef(null);
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [status, setStatus] = useState("Waiting for delivery note");
+
+  const [preparedImage, setPreparedImage] = useState(null);
+
+  const [status, setStatus] = useState(
+    "Waiting for delivery note"
+  );
+
+  const [processing, setProcessing] = useState(false);
 
   function openCamera() {
     inputRef.current?.click();
@@ -16,13 +28,11 @@ export default function DNVisionScanner() {
 
     if (!file) return;
 
-    // Make sure it is an image
     if (!file.type.startsWith("image/")) {
-      setStatus("Please select an image.");
+      setStatus("Please select a valid image.");
       return;
     }
 
-    // Remove previous preview
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview);
     }
@@ -31,6 +41,12 @@ export default function DNVisionScanner() {
 
     setImageFile(file);
     setImagePreview(previewURL);
+
+    // IMPORTANT:
+    // Clear previous prepared image whenever
+    // a new photo is selected.
+    setPreparedImage(null);
+
     setStatus("Image ready");
   }
 
@@ -41,6 +57,8 @@ export default function DNVisionScanner() {
 
     setImageFile(null);
     setImagePreview("");
+    setPreparedImage(null);
+
     setStatus("Waiting for delivery note");
 
     if (inputRef.current) {
@@ -48,29 +66,64 @@ export default function DNVisionScanner() {
     }
   }
 
-  function startScan() {
+  async function prepareImage() {
     if (!imageFile) {
-      setStatus("Take or select a delivery note first.");
+      setStatus(
+        "Take or select a delivery note first."
+      );
       return;
     }
 
-    // We connect our AI engine here in the next step.
-    console.log("DNVision image:", imageFile);
+    try {
+      setProcessing(true);
+      setPreparedImage(null);
 
-    setStatus("DNVision scanner ready for AI engine");
+      setStatus(
+        "Preparing delivery note image..."
+      );
+
+      const result =
+        await prepareDNVisionImage(imageFile);
+
+      setPreparedImage(result);
+
+      console.log(
+        "DNVision prepared image:",
+        result
+      );
+
+      setStatus(
+        "Image preparation successful"
+      );
+    } catch (error) {
+      console.error(
+        "DNVision preparation error:",
+        error
+      );
+
+      setStatus(
+        error?.message ||
+          "Image preparation failed"
+      );
+    } finally {
+      setProcessing(false);
+    }
   }
 
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <div style={styles.logo}>DN</div>
+        <div style={styles.logo}>
+          DN
+        </div>
 
         <h1 style={styles.title}>
           Delivery Note Vision
         </h1>
 
         <p style={styles.subtitle}>
-          Capture a clear photo of the complete delivery note.
+          Capture a clear photo of the complete
+          delivery note.
         </p>
 
         <input
@@ -97,7 +150,7 @@ export default function DNVisionScanner() {
             <div style={styles.previewBox}>
               <img
                 src={imagePreview}
-                alt="Delivery note preview"
+                alt="Delivery note"
                 style={styles.previewImage}
               />
             </div>
@@ -106,6 +159,7 @@ export default function DNVisionScanner() {
               <button
                 type="button"
                 onClick={openCamera}
+                disabled={processing}
                 style={styles.secondaryButton}
               >
                 Change Photo
@@ -114,6 +168,7 @@ export default function DNVisionScanner() {
               <button
                 type="button"
                 onClick={removeImage}
+                disabled={processing}
                 style={styles.secondaryButton}
               >
                 Remove
@@ -122,10 +177,16 @@ export default function DNVisionScanner() {
 
             <button
               type="button"
-              onClick={startScan}
-              style={styles.scanButton}
+              onClick={prepareImage}
+              disabled={processing}
+              style={{
+                ...styles.scanButton,
+                opacity: processing ? 0.6 : 1,
+              }}
             >
-              Scan Delivery Note
+              {processing
+                ? "Preparing Image..."
+                : "Prepare Image"}
             </button>
           </>
         )}
@@ -133,14 +194,74 @@ export default function DNVisionScanner() {
         <div style={styles.statusBox}>
           <span style={styles.statusDot} />
 
-          <span>
-            {status}
-          </span>
+          <span>{status}</span>
         </div>
+
+        {preparedImage && (
+          <div style={styles.testPanel}>
+            <h2 style={styles.testTitle}>
+              Image Preparation Test
+            </h2>
+
+            <div style={styles.successBox}>
+              ✓ DNVision image preparation is working
+            </div>
+
+            <InfoRow
+              label="Original resolution"
+              value={`${preparedImage.originalWidth} × ${preparedImage.originalHeight}`}
+            />
+
+            <InfoRow
+              label="Prepared resolution"
+              value={`${preparedImage.width} × ${preparedImage.height}`}
+            />
+
+            <InfoRow
+              label="Original size"
+              value={formatDNVisionBytes(
+                preparedImage.originalSize
+              )}
+            />
+
+            <InfoRow
+              label="Prepared size"
+              value={formatDNVisionBytes(
+                preparedImage.processedSize
+              )}
+            />
+
+            <div style={styles.preparedPreviewTitle}>
+              Prepared image
+            </div>
+
+            <div style={styles.previewBox}>
+              <img
+                src={preparedImage.dataUrl}
+                alt="Prepared delivery note"
+                style={styles.previewImage}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+
+function InfoRow({ label, value }) {
+  return (
+    <div style={styles.infoRow}>
+      <span style={styles.infoLabel}>
+        {label}
+      </span>
+
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 
 const styles = {
   page: {
@@ -160,7 +281,8 @@ const styles = {
     borderRadius: "20px",
     padding: "24px",
     boxSizing: "border-box",
-    boxShadow: "0 10px 35px rgba(0,0,0,0.08)",
+    boxShadow:
+      "0 10px 35px rgba(0,0,0,0.08)",
   },
 
   logo: {
@@ -264,5 +386,44 @@ const styles = {
     height: "8px",
     borderRadius: "50%",
     background: "#22c55e",
+  },
+
+  testPanel: {
+    marginTop: "25px",
+    borderTop: "1px solid #e5e7eb",
+    paddingTop: "20px",
+  },
+
+  testTitle: {
+    margin: "0 0 15px",
+    fontSize: "18px",
+  },
+
+  successBox: {
+    padding: "12px",
+    background: "#ecfdf5",
+    border: "1px solid #a7f3d0",
+    borderRadius: "10px",
+    marginBottom: "15px",
+    fontWeight: "600",
+  },
+
+  infoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "15px",
+    padding: "10px 0",
+    borderBottom: "1px solid #f3f4f6",
+    fontSize: "14px",
+  },
+
+  infoLabel: {
+    color: "#6b7280",
+  },
+
+  preparedPreviewTitle: {
+    marginTop: "20px",
+    marginBottom: "8px",
+    fontWeight: "700",
   },
 };
