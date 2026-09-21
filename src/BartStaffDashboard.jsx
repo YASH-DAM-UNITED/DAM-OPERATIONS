@@ -46,6 +46,7 @@ import {
 import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
 import BartStaffSchedule from "./BartStaffSchedule";
+import BartDeliveryNotes from "./BartDeliveryNotes.jsx";
 
 
 /* ============================================================
@@ -1667,7 +1668,7 @@ export default function BartStaffDashboard({
     "delivery-notes"
   ) {
     return (
-      <BartDeliveryNotesAI
+      <BartDeliveryNotes
         branch={branch}
         onBack={() =>
           returnToDashboard()
