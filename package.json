@@ -10,6 +10,7 @@
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.7.6",
     "@vitejs/plugin-react": "^5.2.0",
     "framer-motion": "^12.43.0",
     "lucide-react": "^0.468.0",
