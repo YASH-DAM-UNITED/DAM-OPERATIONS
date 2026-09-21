@@ -14,6 +14,10 @@ import {
   getDNVisionDeviceSummary,
 } from "./DNVisionDeviceCheck";
 
+import {
+  askDNVision,
+} from "./DNVisionEngine";
+
 
 export default function DNVisionScanner({
   branch,
@@ -45,6 +49,18 @@ export default function DNVisionScanner({
   const [deviceError, setDeviceError] =
     useState("");
 
+  const [aiRunning, setAiRunning] =
+    useState(false);
+
+  const [aiProgress, setAiProgress] =
+    useState(null);
+
+  const [aiAnswer, setAiAnswer] =
+    useState("");
+
+  const [aiError, setAiError] =
+    useState("");
+
 
   /* ============================================================
      CLEANUP
@@ -62,11 +78,14 @@ export default function DNVisionScanner({
 
 
   /* ============================================================
-     RUN DEVICE CHECK
+     DEVICE CHECK
   ============================================================ */
 
   async function runDeviceCheck() {
-    if (deviceChecking) {
+    if (
+      deviceChecking ||
+      aiRunning
+    ) {
       return;
     }
 
@@ -155,13 +174,14 @@ export default function DNVisionScanner({
 
 
   /* ============================================================
-     OPEN CAMERA / GALLERY
+     OPEN CAMERA
   ============================================================ */
 
   function openCamera() {
     if (
       processing ||
-      deviceChecking
+      deviceChecking ||
+      aiRunning
     ) {
       return;
     }
@@ -181,6 +201,7 @@ export default function DNVisionScanner({
     if (!file) {
       return;
     }
+
 
     if (
       !file.type?.startsWith(
@@ -220,6 +241,18 @@ export default function DNVisionScanner({
       null
     );
 
+    setAiAnswer(
+      ""
+    );
+
+    setAiError(
+      ""
+    );
+
+    setAiProgress(
+      null
+    );
+
     setStatus(
       "Delivery note image ready"
     );
@@ -233,7 +266,8 @@ export default function DNVisionScanner({
   function removeImage() {
     if (
       processing ||
-      deviceChecking
+      deviceChecking ||
+      aiRunning
     ) {
       return;
     }
@@ -255,6 +289,18 @@ export default function DNVisionScanner({
     );
 
     setPreparedImage(
+      null
+    );
+
+    setAiAnswer(
+      ""
+    );
+
+    setAiError(
+      ""
+    );
+
+    setAiProgress(
       null
     );
 
@@ -290,6 +336,18 @@ export default function DNVisionScanner({
       );
 
       setPreparedImage(
+        null
+      );
+
+      setAiAnswer(
+        ""
+      );
+
+      setAiError(
+        ""
+      );
+
+      setAiProgress(
         null
       );
 
@@ -340,13 +398,155 @@ export default function DNVisionScanner({
 
 
   /* ============================================================
+     RUN DNVISION AI
+  ============================================================ */
+
+  async function testDNVision() {
+    if (!preparedImage?.blob) {
+      setAiError(
+        "Prepare the delivery note image first."
+      );
+
+      return;
+    }
+
+
+    if (
+      aiRunning ||
+      processing
+    ) {
+      return;
+    }
+
+
+    if (
+      deviceResult &&
+      deviceResult.mode !==
+        "WEBGPU"
+    ) {
+      setAiError(
+        "This test requires WebGPU."
+      );
+
+      return;
+    }
+
+
+    try {
+      setAiRunning(
+        true
+      );
+
+      setAiAnswer(
+        ""
+      );
+
+      setAiError(
+        ""
+      );
+
+      setAiProgress(
+        null
+      );
+
+      setStatus(
+        "Starting DNVision WebGPU..."
+      );
+
+
+      const result =
+        await askDNVision(
+          preparedImage.blob,
+
+          [
+            "Look carefully at this delivery note.",
+            "Find the delivery note number.",
+            "Return only the delivery note number.",
+            "Do not explain anything.",
+          ].join(" "),
+
+          (progressInfo) => {
+            console.log(
+              "DNVision progress:",
+              progressInfo
+            );
+
+
+            if (
+              typeof progressInfo?.progress ===
+              "number"
+            ) {
+              setAiProgress(
+                progressInfo.progress
+              );
+            }
+
+
+            if (
+              progressInfo?.message
+            ) {
+              setStatus(
+                progressInfo.message
+              );
+            }
+          }
+        );
+
+
+      console.log(
+        "DNVision result:",
+        result
+      );
+
+
+      const answer =
+        result?.answer?.trim();
+
+
+      setAiAnswer(
+        answer ||
+          "No delivery note number detected"
+      );
+
+
+      setStatus(
+        "DNVision scan complete"
+      );
+
+    } catch (error) {
+      console.error(
+        "DNVision AI error:",
+        error
+      );
+
+
+      setAiError(
+        error?.message ||
+          "DNVision scan failed"
+      );
+
+
+      setStatus(
+        "DNVision scan failed"
+      );
+
+    } finally {
+      setAiRunning(
+        false
+      );
+    }
+  }
+
+
+  /* ============================================================
      BACK
   ============================================================ */
 
   function handleBack() {
     if (
       processing ||
-      deviceChecking
+      deviceChecking ||
+      aiRunning
     ) {
       return;
     }
@@ -373,14 +573,16 @@ export default function DNVisionScanner({
             onClick={handleBack}
             disabled={
               processing ||
-              deviceChecking
+              deviceChecking ||
+              aiRunning
             }
             style={{
               ...styles.backButton,
 
               opacity:
                 processing ||
-                deviceChecking
+                deviceChecking ||
+                aiRunning
                   ? 0.5
                   : 1,
             }}
@@ -444,19 +646,19 @@ export default function DNVisionScanner({
             <div>
 
               <div style={styles.sectionLabel}>
-                LOCAL AI CHECK
+                LOCAL AI
               </div>
 
 
               <h2 style={styles.deviceTitle}>
-                DNVision Device Check
+                Device Capability
               </h2>
 
 
               <p style={styles.deviceDescription}>
-                Check whether this device
-                can run DNVision locally
-                without a paid AI API.
+                DNVision runs locally
+                on this device using
+                browser AI acceleration.
               </p>
 
             </div>
@@ -498,12 +700,16 @@ export default function DNVisionScanner({
           <button
             type="button"
             onClick={runDeviceCheck}
-            disabled={deviceChecking}
+            disabled={
+              deviceChecking ||
+              aiRunning
+            }
             style={{
-              ...styles.primaryButton,
+              ...styles.secondaryFullButton,
 
               opacity:
-                deviceChecking
+                deviceChecking ||
+                aiRunning
                   ? 0.6
                   : 1,
             }}
@@ -512,13 +718,11 @@ export default function DNVisionScanner({
             {deviceChecking
               ? "Checking Device..."
               : deviceResult
-              ? "Run Device Check Again"
+              ? "Check Device Again"
               : "Run Device Check"}
 
           </button>
 
-
-          {/* DEVICE RESULTS */}
 
           {deviceResult && (
 
@@ -594,11 +798,6 @@ export default function DNVisionScanner({
                   "WEBGPU"
                 }
               />
-
-
-              <div style={styles.deviceMessage}>
-                {deviceResult.message}
-              </div>
 
             </div>
 
@@ -695,7 +894,10 @@ export default function DNVisionScanner({
                 <button
                   type="button"
                   onClick={openCamera}
-                  disabled={processing}
+                  disabled={
+                    processing ||
+                    aiRunning
+                  }
                   style={styles.secondaryButton}
                 >
                   Change Photo
@@ -705,7 +907,10 @@ export default function DNVisionScanner({
                 <button
                   type="button"
                   onClick={removeImage}
-                  disabled={processing}
+                  disabled={
+                    processing ||
+                    aiRunning
+                  }
                   style={styles.secondaryButton}
                 >
                   Remove
@@ -717,7 +922,10 @@ export default function DNVisionScanner({
               <button
                 type="button"
                 onClick={prepareImage}
-                disabled={processing}
+                disabled={
+                  processing ||
+                  aiRunning
+                }
                 style={{
                   ...styles.primaryButton,
 
@@ -725,7 +933,8 @@ export default function DNVisionScanner({
                     "14px",
 
                   opacity:
-                    processing
+                    processing ||
+                    aiRunning
                       ? 0.6
                       : 1,
                 }}
@@ -754,7 +963,8 @@ export default function DNVisionScanner({
 
                 background:
                   processing ||
-                  deviceChecking
+                  deviceChecking ||
+                  aiRunning
                     ? "#f59e0b"
                     : preparedImage
                     ? "#22c55e"
@@ -770,7 +980,9 @@ export default function DNVisionScanner({
           </div>
 
 
-          {/* PREPARED IMAGE */}
+          {/* ==================================================
+              PREPARED IMAGE
+          ================================================== */}
 
           {preparedImage && (
 
@@ -856,6 +1068,131 @@ export default function DNVisionScanner({
 
               </div>
 
+
+              {/* ==============================================
+                  DNVISION WEBGPU TEST
+              ============================================== */}
+
+              <div style={styles.aiSection}>
+
+                <div style={styles.sectionLabel}>
+                  DNVISION WEBGPU
+                </div>
+
+
+                <h2 style={styles.aiTitle}>
+                  Test Vision Reading
+                </h2>
+
+
+                <p style={styles.aiDescription}>
+                  DNVision will analyze
+                  this image locally and
+                  attempt to read the
+                  delivery note number.
+                </p>
+
+
+                <button
+                  type="button"
+                  onClick={testDNVision}
+                  disabled={
+                    aiRunning ||
+                    processing
+                  }
+                  style={{
+                    ...styles.aiButton,
+
+                    opacity:
+                      aiRunning ||
+                      processing
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+
+                  {aiRunning
+                    ? "DNVision Reading..."
+                    : "Read With DNVision"}
+
+                </button>
+
+
+                {/* PROGRESS */}
+
+                {aiRunning &&
+                  aiProgress !== null && (
+
+                    <div style={styles.progressArea}>
+
+                      <div style={styles.progressTrack}>
+
+                        <div
+                          style={{
+                            ...styles.progressBar,
+
+                            width:
+                              `${Math.max(
+                                0,
+                                Math.min(
+                                  100,
+                                  aiProgress
+                                )
+                              )}%`,
+                          }}
+                        />
+
+                      </div>
+
+
+                      <div style={styles.progressText}>
+                        {Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            aiProgress
+                          )
+                        )}
+                        %
+                      </div>
+
+                    </div>
+
+                  )}
+
+
+                {/* ANSWER */}
+
+                {aiAnswer && (
+
+                  <div style={styles.answerBox}>
+
+                    <div style={styles.answerLabel}>
+                      DETECTED DELIVERY NOTE NUMBER
+                    </div>
+
+
+                    <div style={styles.answerValue}>
+                      {aiAnswer}
+                    </div>
+
+                  </div>
+
+                )}
+
+
+                {/* ERROR */}
+
+                {aiError && (
+
+                  <div style={styles.errorBox}>
+                    {aiError}
+                  </div>
+
+                )}
+
+              </div>
+
             </div>
 
           )}
@@ -870,7 +1207,7 @@ export default function DNVisionScanner({
 
 
 /* ============================================================
-   DEVICE RESULT ROW
+   DEVICE ROW
 ============================================================ */
 
 function DeviceRow({
@@ -936,719 +1273,419 @@ function InfoCard({
 const styles = {
 
   page: {
-    minHeight:
-      "100vh",
-
-    background:
-      "#f5f7fa",
-
-    padding:
-      "24px 16px 50px",
-
-    boxSizing:
-      "border-box",
-
+    minHeight: "100vh",
+    background: "#f5f7fa",
+    padding: "24px 16px 50px",
+    boxSizing: "border-box",
     fontFamily:
       "Inter, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
   },
 
-
   container: {
-    width:
-      "100%",
-
-    maxWidth:
-      "850px",
-
-    margin:
-      "0 auto",
+    width: "100%",
+    maxWidth: "850px",
+    margin: "0 auto",
   },
-
 
   topBar: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "12px",
-
-    marginBottom:
-      "22px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    marginBottom: "22px",
   },
-
 
   backButton: {
-    border:
-      "1px solid #dbe1e8",
-
-    background:
-      "#ffffff",
-
-    borderRadius:
-      "10px",
-
-    padding:
-      "10px 14px",
-
-    cursor:
-      "pointer",
-
-    fontWeight:
-      "700",
-
-    color:
-      "#334155",
+    border: "1px solid #dbe1e8",
+    background: "#ffffff",
+    borderRadius: "10px",
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: "700",
+    color: "#334155",
   },
-
 
   branchBadge: {
-    padding:
-      "8px 12px",
-
-    borderRadius:
-      "9px",
-
-    background:
-      "#111827",
-
-    color:
-      "#ffffff",
-
-    fontWeight:
-      "800",
-
-    fontSize:
-      "12px",
-
-    letterSpacing:
-      "0.06em",
+    padding: "8px 12px",
+    borderRadius: "9px",
+    background: "#111827",
+    color: "#ffffff",
+    fontWeight: "800",
+    fontSize: "12px",
+    letterSpacing: "0.06em",
   },
-
 
   header: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "16px",
-
-    marginBottom:
-      "24px",
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    marginBottom: "24px",
   },
-
 
   logo: {
-    width:
-      "58px",
-
-    height:
-      "58px",
-
-    flex:
-      "0 0 58px",
-
-    borderRadius:
-      "16px",
-
-    background:
-      "#111827",
-
-    color:
-      "#ffffff",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    fontWeight:
-      "900",
-
-    fontSize:
-      "18px",
+    width: "58px",
+    height: "58px",
+    flex: "0 0 58px",
+    borderRadius: "16px",
+    background: "#111827",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "900",
+    fontSize: "18px",
   },
-
 
   eyebrow: {
-    fontSize:
-      "11px",
-
-    fontWeight:
-      "800",
-
-    letterSpacing:
-      "0.12em",
-
-    color:
-      "#64748b",
-
-    marginBottom:
-      "3px",
+    fontSize: "11px",
+    fontWeight: "800",
+    letterSpacing: "0.12em",
+    color: "#64748b",
+    marginBottom: "3px",
   },
-
 
   title: {
-    margin:
-      0,
-
-    fontSize:
-      "30px",
-
-    color:
-      "#0f172a",
+    margin: 0,
+    fontSize: "30px",
+    color: "#0f172a",
   },
-
 
   subtitle: {
-    margin:
-      "5px 0 0",
-
-    color:
-      "#64748b",
-
-    lineHeight:
-      1.5,
+    margin: "5px 0 0",
+    color: "#64748b",
+    lineHeight: 1.5,
   },
 
 
-  /* DEVICE CHECK */
+  /* DEVICE */
 
   deviceCard: {
-    background:
-      "#ffffff",
-
-    border:
-      "1px solid #e5e7eb",
-
-    borderRadius:
-      "20px",
-
-    padding:
-      "22px",
-
-    marginBottom:
-      "18px",
-
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "20px",
+    padding: "22px",
+    marginBottom: "18px",
     boxShadow:
       "0 10px 35px rgba(15,23,42,0.05)",
   },
 
-
   deviceHeader: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "flex-start",
-
-    gap:
-      "15px",
-
-    marginBottom:
-      "18px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "15px",
+    marginBottom: "18px",
   },
-
 
   deviceTitle: {
-    margin:
-      0,
-
-    fontSize:
-      "20px",
-
-    color:
-      "#0f172a",
+    margin: 0,
+    fontSize: "20px",
+    color: "#0f172a",
   },
-
 
   deviceDescription: {
-    margin:
-      "6px 0 0",
-
-    color:
-      "#64748b",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.5,
+    margin: "6px 0 0",
+    color: "#64748b",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
-
 
   modeBadge: {
-    padding:
-      "7px 10px",
-
-    borderRadius:
-      "999px",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      "900",
+    padding: "7px 10px",
+    borderRadius: "999px",
+    fontSize: "11px",
+    fontWeight: "900",
   },
 
+  secondaryFullButton: {
+    width: "100%",
+    border: "1px solid #d7dde5",
+    borderRadius: "10px",
+    padding: "12px 14px",
+    background: "#ffffff",
+    color: "#334155",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
 
   deviceResults: {
-    marginTop:
-      "18px",
-
-    border:
-      "1px solid #e5e7eb",
-
-    borderRadius:
-      "12px",
-
-    overflow:
-      "hidden",
+    marginTop: "18px",
+    border: "1px solid #e5e7eb",
+    borderRadius: "12px",
+    overflow: "hidden",
   },
-
 
   deviceRow: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "20px",
-
-    padding:
-      "12px 14px",
-
-    borderBottom:
-      "1px solid #eef2f7",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "20px",
+    padding: "12px 14px",
+    borderBottom: "1px solid #eef2f7",
   },
-
 
   deviceRowLabel: {
-    color:
-      "#64748b",
-
-    fontSize:
-      "13px",
+    color: "#64748b",
+    fontSize: "13px",
   },
-
 
   deviceRowValue: {
-    textAlign:
-      "right",
-
-    fontSize:
-      "13px",
-  },
-
-
-  deviceMessage: {
-    padding:
-      "14px",
-
-    background:
-      "#f8fafc",
-
-    color:
-      "#475569",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.5,
+    textAlign: "right",
+    fontSize: "13px",
   },
 
 
   /* SCANNER */
 
   card: {
-    background:
-      "#ffffff",
-
-    border:
-      "1px solid #e5e7eb",
-
-    borderRadius:
-      "20px",
-
-    padding:
-      "24px",
-
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "20px",
+    padding: "24px",
     boxShadow:
       "0 10px 35px rgba(15,23,42,0.06)",
   },
 
-
   emptyState: {
-    textAlign:
-      "center",
-
-    padding:
-      "45px 20px",
+    textAlign: "center",
+    padding: "45px 20px",
   },
-
 
   cameraIcon: {
-    fontSize:
-      "45px",
-
-    marginBottom:
-      "15px",
+    fontSize: "45px",
+    marginBottom: "15px",
   },
-
 
   emptyTitle: {
-    margin:
-      0,
-
-    color:
-      "#0f172a",
-
-    fontSize:
-      "22px",
+    margin: 0,
+    color: "#0f172a",
+    fontSize: "22px",
   },
-
 
   emptyText: {
-    maxWidth:
-      "500px",
-
-    margin:
-      "10px auto 22px",
-
-    color:
-      "#64748b",
-
-    lineHeight:
-      1.6,
+    maxWidth: "500px",
+    margin: "10px auto 22px",
+    color: "#64748b",
+    lineHeight: 1.6,
   },
-
 
   primaryButton: {
-    width:
-      "100%",
-
-    border:
-      "none",
-
-    borderRadius:
-      "11px",
-
-    padding:
-      "15px 18px",
-
-    background:
-      "#111827",
-
-    color:
-      "#ffffff",
-
-    fontSize:
-      "15px",
-
-    fontWeight:
-      "800",
-
-    cursor:
-      "pointer",
+    width: "100%",
+    border: "none",
+    borderRadius: "11px",
+    padding: "15px 18px",
+    background: "#111827",
+    color: "#ffffff",
+    fontSize: "15px",
+    fontWeight: "800",
+    cursor: "pointer",
   },
-
 
   secondaryButton: {
-    flex:
-      1,
-
-    border:
-      "1px solid #d7dde5",
-
-    borderRadius:
-      "10px",
-
-    padding:
-      "12px",
-
-    background:
-      "#ffffff",
-
-    color:
-      "#334155",
-
-    fontWeight:
-      "700",
-
-    cursor:
-      "pointer",
+    flex: 1,
+    border: "1px solid #d7dde5",
+    borderRadius: "10px",
+    padding: "12px",
+    background: "#ffffff",
+    color: "#334155",
+    fontWeight: "700",
+    cursor: "pointer",
   },
-
 
   buttonRow: {
-    display:
-      "flex",
-
-    gap:
-      "10px",
-
-    marginTop:
-      "12px",
+    display: "flex",
+    gap: "10px",
+    marginTop: "12px",
   },
-
 
   sectionLabel: {
-    color:
-      "#64748b",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      "900",
-
-    letterSpacing:
-      "0.11em",
-
-    marginBottom:
-      "8px",
+    color: "#64748b",
+    fontSize: "11px",
+    fontWeight: "900",
+    letterSpacing: "0.11em",
+    marginBottom: "8px",
   },
-
 
   previewBox: {
-    width:
-      "100%",
-
-    overflow:
-      "hidden",
-
-    borderRadius:
-      "14px",
-
-    border:
-      "1px solid #e2e8f0",
-
-    background:
-      "#f8fafc",
+    width: "100%",
+    overflow: "hidden",
+    borderRadius: "14px",
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc",
   },
-
 
   previewImage: {
-    display:
-      "block",
-
-    width:
-      "100%",
-
-    maxHeight:
-      "600px",
-
-    objectFit:
-      "contain",
+    display: "block",
+    width: "100%",
+    maxHeight: "600px",
+    objectFit: "contain",
   },
-
 
   statusBox: {
-    marginTop:
-      "18px",
-
-    padding:
-      "12px 14px",
-
-    background:
-      "#f8fafc",
-
-    border:
-      "1px solid #edf0f4",
-
-    borderRadius:
-      "10px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "9px",
-
-    color:
-      "#475569",
-
-    fontSize:
-      "13px",
+    marginTop: "18px",
+    padding: "12px 14px",
+    background: "#f8fafc",
+    border: "1px solid #edf0f4",
+    borderRadius: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+    color: "#475569",
+    fontSize: "13px",
   },
-
 
   statusDot: {
-    width:
-      "8px",
-
-    height:
-      "8px",
-
-    flex:
-      "0 0 8px",
-
-    borderRadius:
-      "50%",
+    width: "8px",
+    height: "8px",
+    flex: "0 0 8px",
+    borderRadius: "50%",
   },
-
 
   resultPanel: {
-    marginTop:
-      "24px",
-
-    paddingTop:
-      "22px",
-
-    borderTop:
-      "1px solid #e5e7eb",
+    marginTop: "24px",
+    paddingTop: "22px",
+    borderTop: "1px solid #e5e7eb",
   },
-
 
   resultHeader: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "15px",
-
-    marginBottom:
-      "18px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "15px",
+    marginBottom: "18px",
   },
-
 
   resultTitle: {
-    margin:
-      0,
-
-    fontSize:
-      "19px",
-
-    color:
-      "#0f172a",
+    margin: 0,
+    fontSize: "19px",
+    color: "#0f172a",
   },
-
 
   successBadge: {
-    background:
-      "#dcfce7",
-
-    color:
-      "#166534",
-
-    borderRadius:
-      "999px",
-
-    padding:
-      "7px 10px",
-
-    fontWeight:
-      "900",
-
-    fontSize:
-      "11px",
+    background: "#dcfce7",
+    color: "#166534",
+    borderRadius: "999px",
+    padding: "7px 10px",
+    fontWeight: "900",
+    fontSize: "11px",
   },
-
 
   infoGrid: {
-    display:
-      "grid",
-
+    display: "grid",
     gridTemplateColumns:
       "repeat(auto-fit, minmax(150px, 1fr))",
-
-    gap:
-      "10px",
+    gap: "10px",
   },
-
 
   infoCard: {
-    padding:
-      "13px",
-
-    background:
-      "#f8fafc",
-
-    border:
-      "1px solid #edf0f4",
-
-    borderRadius:
-      "10px",
+    padding: "13px",
+    background: "#f8fafc",
+    border: "1px solid #edf0f4",
+    borderRadius: "10px",
   },
-
 
   infoLabel: {
-    display:
-      "block",
-
-    color:
-      "#64748b",
-
-    fontSize:
-      "11px",
-
-    marginBottom:
-      "5px",
+    display: "block",
+    color: "#64748b",
+    fontSize: "11px",
+    marginBottom: "5px",
   },
-
 
   infoValue: {
-    color:
-      "#0f172a",
-
-    fontSize:
-      "14px",
+    color: "#0f172a",
+    fontSize: "14px",
   },
 
 
+  /* AI */
+
+  aiSection: {
+    marginTop: "26px",
+    paddingTop: "24px",
+    borderTop: "1px solid #e5e7eb",
+  },
+
+  aiTitle: {
+    margin: "0 0 8px",
+    color: "#0f172a",
+    fontSize: "20px",
+  },
+
+  aiDescription: {
+    margin: "0 0 17px",
+    color: "#64748b",
+    fontSize: "14px",
+    lineHeight: 1.55,
+  },
+
+  aiButton: {
+    width: "100%",
+    border: "none",
+    borderRadius: "11px",
+    padding: "15px 18px",
+    background: "#0f172a",
+    color: "#ffffff",
+    fontSize: "15px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+
+  progressArea: {
+    marginTop: "15px",
+  },
+
+  progressTrack: {
+    width: "100%",
+    height: "8px",
+    background: "#e2e8f0",
+    borderRadius: "999px",
+    overflow: "hidden",
+  },
+
+  progressBar: {
+    height: "100%",
+    background: "#111827",
+    transition: "width 0.2s ease",
+  },
+
+  progressText: {
+    marginTop: "6px",
+    color: "#64748b",
+    fontSize: "12px",
+    fontWeight: "700",
+  },
+
+  answerBox: {
+    marginTop: "17px",
+    padding: "17px",
+    background: "#ecfdf5",
+    border: "1px solid #a7f3d0",
+    borderRadius: "12px",
+  },
+
+  answerLabel: {
+    color: "#047857",
+    fontSize: "10px",
+    fontWeight: "900",
+    letterSpacing: "0.08em",
+    marginBottom: "7px",
+  },
+
+  answerValue: {
+    color: "#064e3b",
+    fontSize: "22px",
+    fontWeight: "900",
+    wordBreak: "break-word",
+  },
+
   errorBox: {
-    marginTop:
-      "16px",
-
-    padding:
-      "14px",
-
-    borderRadius:
-      "10px",
-
-    background:
-      "#fef2f2",
-
-    border:
-      "1px solid #fecaca",
-
-    color:
-      "#991b1b",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      "600",
+    marginTop: "16px",
+    padding: "14px",
+    borderRadius: "10px",
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    color: "#991b1b",
+    fontSize: "13px",
+    fontWeight: "600",
   },
 };
