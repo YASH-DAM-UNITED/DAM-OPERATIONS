@@ -9,8 +9,8 @@ import {
 
 
 import {
-  AnimatePresence,
   motion,
+  AnimatePresence,
 } from "framer-motion";
 
 import {
