@@ -1,5 +1,8 @@
 import {
-  pipeline,
+  AutoProcessor,
+  AutoTokenizer,
+  AutoModelForVision2Seq,
+  RawImage,
 } from "@huggingface/transformers";
 
 
@@ -8,39 +11,47 @@ import {
 ============================================================ */
 
 const DNVISION_MODEL =
-  "Xenova/donut-base-finetuned-docvqa";
+  "HuggingFaceTB/SmolVLM-256M-Instruct";
+
+const DNVISION_DEVICE =
+  "webgpu";
 
 
 /* ============================================================
    ENGINE CACHE
-
-   Once loaded, keep the model in memory so we do not
-   create a new pipeline for every scan.
 ============================================================ */
 
-let dnVisionPipeline = null;
+let processor = null;
+let tokenizer = null;
+let model = null;
 
 let loadingPromise = null;
 
 
 /* ============================================================
-   LOAD DNVISION ENGINE
+   LOAD ENGINE
 ============================================================ */
 
 export async function loadDNVisionEngine(
   onProgress
 ) {
-
-  if (dnVisionPipeline) {
-
+  if (
+    processor &&
+    tokenizer &&
+    model
+  ) {
     onProgress?.({
       stage: "ready",
       progress: 100,
       message:
-        "DNVision engine ready",
+        "DNVision AI ready",
     });
 
-    return dnVisionPipeline;
+    return {
+      processor,
+      tokenizer,
+      model,
+    };
   }
 
 
@@ -49,117 +60,163 @@ export async function loadDNVisionEngine(
   }
 
 
-  onProgress?.({
-    stage: "starting",
-    progress: 0,
-    message:
-      "Starting DNVision engine...",
-  });
-
-
   loadingPromise =
-    pipeline(
-      "document-question-answering",
-
-      DNVISION_MODEL,
-
-      {
-        progress_callback:
-          (info) => {
-
-            console.log(
-              "DNVision model loading:",
-              info
-            );
-
-
-            let progress = null;
-
-
-            if (
-              typeof info?.progress ===
-              "number"
-            ) {
-              progress =
-                Math.round(
-                  info.progress
-                );
-            }
-
-
-            onProgress?.({
-              stage:
-                "model",
-
-              progress,
-
-              file:
-                info?.file ||
-                "",
-
-              status:
-                info?.status ||
-                "",
-
-              message:
-                progress !== null
-                  ? `Loading DNVision ${progress}%`
-                  : "Loading DNVision AI model...",
-            });
-          },
-      }
+    loadDNVisionModel(
+      onProgress
     );
 
 
   try {
+    return await loadingPromise;
+  } catch (error) {
+    processor = null;
+    tokenizer = null;
+    model = null;
 
-    dnVisionPipeline =
-      await loadingPromise;
+    loadingPromise = null;
+
+    throw error;
+  }
+}
+
+
+/* ============================================================
+   LOAD MODEL FILES
+============================================================ */
+
+async function loadDNVisionModel(
+  onProgress
+) {
+  try {
+    onProgress?.({
+      stage: "starting",
+      progress: 0,
+      message:
+        "Starting DNVision WebGPU...",
+    });
+
+
+    /* --------------------------------------------------------
+       PROCESSOR
+    -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "processor",
+      progress: null,
+      message:
+        "Loading DNVision processor...",
+    });
+
+
+    processor =
+      await AutoProcessor.from_pretrained(
+        DNVISION_MODEL,
+        {
+          progress_callback:
+            createProgressHandler(
+              onProgress,
+              "processor"
+            ),
+        }
+      );
+
+
+    /* --------------------------------------------------------
+       TOKENIZER
+    -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "tokenizer",
+      progress: null,
+      message:
+        "Loading DNVision tokenizer...",
+    });
+
+
+    tokenizer =
+      await AutoTokenizer.from_pretrained(
+        DNVISION_MODEL,
+        {
+          progress_callback:
+            createProgressHandler(
+              onProgress,
+              "tokenizer"
+            ),
+        }
+      );
+
+
+    /* --------------------------------------------------------
+       MODEL
+    -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "model",
+      progress: null,
+      message:
+        "Loading DNVision vision model...",
+    });
+
+
+    model =
+      await AutoModelForVision2Seq.from_pretrained(
+        DNVISION_MODEL,
+        {
+          device:
+            DNVISION_DEVICE,
+
+          /*
+            Use quantized weights where
+            available to reduce memory
+            and download requirements.
+          */
+
+          dtype:
+            "q4",
+
+          progress_callback:
+            createProgressHandler(
+              onProgress,
+              "model"
+            ),
+        }
+      );
 
 
     onProgress?.({
       stage: "ready",
       progress: 100,
       message:
-        "DNVision engine ready",
+        "DNVision WebGPU model ready",
     });
 
 
-    return dnVisionPipeline;
+    return {
+      processor,
+      tokenizer,
+      model,
+    };
 
   } catch (error) {
-
     console.error(
       "DNVision MODEL LOAD ERROR:",
       error
     );
 
 
-    dnVisionPipeline =
-      null;
-
-    loadingPromise =
-      null;
+    processor = null;
+    tokenizer = null;
+    model = null;
 
 
-    /*
-      IMPORTANT:
-      Keep the actual error message.
-
-      This means if anything fails again,
-      the scanner will show us the REAL
-      reason instead of only saying
-      "model could not be loaded".
-    */
-
-    const realMessage =
-      error?.message ||
-      String(error) ||
-      "Unknown model loading error";
+    const message =
+      getErrorMessage(
+        error
+      );
 
 
     throw new Error(
-      `DNVision model load failed: ${realMessage}`
+      `DNVision model load failed: ${message}`
     );
   }
 }
@@ -174,9 +231,7 @@ export async function askDNVision(
   question,
   onProgress
 ) {
-
   if (!preparedBlob) {
-
     throw new Error(
       "No prepared delivery note image."
     );
@@ -184,14 +239,16 @@ export async function askDNVision(
 
 
   if (!question?.trim()) {
-
     throw new Error(
-      "DNVision question is empty."
+      "DNVision instruction is empty."
     );
   }
 
 
   try {
+    /* --------------------------------------------------------
+       LOAD ENGINE
+    -------------------------------------------------------- */
 
     onProgress?.({
       stage: "loading",
@@ -201,194 +258,411 @@ export async function askDNVision(
     });
 
 
-    const pipe =
+    const engine =
       await loadDNVisionEngine(
         onProgress
       );
 
 
+    /* --------------------------------------------------------
+       LOAD IMAGE
+    -------------------------------------------------------- */
+
     onProgress?.({
       stage: "image",
       progress: null,
       message:
-        "Preparing document for AI...",
+        "Loading delivery note image...",
     });
 
 
-    /*
-      Create a temporary browser URL
-      from the processed delivery-note
-      image.
-
-      The Transformers.js document QA
-      pipeline can read this image URL.
-    */
-
-    const imageURL =
-      URL.createObjectURL(
+    const image =
+      await RawImage.fromBlob(
         preparedBlob
       );
 
 
-    try {
+    /* --------------------------------------------------------
+       BUILD PROMPT
+    -------------------------------------------------------- */
 
-      onProgress?.({
-        stage: "inference",
-        progress: null,
-        message:
-          "DNVision is reading the delivery note...",
+    const cleanQuestion =
+      String(question)
+        .replace(
+          /[<>]/g,
+          ""
+        )
+        .trim();
+
+
+    const messages = [
+      {
+        role: "user",
+
+        content: [
+          {
+            type: "image",
+          },
+
+          {
+            type: "text",
+
+            text:
+              cleanQuestion,
+          },
+        ],
+      },
+    ];
+
+
+    let prompt;
+
+
+    /*
+      SmolVLM uses a chat template.
+
+      Use the tokenizer template when
+      available.
+    */
+
+    if (
+      typeof engine.tokenizer
+        .apply_chat_template ===
+      "function"
+    ) {
+      prompt =
+        engine.tokenizer
+          .apply_chat_template(
+            messages,
+            {
+              tokenize: false,
+
+              add_generation_prompt:
+                true,
+            }
+          );
+    } else {
+      /*
+        Safety fallback.
+      */
+
+      prompt =
+        `<|im_start|>User:<image>${cleanQuestion}<end_of_utterance>\nAssistant:`;
+    }
+
+
+    console.log(
+      "DNVision prompt:",
+      prompt
+    );
+
+
+    /* --------------------------------------------------------
+       PROCESS IMAGE
+    -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "processing",
+      progress: null,
+      message:
+        "Preparing image for DNVision...",
+    });
+
+
+    const imageInputs =
+      await engine.processor(
+        image
+      );
+
+
+    /* --------------------------------------------------------
+       TOKENIZE PROMPT
+    -------------------------------------------------------- */
+
+    const textInputs =
+      engine.tokenizer(
+        prompt,
+        {
+          add_special_tokens:
+            false,
+        }
+      );
+
+
+    /* --------------------------------------------------------
+       GENERATE
+    -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "inference",
+      progress: null,
+      message:
+        "DNVision is reading the delivery note...",
+    });
+
+
+    const generatedIds =
+      await engine.model.generate({
+        ...textInputs,
+        ...imageInputs,
+
+        max_new_tokens:
+          100,
+
+        do_sample:
+          false,
       });
 
 
-      const cleanQuestion =
-        String(question)
-          .replace(
-            /[<>]/g,
-            ""
-          )
-          .trim();
+    /* --------------------------------------------------------
+       DECODE
+    -------------------------------------------------------- */
+
+    const decoded =
+      engine.tokenizer
+        .batch_decode(
+          generatedIds,
+          {
+            skip_special_tokens:
+              true,
+          }
+        );
 
 
-      console.log(
-        "DNVision question:",
+    console.log(
+      "DNVision decoded:",
+      decoded
+    );
+
+
+    const fullText =
+      Array.isArray(decoded)
+        ? decoded[0] || ""
+        : String(
+            decoded || ""
+          );
+
+
+    const answer =
+      extractAssistantAnswer(
+        fullText,
         cleanQuestion
       );
 
 
-      const output =
-        await pipe(
-          imageURL,
-          cleanQuestion
-        );
+    console.log(
+      "DNVision answer:",
+      answer
+    );
 
 
-      console.log(
-        "DNVision raw output:",
-        output
-      );
+    onProgress?.({
+      stage: "complete",
+      progress: 100,
+      message:
+        "DNVision scan complete",
+    });
 
 
-      const answer =
-        extractAnswer(
-          output
-        );
+    return {
+      question:
+        cleanQuestion,
 
+      answer,
 
-      onProgress?.({
-        stage: "complete",
-        progress: 100,
-        message:
-          "DNVision scan complete",
-      });
+      raw:
+        fullText,
 
+      model:
+        DNVISION_MODEL,
 
-      return {
-
-        question:
-          cleanQuestion,
-
-        answer,
-
-        raw:
-          output,
-      };
-
-    } finally {
-
-      URL.revokeObjectURL(
-        imageURL
-      );
-    }
+      device:
+        DNVISION_DEVICE,
+    };
 
   } catch (error) {
-
     console.error(
       "DNVision AI ERROR:",
       error
     );
 
 
-    const realMessage =
-      error?.message ||
-      String(error) ||
-      "Unknown DNVision error";
+    const message =
+      getErrorMessage(
+        error
+      );
 
 
     throw new Error(
-      `DNVision failed: ${realMessage}`
+      `DNVision failed: ${message}`
     );
   }
 }
 
 
 /* ============================================================
-   EXTRACT ANSWER
+   EXTRACT ASSISTANT RESPONSE
 ============================================================ */
 
-function extractAnswer(
-  output
+function extractAssistantAnswer(
+  text,
+  question
 ) {
+  let result =
+    String(
+      text || ""
+    ).trim();
 
-  if (!output) {
+
+  if (!result) {
     return "";
   }
 
 
   /*
-    Normal Transformers.js output:
-
-    [
-      {
-        answer: "CKWH/INT/46389"
-      }
-    ]
+    Remove the original question if the
+    decoded output contains the prompt.
   */
 
   if (
-    Array.isArray(output) &&
-    output.length > 0
+    question &&
+    result.includes(
+      question
+    )
   ) {
+    const position =
+      result.lastIndexOf(
+        question
+      );
 
-    const first =
-      output[0];
 
-
-    if (
-      typeof first?.answer ===
-      "string"
-    ) {
-
-      return first.answer.trim();
-    }
+    result =
+      result
+        .slice(
+          position +
+            question.length
+        )
+        .trim();
   }
 
 
   /*
-    Fallback in case a future version
-    returns an object instead.
+    Remove common assistant prefixes.
   */
 
-  if (
-    typeof output?.answer ===
-    "string"
-  ) {
-
-    return output.answer.trim();
-  }
+  result =
+    result.replace(
+      /^(assistant|assistant:)\s*/i,
+      ""
+    );
 
 
-  return "";
+  result =
+    result.replace(
+      /^[:\-\s]+/,
+      ""
+    );
+
+
+  return result.trim();
 }
 
 
 /* ============================================================
-   ENGINE STATUS
+   DOWNLOAD PROGRESS
+============================================================ */
+
+function createProgressHandler(
+  callback,
+  stage
+) {
+  return (info) => {
+    console.log(
+      "DNVision download:",
+      info
+    );
+
+
+    if (!callback) {
+      return;
+    }
+
+
+    let progress =
+      null;
+
+
+    if (
+      typeof info?.progress ===
+      "number"
+    ) {
+      progress =
+        Math.round(
+          info.progress
+        );
+    }
+
+
+    callback({
+      stage,
+
+      progress,
+
+      file:
+        info?.file ||
+        "",
+
+      status:
+        info?.status ||
+        "",
+
+      message:
+        progress !== null
+          ? `Loading DNVision ${progress}%`
+          : `Loading DNVision ${stage}...`,
+    });
+  };
+}
+
+
+/* ============================================================
+   ERROR MESSAGE
+============================================================ */
+
+function getErrorMessage(
+  error
+) {
+  if (
+    typeof error?.message ===
+    "string" &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+
+  try {
+    return JSON.stringify(
+      error
+    );
+  } catch {
+    return String(
+      error ||
+      "Unknown error"
+    );
+  }
+}
+
+
+/* ============================================================
+   STATUS
 ============================================================ */
 
 export function isDNVisionReady() {
-
   return Boolean(
-    dnVisionPipeline
+    processor &&
+    tokenizer &&
+    model
   );
 }
 
@@ -398,16 +672,17 @@ export function isDNVisionReady() {
 ============================================================ */
 
 export function getDNVisionModelInfo() {
-
   return {
-
     id:
       DNVISION_MODEL,
 
+    device:
+      DNVISION_DEVICE,
+
+    dtype:
+      "q4",
+
     loaded:
       isDNVisionReady(),
-
-    task:
-      "document-question-answering",
   };
 }
