@@ -2,6 +2,7 @@ import {
   AutoProcessor,
   AutoModelForVision2Seq,
   RawImage,
+  env,
 } from "@huggingface/transformers";
 
 
@@ -12,16 +13,64 @@ import {
 const MODEL_ID =
   "HuggingFaceTB/SmolVLM-256M-Instruct";
 
+
+/*
+  IMPORTANT
+
+  Transformers.js normally downloads from:
+
+  https://huggingface.co/...
+
+  We instead route model downloads through:
+
+  /api/dnvision-model/...
+
+  This avoids the browser-side Hugging Face
+  fetch/CORS problem we identified.
+*/
+
+env.allowRemoteModels = true;
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
+
+/*
+  remoteHost must be an absolute URL because this
+  code runs inside a Web Worker.
+
+  self.location.origin is our DAM Operations domain.
+*/
+
+env.remoteHost =
+  `${self.location.origin}/api/dnvision-model/`;
+
+
+/*
+  Our Cloudflare route already represents:
+
+  HuggingFaceTB/SmolVLM-256M-Instruct/resolve/main/
+
+  Therefore Transformers.js should NOT append
+  the normal Hugging Face model path again.
+*/
+
+env.remotePathTemplate =
+  "{file}";
+
+
 let processor = null;
 let model = null;
 let loadingPromise = null;
 
 
 /* ============================================================
-   SEND MESSAGE TO MAIN PAGE
+   SEND MESSAGE
 ============================================================ */
 
-function send(type, data = {}) {
+function send(
+  type,
+  data = {}
+) {
   self.postMessage({
     type,
     ...data,
@@ -33,47 +82,55 @@ function send(type, data = {}) {
    PROGRESS
 ============================================================ */
 
-function progressCallback(info) {
+function progressCallback(
+  info
+) {
   console.log(
     "DNVision Worker Model:",
     info
   );
 
+
   let progress = null;
+
 
   if (
     typeof info?.progress ===
     "number"
   ) {
-    progress = Math.max(
-      0,
-      Math.min(
-        100,
-        Math.round(
-          info.progress
+    progress =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            info.progress
+          )
         )
-      )
-    );
+      );
   }
 
 
-  send("progress", {
-    stage:
-      "model-download",
+  send(
+    "progress",
+    {
+      stage:
+        "model-download",
 
-    progress,
+      progress,
 
-    file:
-      info?.file || "",
+      file:
+        info?.file || "",
 
-    status:
-      info?.status || "",
+      status:
+        info?.status || "",
 
-    message:
-      progress !== null
-        ? `Loading DNVision ${progress}%`
-        : "Loading DNVision model...",
-  });
+      message:
+        progress !== null
+          ? `Loading DNVision ${progress}%`
+          : "Loading DNVision model...",
+    }
+  );
 }
 
 
@@ -82,6 +139,7 @@ function progressCallback(info) {
 ============================================================ */
 
 async function loadModel() {
+
   if (
     processor &&
     model
@@ -100,16 +158,38 @@ async function loadModel() {
 
   loadingPromise =
     (async () => {
+
       try {
-        send("progress", {
-          stage:
-            "processor",
 
-          progress: null,
+        console.log(
+          "DNVision remote host:",
+          env.remoteHost
+        );
 
-          message:
-            "Loading DNVision processor...",
-        });
+
+        console.log(
+          "DNVision remote template:",
+          env.remotePathTemplate
+        );
+
+
+        /* ----------------------------------------------------
+           PROCESSOR
+        ---------------------------------------------------- */
+
+        send(
+          "progress",
+          {
+            stage:
+              "processor",
+
+            progress:
+              null,
+
+            message:
+              "Loading DNVision processor...",
+          }
+        );
 
 
         processor =
@@ -118,15 +198,28 @@ async function loadModel() {
           );
 
 
-        send("progress", {
-          stage:
-            "model",
+        console.log(
+          "DNVision processor loaded."
+        );
 
-          progress: null,
 
-          message:
-            "Loading DNVision WebGPU model...",
-        });
+        /* ----------------------------------------------------
+           MODEL
+        ---------------------------------------------------- */
+
+        send(
+          "progress",
+          {
+            stage:
+              "model",
+
+            progress:
+              null,
+
+            message:
+              "Loading DNVision WebGPU model...",
+          }
+        );
 
 
         model =
@@ -153,15 +246,24 @@ async function loadModel() {
           );
 
 
-        send("progress", {
-          stage:
-            "ready",
+        console.log(
+          "DNVision model loaded."
+        );
 
-          progress: 100,
 
-          message:
-            "DNVision model ready",
-        });
+        send(
+          "progress",
+          {
+            stage:
+              "ready",
+
+            progress:
+              100,
+
+            message:
+              "DNVision model ready",
+          }
+        );
 
 
         return {
@@ -170,14 +272,17 @@ async function loadModel() {
         };
 
       } catch (error) {
+
         processor = null;
         model = null;
         loadingPromise = null;
+
 
         console.error(
           "DNVision Worker Load Error:",
           error
         );
+
 
         throw error;
       }
@@ -189,10 +294,13 @@ async function loadModel() {
 
 
 /* ============================================================
-   CONVERT BLOB TO RAW IMAGE
+   BLOB → RAW IMAGE
 ============================================================ */
 
-async function blobToRawImage(blob) {
+async function blobToRawImage(
+  blob
+) {
+
   if (!blob) {
     throw new Error(
       "No delivery note image received."
@@ -214,19 +322,24 @@ async function runVision(
   imageBlob,
   instruction
 ) {
+
   const engine =
     await loadModel();
 
 
-  send("progress", {
-    stage:
-      "image",
+  send(
+    "progress",
+    {
+      stage:
+        "image",
 
-    progress: null,
+      progress:
+        null,
 
-    message:
-      "Preparing delivery note image...",
-  });
+      message:
+        "Preparing delivery note image...",
+    }
+  );
 
 
   const image =
@@ -234,6 +347,10 @@ async function runVision(
       imageBlob
     );
 
+
+  /* ==========================================================
+     CHAT
+  ========================================================== */
 
   const messages = [
     {
@@ -258,20 +375,19 @@ async function runVision(
   ];
 
 
-  /*
-    SmolVLM processor creates the
-    model-specific image placeholders.
-  */
+  send(
+    "progress",
+    {
+      stage:
+        "prompt",
 
-  send("progress", {
-    stage:
-      "prompt",
+      progress:
+        null,
 
-    progress: null,
-
-    message:
-      "Preparing DNVision instruction...",
-  });
+      message:
+        "Preparing DNVision instruction...",
+    }
+  );
 
 
   const text =
@@ -285,24 +401,28 @@ async function runVision(
 
 
   console.log(
-    "DNVision Worker Prompt:",
+    "DNVision prompt:",
     text
   );
 
 
-  /*
-    Process BOTH image and prompt.
-  */
+  /* ==========================================================
+     PROCESS IMAGE + TEXT
+  ========================================================== */
 
-  send("progress", {
-    stage:
-      "processing",
+  send(
+    "progress",
+    {
+      stage:
+        "processing",
 
-    progress: null,
+      progress:
+        null,
 
-    message:
-      "Processing delivery note...",
-  });
+      message:
+        "Processing delivery note...",
+    }
+  );
 
 
   const inputs =
@@ -312,19 +432,23 @@ async function runVision(
     );
 
 
-  /*
-    Generate response.
-  */
+  /* ==========================================================
+     INFERENCE
+  ========================================================== */
 
-  send("progress", {
-    stage:
-      "inference",
+  send(
+    "progress",
+    {
+      stage:
+        "inference",
 
-    progress: null,
+      progress:
+        null,
 
-    message:
-      "DNVision is reading the delivery note...",
-  });
+      message:
+        "DNVision is reading the delivery note...",
+    }
+  );
 
 
   const generatedIds =
@@ -339,21 +463,20 @@ async function runVision(
     });
 
 
-  /*
-    We only want newly-generated tokens.
-
-    The input IDs are normally included
-    at the beginning of generate().
-  */
+  /* ==========================================================
+     REMOVE INPUT TOKENS
+  ========================================================== */
 
   let outputIds =
     generatedIds;
 
 
   try {
+
     const inputLength =
       inputs.input_ids?.dims?.[
-        inputs.input_ids.dims.length - 1
+        inputs.input_ids.dims.length -
+        1
       ];
 
 
@@ -361,6 +484,7 @@ async function runVision(
       inputLength &&
       generatedIds?.slice
     ) {
+
       outputIds =
         generatedIds.slice(
           null,
@@ -370,7 +494,9 @@ async function runVision(
           ]
         );
     }
+
   } catch (error) {
+
     console.warn(
       "DNVision output trimming skipped:",
       error
@@ -378,18 +504,26 @@ async function runVision(
   }
 
 
-  send("progress", {
-    stage:
-      "decode",
+  /* ==========================================================
+     DECODE
+  ========================================================== */
 
-    progress: null,
+  send(
+    "progress",
+    {
+      stage:
+        "decode",
 
-    message:
-      "Decoding DNVision result...",
-  });
+      progress:
+        null,
+
+      message:
+        "Decoding DNVision result...",
+    }
+  );
 
 
-  let decoded =
+  const decoded =
     engine.processor.tokenizer.batch_decode(
       outputIds,
       {
@@ -400,7 +534,9 @@ async function runVision(
 
 
   let answer =
-    Array.isArray(decoded)
+    Array.isArray(
+      decoded
+    )
       ? decoded[0] || ""
       : String(
           decoded || ""
@@ -411,11 +547,9 @@ async function runVision(
     answer.trim();
 
 
-  /*
-    Fallback:
-    if token trimming was unavailable,
-    clean common prompt text.
-  */
+  /* ==========================================================
+     CLEAN OUTPUT
+  ========================================================== */
 
   if (
     instruction &&
@@ -423,6 +557,7 @@ async function runVision(
       instruction
     )
   ) {
+
     const position =
       answer.lastIndexOf(
         instruction
@@ -433,7 +568,7 @@ async function runVision(
       answer
         .slice(
           position +
-            instruction.length
+          instruction.length
         )
         .trim();
   }
@@ -452,22 +587,28 @@ async function runVision(
       .trim();
 
 
-  send("progress", {
-    stage:
-      "complete",
+  send(
+    "progress",
+    {
+      stage:
+        "complete",
 
-    progress: 100,
+      progress:
+        100,
 
-    message:
-      "DNVision scan complete",
-  });
+      message:
+        "DNVision scan complete",
+    }
+  );
 
 
   return {
     answer,
 
     raw:
-      Array.isArray(decoded)
+      Array.isArray(
+        decoded
+      )
         ? decoded
         : [decoded],
 
@@ -481,13 +622,16 @@ async function runVision(
 
 
 /* ============================================================
-   WORKER MESSAGE LISTENER
+   MESSAGE LISTENER
 ============================================================ */
 
 self.addEventListener(
   "message",
 
-  async (event) => {
+  async (
+    event
+  ) => {
+
     const data =
       event.data || {};
 
@@ -501,25 +645,29 @@ self.addEventListener(
     try {
 
       /* ------------------------------------------------------
-         MODEL TEST / PRELOAD
+         LOAD MODEL
       ------------------------------------------------------ */
 
       if (
         type ===
         "load"
       ) {
+
         await loadModel();
 
 
-        send("loaded", {
-          id,
+        send(
+          "loaded",
+          {
+            id,
 
-          model:
-            MODEL_ID,
+            model:
+              MODEL_ID,
 
-          device:
-            "webgpu",
-        });
+            device:
+              "webgpu",
+          }
+        );
 
 
         return;
@@ -527,17 +675,18 @@ self.addEventListener(
 
 
       /* ------------------------------------------------------
-         RUN IMAGE INFERENCE
+         INFERENCE
       ------------------------------------------------------ */
 
       if (
         type ===
         "infer"
       ) {
+
         const instruction =
           String(
             data.instruction ||
-              ""
+            ""
           ).trim();
 
 
@@ -562,11 +711,13 @@ self.addEventListener(
           );
 
 
-        send("result", {
-          id,
-
-          ...result,
-        });
+        send(
+          "result",
+          {
+            id,
+            ...result,
+          }
+        );
 
 
         return;
@@ -585,16 +736,19 @@ self.addEventListener(
       );
 
 
-      send("error", {
-        id,
+      send(
+        "error",
+        {
+          id,
 
-        message:
-          error?.message ||
-          String(
-            error ||
+          message:
+            error?.message ||
+            String(
+              error ||
               "Unknown DNVision error"
-          ),
-      });
+            ),
+        }
+      );
     }
   }
 );
@@ -604,7 +758,10 @@ self.addEventListener(
    WORKER STARTED
 ============================================================ */
 
-send("worker-ready", {
-  message:
-    "DNVision WebGPU worker started",
-});
+send(
+  "worker-ready",
+  {
+    message:
+      "DNVision WebGPU worker started",
+  }
+);
