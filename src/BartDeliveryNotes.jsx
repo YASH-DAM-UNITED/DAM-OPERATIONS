@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft, Camera, CheckCircle2, FileScan, Image as ImageIcon,
-  Loader2, Plus, RefreshCcw, Save, ScanLine, Trash2, TriangleAlert
+  Loader2, Plus, RefreshCcw, Save, ScanLine, Trash2, TriangleAlert, Sun, Moon
 } from "lucide-react";
 import { createWorker } from "tesseract.js";
 import "./BartDeliveryNotes.css";
@@ -426,6 +426,14 @@ function scoreResult(text, items, header) {
 }
 
 export default function BartDeliveryNotes({ branch, onBack }) {
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem("bart-delivery-theme");
+      if (saved === "light" || saved === "dark") return saved;
+    } catch {}
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+  });
+
   const inputRef = useRef(null);
   const previewRef = useRef("");
   const [file, setFile] = useState(null);
@@ -437,6 +445,10 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [successId, setSuccessId] = useState("");
+
+  useEffect(() => {
+    try { localStorage.setItem("bart-delivery-theme", theme); } catch {}
+  }, [theme]);
 
   useEffect(() => () => {
     if (previewRef.current) URL.revokeObjectURL(previewRef.current);
@@ -701,7 +713,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   }
 
   return (
-    <div className="dn-page">
+    <div className={`dn-page dn-theme-${theme}`}>
       <div className="dn-aurora dn-aurora-a" />
       <div className="dn-aurora dn-aurora-b" />
       <header className="dn-topbar">
@@ -710,7 +722,21 @@ export default function BartDeliveryNotes({ branch, onBack }) {
           <div className="dn-brand-icon"><FileScan size={20}/></div>
           <div><div className="dn-eyebrow">DAM OPERATIONS</div><div className="dn-brand-title">Delivery Notes</div></div>
         </div>
-        <div className="dn-branch-pill">{branch?.code || "BRANCH"} · {branch?.name || "Unknown"}</div>
+        <div className="dn-top-actions">
+          <button
+            className="dn-theme-toggle"
+            type="button"
+            onClick={() => setTheme((t) => t === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            <span className="dn-theme-thumb">
+              {theme === "dark" ? <Moon size={15}/> : <Sun size={15}/>}
+            </span>
+            <span>{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
+          <div className="dn-branch-pill">{branch?.code || "BRANCH"} · {branch?.name || "Unknown"}</div>
+        </div>
       </header>
 
       <main className="dn-shell">
