@@ -40,10 +40,19 @@ function uid() {
 }
 
 function stripArabic(v = "") {
+  // IMPORTANT:
+  // Arabic characters are removed from the OCR text only.
+  // The rest of the SAME physical/text row is preserved and parsed normally.
+  // Example:
+  //   "[B018] Code Red Syrup - كورد رد احمر"
+  // becomes:
+  //   "[B018] Code Red Syrup -"
+  // and the row is NOT discarded.
   return String(v)
-    .replace(ARABIC_RE, " ")
-    .replace(/[\u200e\u200f\u200b-\u200d\ufeff]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(ARABIC_RE, "")
+    .replace(/[\u200e\u200f\u200b-\u200d\ufeff]/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s+-\s*$/gm, "")
     .trim();
 }
 
@@ -128,6 +137,7 @@ function productFromText(raw = "") {
     .replace(/(?:^|\s)[A-Z]{1,6}\s*[-_. ]?\s*[0-9O]{2,6}(?=\s|$)/i, " ")
     .split(/\s+-\s+/)[0]
     .replace(/\s+/g, " ")
+    .replace(/[\s\-–—|:;,]+$/g, "")
     .trim();
   return { code, product: text };
 }
@@ -303,6 +313,109 @@ function buildCanvas(img, mode = "contrast") {
   return c;
 }
 
+
+function cropCanvas(source, x0, y0, x1, y1, scale = 1.45) {
+  const sx = Math.max(0, Math.round(source.width * x0));
+  const sy = Math.max(0, Math.round(source.height * y0));
+  const sw = Math.max(1, Math.round(source.width * (x1 - x0)));
+  const sh = Math.max(1, Math.round(source.height * (y1 - y0)));
+  const c = document.createElement("canvas");
+  c.width = Math.round(sw * scale);
+  c.height = Math.round(sh * scale);
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, c.width, c.height);
+
+  // Strong grayscale/contrast pass. This keeps printed text while fading paper shadows.
+  const im = ctx.getImageData(0, 0, c.width, c.height);
+  const d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const v = Math.max(0, Math.min(255, (g - 128) * 1.9 + 150));
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  ctx.putImageData(im, 0, 0);
+  return c;
+}
+
+function cleanOcrLines(text = "") {
+  return stripArabic(text)
+    .split(/\r?\n/)
+    .map((x) => clean(x))
+    .filter(Boolean)
+    .filter((x) => !/^(PRODUCT|ORDERED|DELIVERED)$/i.test(x));
+}
+
+function parseProductLines(text = "") {
+  const lines = cleanOcrLines(text);
+  const rows = [];
+  let pending = "";
+
+  for (const line of lines) {
+    // cleanOcrLines() has already removed Arabic characters only.
+    // Never reject a row merely because its original OCR line contained Arabic.
+    const sku = normalizeSku(line);
+    if (sku) {
+      if (pending && rows.length) {
+        rows[rows.length - 1].product = `${rows[rows.length - 1].product} ${pending}`.trim();
+        pending = "";
+      }
+      const p = productFromText(line);
+      rows.push({ code: p.code || sku, product: p.product || "" });
+    } else if (rows.length && !looksLikeHeader(line)) {
+      // Product names can wrap onto a second OCR line.
+      rows[rows.length - 1].product = `${rows[rows.length - 1].product} ${line}`.trim();
+    }
+  }
+  return rows;
+}
+
+function parseQuantityLines(text = "") {
+  const lines = cleanOcrLines(text);
+  const rows = [];
+  for (const line of lines) {
+    const cell = parseQtyCell(line);
+    if (cell.qty) rows.push(cell);
+  }
+  return rows;
+}
+
+function mergeColumnRows(products, ordered, delivered) {
+  const count = Math.max(products.length, ordered.length, delivered.length);
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const p = products[i] || { code: "", product: "" };
+    const o = ordered[i] || { qty: "", uom: "", size: "" };
+    const d = delivered[i] || { qty: "", uom: "", size: "" };
+    let item = {
+      id: uid(),
+      code: p.code || "",
+      product: p.product || "",
+      orderedQty: o.qty || "",
+      orderedUom: o.uom || "",
+      orderedSize: o.size || "",
+      deliveredQty: d.qty || "",
+      deliveredUom: d.uom || "",
+      deliveredSize: d.size || "",
+      raw: "",
+      needsReview: false,
+    };
+    item = applyLearning(item);
+    item.needsReview = !(
+      item.code &&
+      item.product &&
+      item.orderedQty &&
+      item.orderedUom &&
+      item.deliveredQty &&
+      item.deliveredUom
+    );
+    // Never manufacture a row from quantities alone.
+    if (item.code || item.product) out.push(item);
+  }
+  return out;
+}
+
 function scoreResult(text, items, header) {
   return (items.length * 20) +
     (header.deliveryNoteNumber ? 8 : 0) +
@@ -370,11 +483,15 @@ export default function BartDeliveryNotes({ branch, onBack }) {
 
   async function scanNow() {
     if (!file) return;
-    setError(""); setConfirmed(false); setPhase("scanning");
-    setProgress("Preparing document…"); setProgressPct(2);
+    setError("");
+    setConfirmed(false);
+    setPhase("scanning");
+    setProgress("Preparing document…");
+    setProgressPct(2);
 
     let worker;
     let imageUrl = "";
+
     try {
       const loaded = await loadImage(file);
       imageUrl = loaded.url;
@@ -383,50 +500,130 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       worker = await createWorker("eng", 1, {
         logger: (m) => {
           if (m?.status === "recognizing text" && Number.isFinite(m.progress)) {
-            setProgressPct(Math.max(8, Math.min(95, Math.round(m.progress * 100))));
-            setProgress("Reading document…");
+            setProgressPct((old) =>
+              Math.max(old, Math.min(94, Math.round(8 + m.progress * 20)))
+            );
           }
         },
       });
 
-      const passes = [
-        {name:"enhanced", canvas:buildCanvas(loaded.img, "contrast")},
-        {name:"high contrast", canvas:buildCanvas(loaded.img, "binary")},
-        {name:"original", canvas:buildCanvas(loaded.img, "original")},
-      ];
+      const full = buildCanvas(loaded.img, "contrast");
 
-      let best = null;
-      for (let i=0; i<passes.length; i+=1) {
-        setProgress(`Reading document · pass ${i+1} of ${passes.length}`);
-        await worker.setParameters({
-          preserve_interword_spaces: "1",
-          tessedit_pageseg_mode: "6",
-        });
-        const result = await worker.recognize(passes[i].canvas);
-        const text = result?.data?.text || "";
-        const header = parseHeader(text);
-        const items = parseItems(text);
-        const candidate = {text, header, items, score:scoreResult(text, items, header)};
-        if (!best || candidate.score > best.score) best = candidate;
-        // Strong result: avoid an unnecessary third pass on mobile.
-        if (i >= 1 && best.items.length >= 3 && best.header.deliveryNoteNumber) break;
+      // 1) Header pass. Your DAM note has the document details above the item table.
+      setProgress("Reading delivery note details…");
+      setProgressPct(12);
+      await worker.setParameters({
+        preserve_interword_spaces: "1",
+        tessedit_pageseg_mode: "6",
+      });
+      const headerCanvas = cropCanvas(full, 0.02, 0.25, 0.98, 0.56, 1.25);
+      const headerResult = await worker.recognize(headerCanvas);
+      let headerText = headerResult?.data?.text || "";
+      let header = parseHeader(headerText);
+
+      // If one header field is weak, use the full page as a second source.
+      if (!header.deliveryNoteNumber || !header.sourceLocation || !header.destinationLocation) {
+        const fullResult = await worker.recognize(full);
+        const fullText = fullResult?.data?.text || "";
+        const fallbackHeader = parseHeader(fullText);
+        header = {
+          deliveryNoteNumber: header.deliveryNoteNumber || fallbackHeader.deliveryNoteNumber,
+          shippingDate: header.shippingDate || fallbackHeader.shippingDate,
+          sourceLocation: header.sourceLocation || fallbackHeader.sourceLocation,
+          destinationLocation: header.destinationLocation || fallbackHeader.destinationLocation,
+        };
       }
 
-      const finalItems = (best?.items || []).map((x) => ({
+      /*
+        2) Table pass.
+        The DAM delivery note is a stable 3-column form:
+          PRODUCT | ORDERED | DELIVERED
+
+        Whole-page OCR was the reason the previous build found zero rows:
+        table borders caused Tesseract to merge/split columns unpredictably.
+
+        This build reads each physical column independently. The crop is deliberately
+        a little wider than the printed column so tilted phone photos still fit.
+      */
+      setProgress("Reading product rows…");
+      setProgressPct(38);
+      await worker.setParameters({
+        preserve_interword_spaces: "1",
+        tessedit_pageseg_mode: "6",
+      });
+
+      // The table occupies the middle/lower portion of this DAM form.
+      // Product column ≈ left 62%; ordered ≈ middle 19%; delivered ≈ right 19%.
+      const productCanvas = cropCanvas(full, 0.025, 0.47, 0.635, 0.83, 1.55);
+      const orderedCanvas = cropCanvas(full, 0.59, 0.47, 0.825, 0.83, 1.65);
+      const deliveredCanvas = cropCanvas(full, 0.775, 0.47, 0.985, 0.83, 1.65);
+
+      const productResult = await worker.recognize(productCanvas);
+      setProgress("Reading ordered quantities…");
+      setProgressPct(57);
+      const orderedResult = await worker.recognize(orderedCanvas);
+      setProgress("Reading delivered quantities…");
+      setProgressPct(76);
+      const deliveredResult = await worker.recognize(deliveredCanvas);
+
+      const productText = productResult?.data?.text || "";
+      const orderedText = orderedResult?.data?.text || "";
+      const deliveredText = deliveredResult?.data?.text || "";
+
+      let products = parseProductLines(productText);
+      let ordered = parseQuantityLines(orderedText);
+      let delivered = parseQuantityLines(deliveredText);
+      let finalItems = mergeColumnRows(products, ordered, delivered);
+
+      // 3) Safety fallback for differently cropped/printed notes:
+      // use normal full-page line parsing only if column OCR did not produce products.
+      if (!finalItems.length) {
+        setProgress("Running document fallback…");
+        setProgressPct(88);
+        const original = buildCanvas(loaded.img, "original");
+        const fallback = await worker.recognize(original);
+        const fallbackText = fallback?.data?.text || "";
+        const fallbackHeader = parseHeader(fallbackText);
+        header = {
+          deliveryNoteNumber: header.deliveryNoteNumber || fallbackHeader.deliveryNoteNumber,
+          shippingDate: header.shippingDate || fallbackHeader.shippingDate,
+          sourceLocation: header.sourceLocation || fallbackHeader.sourceLocation,
+          destinationLocation: header.destinationLocation || fallbackHeader.destinationLocation,
+        };
+        finalItems = parseItems(fallbackText);
+      }
+
+      finalItems = finalItems.map((x) => ({
         ...x,
-        needsReview: !(x.code && x.product && x.orderedQty &&
-          x.orderedUom && x.deliveredQty && x.deliveredUom)
+        needsReview: !(
+          x.code &&
+          x.product &&
+          x.orderedQty &&
+          x.orderedUom &&
+          x.deliveredQty &&
+          x.deliveredUom
+        ),
       }));
 
       setNote({
         ...EMPTY_NOTE,
-        ...(best?.header || {}),
+        ...header,
         items: finalItems.length ? finalItems : [blankItem()],
       });
 
       if (!finalItems.length) {
-        setError("No complete item rows were detected. The review screen is open so you can enter/correct the values. For a better scan, keep the paper flat, bright and fill the camera frame.");
+        setError(
+          "The document details were read, but the item table still needs manual review. Retake the photo straight above the complete page with the table sharp and well lit."
+        );
+      } else if (
+        products.length !== ordered.length ||
+        products.length !== delivered.length
+      ) {
+        setError(
+          `Detected ${products.length} product rows, ${ordered.length} ordered rows and ${delivered.length} delivered rows. Please verify the highlighted rows before confirming.`
+        );
       }
+
       setProgressPct(100);
       setProgress("Scan complete");
       setPhase("review");
@@ -434,7 +631,9 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       setError(err?.message || "Could not read this delivery note.");
       setPhase("ready");
     } finally {
-      try { await worker?.terminate(); } catch {}
+      try {
+        await worker?.terminate();
+      } catch {}
       if (imageUrl) URL.revokeObjectURL(imageUrl);
     }
   }
