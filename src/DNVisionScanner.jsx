@@ -43,6 +43,20 @@ export default function DNVisionScanner({
     useState("Waiting for delivery note");
 
 
+
+  const [aiRunning, setAiRunning] =
+  useState(false);
+
+const [aiProgress, setAiProgress] =
+  useState(null);
+
+const [aiAnswer, setAiAnswer] =
+  useState("");
+
+const [aiError, setAiError] =
+  useState("");
+
+
   /* ============================================================
      CLEANUP
   ============================================================ */
