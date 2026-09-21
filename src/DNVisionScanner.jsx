@@ -4,6 +4,17 @@ import React, {
   useState,
 } from "react";
 
+
+
+
+
+import {
+  askDNVision,
+} from "./DNVisionEngine";
+
+
+
+
 import {
   prepareDNVisionImage,
   formatDNVisionBytes,
