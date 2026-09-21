@@ -4,21 +4,14 @@ import React, {
   useState,
 } from "react";
 
-
-
-
-
-import {
-  askDNVision,
-} from "./DNVisionEngine";
-
-
-
-
 import {
   prepareDNVisionImage,
   formatDNVisionBytes,
 } from "./DNVisionImagePrep";
+
+import {
+  askDNVision,
+} from "./DNVisionEngine";
 
 
 export default function DNVisionScanner({
@@ -42,19 +35,17 @@ export default function DNVisionScanner({
   const [status, setStatus] =
     useState("Waiting for delivery note");
 
-
-
   const [aiRunning, setAiRunning] =
-  useState(false);
+    useState(false);
 
-const [aiProgress, setAiProgress] =
-  useState(null);
+  const [aiProgress, setAiProgress] =
+    useState(null);
 
-const [aiAnswer, setAiAnswer] =
-  useState("");
+  const [aiAnswer, setAiAnswer] =
+    useState("");
 
-const [aiError, setAiError] =
-  useState("");
+  const [aiError, setAiError] =
+    useState("");
 
 
   /* ============================================================
@@ -77,7 +68,12 @@ const [aiError, setAiError] =
   ============================================================ */
 
   function openCamera() {
-    if (processing) return;
+    if (
+      processing ||
+      aiRunning
+    ) {
+      return;
+    }
 
     inputRef.current?.click();
   }
@@ -91,7 +87,9 @@ const [aiError, setAiError] =
     const file =
       event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     if (
       !file.type?.startsWith(
@@ -124,6 +122,13 @@ const [aiError, setAiError] =
       null
     );
 
+    // Reset previous AI result
+    setAiAnswer("");
+
+    setAiError("");
+
+    setAiProgress(null);
+
     setStatus(
       "Delivery note image ready"
     );
@@ -135,7 +140,12 @@ const [aiError, setAiError] =
   ============================================================ */
 
   function removeImage() {
-    if (processing) return;
+    if (
+      processing ||
+      aiRunning
+    ) {
+      return;
+    }
 
     if (imagePreview) {
       URL.revokeObjectURL(
@@ -154,6 +164,12 @@ const [aiError, setAiError] =
     setPreparedImage(
       null
     );
+
+    setAiAnswer("");
+
+    setAiError("");
+
+    setAiProgress(null);
 
     setStatus(
       "Waiting for delivery note"
@@ -187,6 +203,12 @@ const [aiError, setAiError] =
       setPreparedImage(
         null
       );
+
+      setAiAnswer("");
+
+      setAiError("");
+
+      setAiProgress(null);
 
       setStatus(
         "Preparing delivery note image..."
@@ -228,11 +250,124 @@ const [aiError, setAiError] =
 
 
   /* ============================================================
+     TEST DNVISION AI
+  ============================================================ */
+
+  async function testDNVision() {
+    if (!preparedImage?.blob) {
+      setAiError(
+        "Prepare the delivery note image first."
+      );
+
+      return;
+    }
+
+    if (aiRunning) {
+      return;
+    }
+
+    try {
+      setAiRunning(
+        true
+      );
+
+      setAiAnswer(
+        ""
+      );
+
+      setAiError(
+        ""
+      );
+
+      setAiProgress(
+        null
+      );
+
+      setStatus(
+        "Starting DNVision AI..."
+      );
+
+
+      const result =
+        await askDNVision(
+          preparedImage.blob,
+
+          "What is the delivery note number?",
+
+          (progressInfo) => {
+            console.log(
+              "DNVision progress:",
+              progressInfo
+            );
+
+            if (
+              typeof progressInfo?.progress ===
+              "number"
+            ) {
+              setAiProgress(
+                progressInfo.progress
+              );
+            }
+
+            if (
+              progressInfo?.message
+            ) {
+              setStatus(
+                progressInfo.message
+              );
+            }
+          }
+        );
+
+
+      console.log(
+        "DNVision result:",
+        result
+      );
+
+
+      setAiAnswer(
+        result?.answer ||
+          "No answer detected"
+      );
+
+
+      setStatus(
+        "DNVision scan complete"
+      );
+
+    } catch (error) {
+      console.error(
+        "DNVision AI error:",
+        error
+      );
+
+      setAiError(
+        error?.message ||
+          "DNVision scan failed"
+      );
+
+      setStatus(
+        "DNVision scan failed"
+      );
+
+    } finally {
+      setAiRunning(
+        false
+      );
+    }
+  }
+
+
+  /* ============================================================
      BACK TO DASHBOARD
   ============================================================ */
 
   function handleBack() {
-    if (processing) {
+    if (
+      processing ||
+      aiRunning
+    ) {
       return;
     }
 
@@ -256,11 +391,23 @@ const [aiError, setAiError] =
           <button
             type="button"
             onClick={handleBack}
-            disabled={processing}
-            style={styles.backButton}
+            disabled={
+              processing ||
+              aiRunning
+            }
+            style={{
+              ...styles.backButton,
+
+              opacity:
+                processing ||
+                aiRunning
+                  ? 0.5
+                  : 1,
+            }}
           >
             ← Back to Dashboard
           </button>
+
 
           <div style={styles.branchBadge}>
             {branch?.code ||
@@ -355,7 +502,7 @@ const [aiError, setAiError] =
           )}
 
 
-          {/* IMAGE PREVIEW */}
+          {/* ORIGINAL IMAGE PREVIEW */}
 
           {imagePreview && (
 
@@ -383,10 +530,19 @@ const [aiError, setAiError] =
                 <button
                   type="button"
                   onClick={openCamera}
-                  disabled={processing}
-                  style={
-                    styles.secondaryButton
+                  disabled={
+                    processing ||
+                    aiRunning
                   }
+                  style={{
+                    ...styles.secondaryButton,
+
+                    opacity:
+                      processing ||
+                      aiRunning
+                        ? 0.5
+                        : 1,
+                  }}
                 >
                   Change Photo
                 </button>
@@ -395,10 +551,19 @@ const [aiError, setAiError] =
                 <button
                   type="button"
                   onClick={removeImage}
-                  disabled={processing}
-                  style={
-                    styles.secondaryButton
+                  disabled={
+                    processing ||
+                    aiRunning
                   }
+                  style={{
+                    ...styles.secondaryButton,
+
+                    opacity:
+                      processing ||
+                      aiRunning
+                        ? 0.5
+                        : 1,
+                  }}
                 >
                   Remove
                 </button>
@@ -409,7 +574,10 @@ const [aiError, setAiError] =
               <button
                 type="button"
                 onClick={prepareImage}
-                disabled={processing}
+                disabled={
+                  processing ||
+                  aiRunning
+                }
                 style={{
                   ...styles.primaryButton,
 
@@ -417,7 +585,8 @@ const [aiError, setAiError] =
                     "14px",
 
                   opacity:
-                    processing
+                    processing ||
+                    aiRunning
                       ? 0.6
                       : 1,
                 }}
@@ -425,6 +594,8 @@ const [aiError, setAiError] =
 
                 {processing
                   ? "Preparing Image..."
+                  : preparedImage
+                  ? "Prepare Again"
                   : "Prepare Image"}
 
               </button>
@@ -443,7 +614,8 @@ const [aiError, setAiError] =
                 ...styles.statusDot,
 
                 background:
-                  processing
+                  processing ||
+                  aiRunning
                     ? "#f59e0b"
                     : preparedImage
                     ? "#22c55e"
@@ -458,7 +630,7 @@ const [aiError, setAiError] =
           </div>
 
 
-          {/* TEST RESULT */}
+          {/* PREPARED IMAGE RESULT */}
 
           {preparedImage && (
 
@@ -473,7 +645,7 @@ const [aiError, setAiError] =
                       styles.sectionLabel
                     }
                   >
-                    DNVISION TEST
+                    DNVISION IMAGE
                   </div>
 
                   <h2
@@ -553,6 +725,127 @@ const [aiError, setAiError] =
 
               </div>
 
+
+              {/* ==============================================
+                  DNVISION AI TEST
+              ============================================== */}
+
+              <div style={styles.aiSection}>
+
+                <div style={styles.sectionLabel}>
+                  DNVISION AI TEST
+                </div>
+
+
+                <h2 style={styles.aiTitle}>
+                  Read Delivery Note Number
+                </h2>
+
+
+                <p style={styles.aiDescription}>
+                  This first test checks
+                  whether DNVision can read
+                  the delivery note number
+                  from this document.
+                </p>
+
+
+                <button
+                  type="button"
+                  onClick={testDNVision}
+                  disabled={aiRunning}
+                  style={{
+                    ...styles.primaryButton,
+
+                    opacity:
+                      aiRunning
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+
+                  {aiRunning
+                    ? "DNVision Reading..."
+                    : "Test DNVision"}
+
+                </button>
+
+
+                {/* MODEL DOWNLOAD / LOAD PROGRESS */}
+
+                {aiRunning &&
+                  aiProgress !== null && (
+
+                    <div style={styles.progressArea}>
+
+                      <div style={styles.progressTrack}>
+
+                        <div
+                          style={{
+                            ...styles.progressBar,
+
+                            width:
+                              `${Math.max(
+                                0,
+                                Math.min(
+                                  100,
+                                  aiProgress
+                                )
+                              )}%`,
+                          }}
+                        />
+
+                      </div>
+
+
+                      <div style={styles.progressText}>
+                        {Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            aiProgress
+                          )
+                        )}
+                        % loading
+                      </div>
+
+                    </div>
+
+                  )}
+
+
+                {/* AI ANSWER */}
+
+                {aiAnswer && (
+
+                  <div style={styles.answerBox}>
+
+                    <div style={styles.answerLabel}>
+                      DETECTED DELIVERY NOTE NUMBER
+                    </div>
+
+
+                    <div style={styles.answerValue}>
+                      {aiAnswer}
+                    </div>
+
+                  </div>
+
+                )}
+
+
+                {/* AI ERROR */}
+
+                {aiError && (
+
+                  <div style={styles.errorBox}>
+                    {aiError}
+                  </div>
+
+                )}
+
+              </div>
+
             </div>
 
           )}
@@ -597,48 +890,72 @@ function InfoCard({
 const styles = {
 
   page: {
-    minHeight: "100vh",
+    minHeight:
+      "100vh",
+
     background:
       "#f5f7fa",
+
     padding:
       "24px 16px 50px",
+
     boxSizing:
       "border-box",
+
     fontFamily:
       "Inter, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
   },
 
 
   container: {
-    width: "100%",
-    maxWidth: "850px",
-    margin: "0 auto",
+    width:
+      "100%",
+
+    maxWidth:
+      "850px",
+
+    margin:
+      "0 auto",
   },
 
 
   topBar: {
-    display: "flex",
-    alignItems: "center",
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
     justifyContent:
       "space-between",
-    gap: "12px",
-    marginBottom: "22px",
+
+    gap:
+      "12px",
+
+    marginBottom:
+      "22px",
   },
 
 
   backButton: {
     border:
       "1px solid #dbe1e8",
+
     background:
       "#ffffff",
+
     borderRadius:
       "10px",
+
     padding:
       "10px 14px",
+
     cursor:
       "pointer",
+
     fontWeight:
       "700",
+
     color:
       "#334155",
   },
@@ -647,16 +964,22 @@ const styles = {
   branchBadge: {
     padding:
       "8px 12px",
+
     borderRadius:
       "9px",
+
     background:
       "#111827",
+
     color:
       "#ffffff",
+
     fontWeight:
       "800",
+
     fontSize:
       "12px",
+
     letterSpacing:
       "0.06em",
   },
@@ -665,10 +988,13 @@ const styles = {
   header: {
     display:
       "flex",
+
     alignItems:
       "center",
+
     gap:
       "16px",
+
     marginBottom:
       "24px",
   },
@@ -677,24 +1003,34 @@ const styles = {
   logo: {
     width:
       "58px",
+
     height:
       "58px",
+
     flex:
       "0 0 58px",
+
     borderRadius:
       "16px",
+
     background:
       "#111827",
+
     color:
       "#ffffff",
+
     display:
       "flex",
+
     alignItems:
       "center",
+
     justifyContent:
       "center",
+
     fontWeight:
       "900",
+
     fontSize:
       "18px",
   },
@@ -703,12 +1039,16 @@ const styles = {
   eyebrow: {
     fontSize:
       "11px",
+
     fontWeight:
       "800",
+
     letterSpacing:
       "0.12em",
+
     color:
       "#64748b",
+
     marginBottom:
       "3px",
   },
@@ -717,8 +1057,10 @@ const styles = {
   title: {
     margin:
       0,
+
     fontSize:
       "30px",
+
     color:
       "#0f172a",
   },
@@ -727,8 +1069,10 @@ const styles = {
   subtitle: {
     margin:
       "5px 0 0",
+
     color:
       "#64748b",
+
     lineHeight:
       1.5,
   },
@@ -737,12 +1081,16 @@ const styles = {
   card: {
     background:
       "#ffffff",
+
     border:
       "1px solid #e5e7eb",
+
     borderRadius:
       "20px",
+
     padding:
       "24px",
+
     boxShadow:
       "0 10px 35px rgba(15,23,42,0.06)",
   },
@@ -751,6 +1099,7 @@ const styles = {
   emptyState: {
     textAlign:
       "center",
+
     padding:
       "45px 20px",
   },
@@ -759,6 +1108,7 @@ const styles = {
   cameraIcon: {
     fontSize:
       "45px",
+
     marginBottom:
       "15px",
   },
@@ -767,8 +1117,10 @@ const styles = {
   emptyTitle: {
     margin:
       0,
+
     color:
       "#0f172a",
+
     fontSize:
       "22px",
   },
@@ -777,10 +1129,13 @@ const styles = {
   emptyText: {
     maxWidth:
       "500px",
+
     margin:
       "10px auto 22px",
+
     color:
       "#64748b",
+
     lineHeight:
       1.6,
   },
@@ -789,20 +1144,28 @@ const styles = {
   primaryButton: {
     width:
       "100%",
+
     border:
       "none",
+
     borderRadius:
       "11px",
+
     padding:
       "15px 18px",
+
     background:
       "#111827",
+
     color:
       "#ffffff",
+
     fontSize:
       "15px",
+
     fontWeight:
       "800",
+
     cursor:
       "pointer",
   },
@@ -811,18 +1174,25 @@ const styles = {
   secondaryButton: {
     flex:
       1,
+
     border:
       "1px solid #d7dde5",
+
     borderRadius:
       "10px",
+
     padding:
       "12px",
+
     background:
       "#ffffff",
+
     color:
       "#334155",
+
     fontWeight:
       "700",
+
     cursor:
       "pointer",
   },
@@ -831,8 +1201,10 @@ const styles = {
   buttonRow: {
     display:
       "flex",
+
     gap:
       "10px",
+
     marginTop:
       "12px",
   },
@@ -841,12 +1213,16 @@ const styles = {
   sectionLabel: {
     color:
       "#64748b",
+
     fontSize:
       "11px",
+
     fontWeight:
       "900",
+
     letterSpacing:
       "0.11em",
+
     marginBottom:
       "8px",
   },
@@ -855,12 +1231,16 @@ const styles = {
   previewBox: {
     width:
       "100%",
+
     overflow:
       "hidden",
+
     borderRadius:
       "14px",
+
     border:
       "1px solid #e2e8f0",
+
     background:
       "#f8fafc",
   },
@@ -869,10 +1249,13 @@ const styles = {
   previewImage: {
     display:
       "block",
+
     width:
       "100%",
+
     maxHeight:
       "600px",
+
     objectFit:
       "contain",
   },
@@ -881,22 +1264,31 @@ const styles = {
   statusBox: {
     marginTop:
       "18px",
+
     padding:
       "12px 14px",
+
     background:
       "#f8fafc",
+
     border:
       "1px solid #edf0f4",
+
     borderRadius:
       "10px",
+
     display:
       "flex",
+
     alignItems:
       "center",
+
     gap:
       "9px",
+
     color:
       "#475569",
+
     fontSize:
       "13px",
   },
@@ -905,10 +1297,13 @@ const styles = {
   statusDot: {
     width:
       "8px",
+
     height:
       "8px",
+
     flex:
       "0 0 8px",
+
     borderRadius:
       "50%",
   },
@@ -917,8 +1312,10 @@ const styles = {
   resultPanel: {
     marginTop:
       "24px",
+
     paddingTop:
       "22px",
+
     borderTop:
       "1px solid #e5e7eb",
   },
@@ -927,12 +1324,16 @@ const styles = {
   resultHeader: {
     display:
       "flex",
+
     alignItems:
       "center",
+
     justifyContent:
       "space-between",
+
     gap:
       "15px",
+
     marginBottom:
       "18px",
   },
@@ -941,8 +1342,10 @@ const styles = {
   resultTitle: {
     margin:
       0,
+
     fontSize:
       "19px",
+
     color:
       "#0f172a",
   },
@@ -951,14 +1354,19 @@ const styles = {
   successBadge: {
     background:
       "#dcfce7",
+
     color:
       "#166534",
+
     borderRadius:
       "999px",
+
     padding:
       "7px 10px",
+
     fontWeight:
       "900",
+
     fontSize:
       "11px",
   },
@@ -967,8 +1375,10 @@ const styles = {
   infoGrid: {
     display:
       "grid",
+
     gridTemplateColumns:
       "repeat(auto-fit, minmax(150px, 1fr))",
+
     gap:
       "10px",
   },
@@ -977,10 +1387,13 @@ const styles = {
   infoCard: {
     padding:
       "13px",
+
     background:
       "#f8fafc",
+
     border:
       "1px solid #edf0f4",
+
     borderRadius:
       "10px",
   },
@@ -989,10 +1402,13 @@ const styles = {
   infoLabel: {
     display:
       "block",
+
     color:
       "#64748b",
+
     fontSize:
       "11px",
+
     marginBottom:
       "5px",
   },
@@ -1001,7 +1417,177 @@ const styles = {
   infoValue: {
     color:
       "#0f172a",
+
     fontSize:
       "14px",
+  },
+
+
+  /* ==========================================================
+     DNVISION AI STYLES
+  ========================================================== */
+
+  aiSection: {
+    marginTop:
+      "24px",
+
+    paddingTop:
+      "22px",
+
+    borderTop:
+      "1px solid #e5e7eb",
+  },
+
+
+  aiTitle: {
+    margin:
+      "0 0 8px",
+
+    fontSize:
+      "19px",
+
+    color:
+      "#0f172a",
+  },
+
+
+  aiDescription: {
+    margin:
+      "0 0 16px",
+
+    color:
+      "#64748b",
+
+    fontSize:
+      "14px",
+
+    lineHeight:
+      1.5,
+  },
+
+
+  progressArea: {
+    marginTop:
+      "14px",
+  },
+
+
+  progressTrack: {
+    width:
+      "100%",
+
+    height:
+      "8px",
+
+    background:
+      "#e2e8f0",
+
+    borderRadius:
+      "999px",
+
+    overflow:
+      "hidden",
+  },
+
+
+  progressBar: {
+    height:
+      "100%",
+
+    background:
+      "#111827",
+
+    transition:
+      "width 0.2s ease",
+  },
+
+
+  progressText: {
+    marginTop:
+      "6px",
+
+    fontSize:
+      "12px",
+
+    color:
+      "#64748b",
+  },
+
+
+  answerBox: {
+    marginTop:
+      "16px",
+
+    padding:
+      "16px",
+
+    borderRadius:
+      "12px",
+
+    background:
+      "#ecfdf5",
+
+    border:
+      "1px solid #a7f3d0",
+  },
+
+
+  answerLabel: {
+    fontSize:
+      "11px",
+
+    fontWeight:
+      "800",
+
+    color:
+      "#047857",
+
+    marginBottom:
+      "6px",
+
+    letterSpacing:
+      "0.04em",
+  },
+
+
+  answerValue: {
+    fontSize:
+      "22px",
+
+    fontWeight:
+      "900",
+
+    color:
+      "#064e3b",
+
+    wordBreak:
+      "break-word",
+  },
+
+
+  errorBox: {
+    marginTop:
+      "16px",
+
+    padding:
+      "14px",
+
+    borderRadius:
+      "10px",
+
+    background:
+      "#fef2f2",
+
+    border:
+      "1px solid #fecaca",
+
+    color:
+      "#991b1b",
+
+    fontSize:
+      "13px",
+
+    fontWeight:
+      "600",
   },
 };
