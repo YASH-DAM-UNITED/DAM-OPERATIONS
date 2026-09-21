@@ -456,7 +456,7 @@ async function runVision(
       ...inputs,
 
       max_new_tokens:
-        80,
+        700,
 
       do_sample:
         false,
