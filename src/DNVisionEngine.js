@@ -3,7 +3,55 @@ import {
   AutoTokenizer,
   AutoModelForVision2Seq,
   RawImage,
+  env,
 } from "@huggingface/transformers";
+
+
+
+
+
+/* ============================================================
+   DNVISION NETWORK DIAGNOSTICS
+============================================================ */
+
+env.allowRemoteModels = true;
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
+const originalFetch = globalThis.fetch.bind(globalThis);
+
+env.fetch = async (url, options) => {
+  console.log(
+    "DNVision FETCH:",
+    String(url)
+  );
+
+  try {
+    const response = await originalFetch(
+      url,
+      options
+    );
+
+    console.log(
+      "DNVision FETCH RESULT:",
+      response.status,
+      response.statusText,
+      String(url)
+    );
+
+    return response;
+  } catch (error) {
+    console.error(
+      "DNVision FETCH FAILED:",
+      String(url),
+      error
+    );
+
+    throw new Error(
+      `Network fetch failed for: ${String(url)}`
+    );
+  }
+};
 
 
 /* ============================================================
