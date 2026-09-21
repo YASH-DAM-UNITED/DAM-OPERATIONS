@@ -6362,7 +6362,305 @@ export default {
         request.url
       );
 
-    // 👇 PASTE IT HERE
+/* ============================================================
+   DNVISION MODEL PROXY
+   ------------------------------------------------------------
+   Browser:
+   /api/dnvision-model/<file>
+
+   Cloudflare:
+   Hugging Face SmolVLM model repository
+============================================================ */
+
+if (
+  url.pathname.startsWith(
+    "/api/dnvision-model/"
+  )
+) {
+
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD"
+  ) {
+    return new Response(
+      "Method Not Allowed",
+      {
+        status: 405,
+        headers: corsHeaders(),
+      }
+    );
+  }
+
+
+  const MODEL_ID =
+    "HuggingFaceTB/SmolVLM-256M-Instruct";
+
+
+  const filePath =
+    url.pathname
+      .slice(
+        "/api/dnvision-model/".length
+      )
+      .replace(
+        /^\/+/,
+        ""
+      );
+
+
+  if (!filePath) {
+    return jsonResponse(
+      {
+        success: false,
+        message:
+          "DNVision model file path missing.",
+      },
+      400
+    );
+  }
+
+
+  /*
+    Basic path protection.
+  */
+
+  let decodedPath = "";
+
+  try {
+    decodedPath =
+      decodeURIComponent(
+        filePath
+      );
+  } catch {
+    return jsonResponse(
+      {
+        success: false,
+        message:
+          "Invalid DNVision model path.",
+      },
+      400
+    );
+  }
+
+
+  if (
+    decodedPath.includes("..") ||
+    decodedPath.includes("\\")
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        message:
+          "Invalid DNVision model path.",
+      },
+      400
+    );
+  }
+
+
+  const huggingFaceURL =
+    new URL(
+      `https://huggingface.co/${MODEL_ID}/resolve/main/${filePath}`
+    );
+
+
+  /*
+    Preserve query parameters if Transformers.js
+    adds any.
+  */
+
+  for (
+    const [
+      key,
+      value,
+    ] of url.searchParams
+  ) {
+    huggingFaceURL.searchParams.append(
+      key,
+      value
+    );
+  }
+
+
+  console.log(
+    "DNVISION MODEL PROXY:",
+    filePath
+  );
+
+
+  try {
+
+    /*
+      Forward Range because large ONNX files
+      may use partial/range requests.
+    */
+
+    const upstreamHeaders =
+      new Headers();
+
+
+    const range =
+      request.headers.get(
+        "Range"
+      );
+
+
+    if (range) {
+      upstreamHeaders.set(
+        "Range",
+        range
+      );
+    }
+
+
+    const upstream =
+      await fetch(
+        huggingFaceURL.toString(),
+        {
+          method:
+            request.method,
+
+          headers:
+            upstreamHeaders,
+
+          redirect:
+            "follow",
+        }
+      );
+
+
+    /*
+      Return useful upstream headers.
+    */
+
+    const responseHeaders =
+      new Headers();
+
+
+    const copyHeaders = [
+      "Content-Type",
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges",
+      "ETag",
+      "Last-Modified",
+    ];
+
+
+    for (
+      const headerName
+      of copyHeaders
+    ) {
+
+      const value =
+        upstream.headers.get(
+          headerName
+        );
+
+
+      if (value) {
+        responseHeaders.set(
+          headerName,
+          value
+        );
+      }
+    }
+
+
+    /*
+      Browser access.
+    */
+
+    responseHeaders.set(
+      "Access-Control-Allow-Origin",
+      "*"
+    );
+
+
+    responseHeaders.set(
+      "Access-Control-Expose-Headers",
+      "Content-Length, Content-Range, Accept-Ranges, ETag"
+    );
+
+
+    /*
+      Cache model files aggressively.
+
+      These files belong to a fixed model
+      repository/revision and don't need to
+      be downloaded from Hugging Face on
+      every request.
+    */
+
+    responseHeaders.set(
+      "Cache-Control",
+      "public, max-age=86400"
+    );
+
+
+    if (!upstream.ok) {
+
+      console.error(
+        "DNVision upstream failed:",
+        upstream.status,
+        filePath
+      );
+
+
+      return new Response(
+        upstream.body,
+        {
+          status:
+            upstream.status,
+
+          statusText:
+            upstream.statusText,
+
+          headers:
+            responseHeaders,
+        }
+      );
+    }
+
+
+    return new Response(
+      request.method === "HEAD"
+        ? null
+        : upstream.body,
+      {
+        status:
+          upstream.status,
+
+        statusText:
+          upstream.statusText,
+
+        headers:
+          responseHeaders,
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "DNVision model proxy error:",
+      error
+    );
+
+
+    return jsonResponse(
+      {
+        success: false,
+
+        message:
+          "DNVision model proxy failed.",
+
+        error:
+          error?.message ||
+          String(error),
+      },
+      502
+    );
+  }
+}
 
     if (url.pathname.startsWith("/api/mooma/")) {
       return handleMoomaRequest(request, env);
