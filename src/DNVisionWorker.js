@@ -55,7 +55,7 @@ env.remoteHost =
 */
 
 env.remotePathTemplate =
-  "{file}";
+  "{model}";
 
 
 let processor = null;
