@@ -1,13 +1,10 @@
 import {
-  AutoProcessor,
-  AutoTokenizer,
-  AutoModelForVision2Seq,
-  RawImage,
+  pipeline,
 } from "@huggingface/transformers";
 
 
 /* ============================================================
-   DNVISION MODEL CONFIG
+   DNVISION CONFIG
 ============================================================ */
 
 const DNVISION_MODEL =
@@ -15,15 +12,13 @@ const DNVISION_MODEL =
 
 
 /* ============================================================
-   MODEL CACHE
+   ENGINE CACHE
 
-   These stay in memory after the first load so we do not
-   reload the model every time the staff scans a document.
+   Once loaded, keep the model in memory so we do not
+   create a new pipeline for every scan.
 ============================================================ */
 
-let processor = null;
-let tokenizer = null;
-let model = null;
+let dnVisionPipeline = null;
 
 let loadingPromise = null;
 
@@ -35,104 +30,91 @@ let loadingPromise = null;
 export async function loadDNVisionEngine(
   onProgress
 ) {
-  if (
-    processor &&
-    tokenizer &&
-    model
-  ) {
-    return {
-      processor,
-      tokenizer,
-      model,
-    };
+
+  if (dnVisionPipeline) {
+
+    onProgress?.({
+      stage: "ready",
+      progress: 100,
+      message:
+        "DNVision engine ready",
+    });
+
+    return dnVisionPipeline;
   }
+
 
   if (loadingPromise) {
     return loadingPromise;
   }
 
+
+  onProgress?.({
+    stage: "starting",
+    progress: 0,
+    message:
+      "Starting DNVision engine...",
+  });
+
+
   loadingPromise =
-    loadModelFiles(onProgress);
+    pipeline(
+      "document-question-answering",
+
+      DNVISION_MODEL,
+
+      {
+        progress_callback:
+          (info) => {
+
+            console.log(
+              "DNVision model loading:",
+              info
+            );
+
+
+            let progress = null;
+
+
+            if (
+              typeof info?.progress ===
+              "number"
+            ) {
+              progress =
+                Math.round(
+                  info.progress
+                );
+            }
+
+
+            onProgress?.({
+              stage:
+                "model",
+
+              progress,
+
+              file:
+                info?.file ||
+                "",
+
+              status:
+                info?.status ||
+                "",
+
+              message:
+                progress !== null
+                  ? `Loading DNVision ${progress}%`
+                  : "Loading DNVision AI model...",
+            });
+          },
+      }
+    );
+
 
   try {
-    const result =
+
+    dnVisionPipeline =
       await loadingPromise;
-
-    return result;
-  } catch (error) {
-    loadingPromise = null;
-
-    throw error;
-  }
-}
-
-
-/* ============================================================
-   INTERNAL MODEL LOADER
-============================================================ */
-
-async function loadModelFiles(
-  onProgress
-) {
-  try {
-    onProgress?.({
-      stage: "starting",
-      message:
-        "Starting DNVision engine...",
-    });
-
-
-    processor =
-      await AutoProcessor.from_pretrained(
-        DNVISION_MODEL,
-        {
-          progress_callback:
-            createProgressHandler(
-              onProgress,
-              "processor"
-            ),
-        }
-      );
-
-
-    onProgress?.({
-      stage: "tokenizer",
-      message:
-        "Loading DNVision tokenizer...",
-    });
-
-
-    tokenizer =
-      await AutoTokenizer.from_pretrained(
-        DNVISION_MODEL,
-        {
-          progress_callback:
-            createProgressHandler(
-              onProgress,
-              "tokenizer"
-            ),
-        }
-      );
-
-
-    onProgress?.({
-      stage: "model",
-      message:
-        "Loading DNVision AI model...",
-    });
-
-
-    model =
-      await AutoModelForVision2Seq.from_pretrained(
-        DNVISION_MODEL,
-        {
-          progress_callback:
-            createProgressHandler(
-              onProgress,
-              "model"
-            ),
-        }
-      );
 
 
     onProgress?.({
@@ -143,32 +125,48 @@ async function loadModelFiles(
     });
 
 
-    return {
-      processor,
-      tokenizer,
-      model,
-    };
+    return dnVisionPipeline;
+
   } catch (error) {
-    processor = null;
-    tokenizer = null;
-    model = null;
 
     console.error(
-      "DNVision model loading error:",
+      "DNVision MODEL LOAD ERROR:",
       error
     );
 
+
+    dnVisionPipeline =
+      null;
+
+    loadingPromise =
+      null;
+
+
+    /*
+      IMPORTANT:
+      Keep the actual error message.
+
+      This means if anything fails again,
+      the scanner will show us the REAL
+      reason instead of only saying
+      "model could not be loaded".
+    */
+
+    const realMessage =
+      error?.message ||
+      String(error) ||
+      "Unknown model loading error";
+
+
     throw new Error(
-      "DNVision AI model could not be loaded."
+      `DNVision model load failed: ${realMessage}`
     );
   }
 }
 
 
 /* ============================================================
-   ASK DOCUMENT QUESTION
-
-   preparedBlob comes from DNVisionImagePrep.js
+   ASK DNVISION
 ============================================================ */
 
 export async function askDNVision(
@@ -176,275 +174,210 @@ export async function askDNVision(
   question,
   onProgress
 ) {
+
   if (!preparedBlob) {
+
     throw new Error(
       "No prepared delivery note image."
     );
   }
 
+
   if (!question?.trim()) {
+
     throw new Error(
       "DNVision question is empty."
     );
   }
 
 
-  onProgress?.({
-    stage: "loading",
-    message:
-      "Loading DNVision...",
-  });
+  try {
+
+    onProgress?.({
+      stage: "loading",
+      progress: null,
+      message:
+        "Loading DNVision...",
+    });
 
 
-  const engine =
-    await loadDNVisionEngine(
-      onProgress
+    const pipe =
+      await loadDNVisionEngine(
+        onProgress
+      );
+
+
+    onProgress?.({
+      stage: "image",
+      progress: null,
+      message:
+        "Preparing document for AI...",
+    });
+
+
+    /*
+      Create a temporary browser URL
+      from the processed delivery-note
+      image.
+
+      The Transformers.js document QA
+      pipeline can read this image URL.
+    */
+
+    const imageURL =
+      URL.createObjectURL(
+        preparedBlob
+      );
+
+
+    try {
+
+      onProgress?.({
+        stage: "inference",
+        progress: null,
+        message:
+          "DNVision is reading the delivery note...",
+      });
+
+
+      const cleanQuestion =
+        String(question)
+          .replace(
+            /[<>]/g,
+            ""
+          )
+          .trim();
+
+
+      console.log(
+        "DNVision question:",
+        cleanQuestion
+      );
+
+
+      const output =
+        await pipe(
+          imageURL,
+          cleanQuestion
+        );
+
+
+      console.log(
+        "DNVision raw output:",
+        output
+      );
+
+
+      const answer =
+        extractAnswer(
+          output
+        );
+
+
+      onProgress?.({
+        stage: "complete",
+        progress: 100,
+        message:
+          "DNVision scan complete",
+      });
+
+
+      return {
+
+        question:
+          cleanQuestion,
+
+        answer,
+
+        raw:
+          output,
+      };
+
+    } finally {
+
+      URL.revokeObjectURL(
+        imageURL
+      );
+    }
+
+  } catch (error) {
+
+    console.error(
+      "DNVision AI ERROR:",
+      error
     );
 
 
-  onProgress?.({
-    stage: "image",
-    message:
-      "Reading delivery note image...",
-  });
+    const realMessage =
+      error?.message ||
+      String(error) ||
+      "Unknown DNVision error";
 
 
-  /*
-    Transformers.js can create a RawImage
-    directly from the Blob produced by our
-    DNVisionImagePrep.js file.
-  */
-
-  const image =
-    await RawImage.fromBlob(
-      preparedBlob
+    throw new Error(
+      `DNVision failed: ${realMessage}`
     );
-
-
-  const imageInputs =
-    await engine.processor(
-      image
-    );
-
-
-  /* ==========================================================
-     DONUT DOCUMENT QUESTION
-  ========================================================== */
-
-  const cleanQuestion =
-    String(question)
-      .replace(/[<>]/g, "")
-      .trim();
-
-
-  const taskPrompt =
-    `<s_docvqa><s_question>${cleanQuestion}</s_question><s_answer>`;
-
-
-  const decoderInput =
-    engine.tokenizer(
-      taskPrompt,
-      {
-        add_special_tokens:
-          false,
-      }
-    );
-
-
-  onProgress?.({
-    stage: "inference",
-    message:
-      "DNVision is analyzing the document...",
-  });
-
-
-  const output =
-    await engine.model.generate(
-      imageInputs.pixel_values,
-      {
-        decoder_input_ids:
-          decoderInput.input_ids,
-
-        max_length:
-          engine.model.config
-            ?.decoder
-            ?.max_position_embeddings ||
-          512,
-      }
-    );
-
-
-  const decoded =
-    engine.tokenizer.batch_decode(
-      output,
-      {
-        skip_special_tokens:
-          false,
-      }
-    )[0];
-
-
-  const answer =
-    extractDNVisionAnswer(
-      decoded
-    );
-
-
-  onProgress?.({
-    stage: "complete",
-    progress: 100,
-    message:
-      "DNVision analysis complete",
-  });
-
-
-  return {
-    question:
-      cleanQuestion,
-
-    answer,
-
-    raw:
-      decoded,
-  };
+  }
 }
 
 
 /* ============================================================
-   EXTRACT ANSWER FROM DONUT OUTPUT
+   EXTRACT ANSWER
 ============================================================ */
 
-function extractDNVisionAnswer(
-  text
+function extractAnswer(
+  output
 ) {
-  if (!text) {
+
+  if (!output) {
     return "";
   }
 
 
-  const answerMatch =
-    text.match(
-      /<s_answer>(.*?)<\/s_answer>/s
-    );
+  /*
+    Normal Transformers.js output:
 
+    [
+      {
+        answer: "CKWH/INT/46389"
+      }
+    ]
+  */
 
-  if (answerMatch?.[1]) {
-    return cleanDNVisionText(
-      answerMatch[1]
-    );
-  }
+  if (
+    Array.isArray(output) &&
+    output.length > 0
+  ) {
 
-
-  let cleaned =
-    String(text);
-
-
-  cleaned =
-    cleaned.replace(
-      /<s_docvqa>/g,
-      ""
-    );
-
-
-  cleaned =
-    cleaned.replace(
-      /<s_question>.*?<\/s_question>/gs,
-      ""
-    );
-
-
-  cleaned =
-    cleaned.replace(
-      /<s_answer>/g,
-      ""
-    );
-
-
-  cleaned =
-    cleaned.replace(
-      /<\/s_answer>/g,
-      ""
-    );
-
-
-  cleaned =
-    cleaned.replace(
-      /<\/s>/g,
-      ""
-    );
-
-
-  return cleanDNVisionText(
-    cleaned
-  );
-}
-
-
-/* ============================================================
-   CLEAN MODEL TEXT
-============================================================ */
-
-function cleanDNVisionText(
-  value
-) {
-  return String(
-    value || ""
-  )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim();
-}
-
-
-/* ============================================================
-   DOWNLOAD PROGRESS HANDLER
-============================================================ */
-
-function createProgressHandler(
-  callback,
-  stage
-) {
-  return (info) => {
-    if (!callback) {
-      return;
-    }
-
-
-    let progress = null;
+    const first =
+      output[0];
 
 
     if (
-      typeof info?.progress ===
-      "number"
+      typeof first?.answer ===
+      "string"
     ) {
-      progress =
-        Math.round(
-          info.progress
-        );
+
+      return first.answer.trim();
     }
+  }
 
 
-    callback({
-      stage,
+  /*
+    Fallback in case a future version
+    returns an object instead.
+  */
 
-      progress,
+  if (
+    typeof output?.answer ===
+    "string"
+  ) {
 
-      file:
-        info?.file ||
-        "",
+    return output.answer.trim();
+  }
 
-      status:
-        info?.status ||
-        "",
 
-      message:
-        progress !== null
-          ? `Loading DNVision ${progress}%`
-          : "Loading DNVision...",
-    });
-  };
+  return "";
 }
 
 
@@ -453,10 +386,9 @@ function createProgressHandler(
 ============================================================ */
 
 export function isDNVisionReady() {
+
   return Boolean(
-    processor &&
-    tokenizer &&
-    model
+    dnVisionPipeline
   );
 }
 
@@ -466,11 +398,16 @@ export function isDNVisionReady() {
 ============================================================ */
 
 export function getDNVisionModelInfo() {
+
   return {
+
     id:
       DNVISION_MODEL,
 
     loaded:
       isDNVisionReady(),
+
+    task:
+      "document-question-answering",
   };
 }
