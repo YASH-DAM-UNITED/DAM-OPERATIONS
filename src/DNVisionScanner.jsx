@@ -1,8 +1,25 @@
 import React, {
-  useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+
+import {
+  ArrowLeft,
+  Camera,
+  CheckCircle2,
+  FileScan,
+  Image as ImageIcon,
+  Loader2,
+  PackageCheck,
+  RefreshCw,
+  ScanLine,
+  Trash2,
+  Upload,
+  AlertTriangle,
+  Cpu,
+  Pencil,
+} from "lucide-react";
 
 import {
   prepareDNVisionImage,
@@ -19,463 +36,438 @@ import {
 } from "./DNVisionEngine";
 
 
+/* ============================================================
+   EMPTY DELIVERY NOTE
+============================================================ */
+
+function createEmptyDeliveryNote() {
+  return {
+    deliveryNoteNumber: "",
+    shippingDate: "",
+    sourceLocation: "",
+    destinationLocation: "",
+
+    items: [],
+  };
+}
+
+
+/* ============================================================
+   EXTRACTION INSTRUCTION
+============================================================ */
+
+const DNVISION_EXTRACTION_PROMPT = `
+You are reading a delivery note document.
+
+Look carefully at the entire delivery note image.
+
+Extract the following information:
+
+1. Delivery Note Number
+2. Shipping Date
+3. Source Location
+4. Destination Location
+
+Then read every product row in the product table.
+
+For every product extract:
+
+- SKU or product code
+- Product description
+- Ordered quantity
+- Ordered unit of measure
+- Delivered quantity
+- Delivered unit of measure
+
+IMPORTANT RULES:
+
+- Read only information visible in the document.
+- Do not invent missing information.
+- Preserve SKU codes exactly.
+- Preserve decimal quantities.
+- Ignore Arabic text when an English product description is available.
+- Do not include company address, VAT number, CR number, email address or footer information.
+- Read ALL product rows.
+- Ordered and delivered values must be kept separately.
+- If a field cannot be read, return an empty string.
+- Return ONLY valid JSON.
+- Do not use markdown.
+- Do not use code fences.
+- Do not explain the answer.
+- Do not write text before or after the JSON.
+
+Return exactly this structure:
+
+{
+  "deliveryNoteNumber": "",
+  "shippingDate": "",
+  "sourceLocation": "",
+  "destinationLocation": "",
+  "items": [
+    {
+      "sku": "",
+      "description": "",
+      "orderedQuantity": "",
+      "orderedUom": "",
+      "deliveredQuantity": "",
+      "deliveredUom": ""
+    }
+  ]
+}
+`.trim();
+
+
+/* ============================================================
+   MAIN COMPONENT
+============================================================ */
+
 export default function DNVisionScanner({
   branch,
   onBack,
 }) {
-  const inputRef = useRef(null);
 
-  const [imageFile, setImageFile] =
-    useState(null);
-
-  const [imagePreview, setImagePreview] =
-    useState("");
-
-  const [preparedImage, setPreparedImage] =
-    useState(null);
-
-  const [processing, setProcessing] =
-    useState(false);
-
-  const [status, setStatus] =
-    useState("Waiting for delivery note");
-
-  const [deviceChecking, setDeviceChecking] =
-    useState(false);
-
-  const [deviceResult, setDeviceResult] =
-    useState(null);
-
-  const [deviceError, setDeviceError] =
-    useState("");
-
-  const [aiRunning, setAiRunning] =
-    useState(false);
-
-  const [aiProgress, setAiProgress] =
-    useState(null);
-
-  const [aiAnswer, setAiAnswer] =
-    useState("");
-
-  const [aiError, setAiError] =
-    useState("");
+  const fileInputRef =
+    useRef(null);
 
 
-  /* ============================================================
-     CLEANUP
-  ============================================================ */
+  /* ==========================================================
+     IMAGE STATE
+  ========================================================== */
 
-  useEffect(() => {
-    return () => {
-      if (imagePreview) {
-        URL.revokeObjectURL(
-          imagePreview
-        );
-      }
-    };
-  }, [imagePreview]);
+  const [
+    selectedFile,
+    setSelectedFile,
+  ] = useState(null);
 
 
-  /* ============================================================
+  const [
+    preparedImage,
+    setPreparedImage,
+  ] = useState(null);
+
+
+  const [
+    previewURL,
+    setPreviewURL,
+  ] = useState("");
+
+
+  /* ==========================================================
+     DEVICE
+  ========================================================== */
+
+  const [
+    deviceInfo,
+    setDeviceInfo,
+  ] = useState(null);
+
+
+  /* ==========================================================
+     AI
+  ========================================================== */
+
+  const [
+    scanning,
+    setScanning,
+  ] = useState(false);
+
+
+  const [
+    aiProgress,
+    setAiProgress,
+  ] = useState(null);
+
+
+  const [
+    status,
+    setStatus,
+  ] = useState("");
+
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+
+  const [
+    rawAnswer,
+    setRawAnswer,
+  ] = useState("");
+
+
+  /* ==========================================================
+     RESULT
+  ========================================================== */
+
+  const [
+    deliveryNote,
+    setDeliveryNote,
+  ] = useState(
+    createEmptyDeliveryNote()
+  );
+
+
+  const [
+    scanComplete,
+    setScanComplete,
+  ] = useState(false);
+
+
+  /* ==========================================================
      DEVICE CHECK
-  ============================================================ */
+  ========================================================== */
 
-  async function runDeviceCheck() {
-    if (
-      deviceChecking ||
-      aiRunning
-    ) {
-      return;
-    }
+  React.useEffect(() => {
 
-    try {
-      setDeviceChecking(true);
-
-      setDeviceResult(null);
-
-      setDeviceError("");
-
-      setStatus(
-        "Checking device AI capabilities..."
-      );
+    let mounted = true;
 
 
-      const result =
-        await checkDNVisionDevice();
+    async function runCheck() {
+
+      try {
+
+        const info =
+          await checkDNVisionDevice();
 
 
-      const summary =
-        getDNVisionDeviceSummary(
-          result
-        );
+        if (mounted) {
+          setDeviceInfo(info);
+        }
 
+      } catch (err) {
 
-      console.log(
-        "DNVision device result:",
-        result
-      );
-
-
-      console.log(
-        "DNVision device summary:",
-        summary
-      );
-
-
-      setDeviceResult(
-        summary
-      );
-
-
-      if (
-        summary?.mode ===
-        "WEBGPU"
-      ) {
-        setStatus(
-          "Device check complete — WebGPU available"
+        console.error(
+          "DNVision device check:",
+          err
         );
       }
-
-      else if (
-        summary?.mode ===
-        "WASM"
-      ) {
-        setStatus(
-          "Device check complete — WASM fallback available"
-        );
-      }
-
-      else {
-        setStatus(
-          "Device check complete — local AI unsupported"
-        );
-      }
-
-    } catch (error) {
-      console.error(
-        "DNVision device check error:",
-        error
-      );
-
-      setDeviceError(
-        error?.message ||
-          "Device check failed"
-      );
-
-      setStatus(
-        "Device check failed"
-      );
-
-    } finally {
-      setDeviceChecking(false);
-    }
-  }
-
-
-  /* ============================================================
-     OPEN CAMERA
-  ============================================================ */
-
-  function openCamera() {
-    if (
-      processing ||
-      deviceChecking ||
-      aiRunning
-    ) {
-      return;
     }
 
-    inputRef.current?.click();
-  }
+
+    runCheck();
 
 
-  /* ============================================================
-     IMAGE SELECTED
-  ============================================================ */
+    return () => {
+      mounted = false;
+    };
 
-  function handleImage(event) {
+  }, []);
+
+
+  /* ==========================================================
+     DEVICE SUMMARY
+  ========================================================== */
+
+  const deviceSummary =
+    useMemo(() => {
+
+      if (!deviceInfo) {
+        return null;
+      }
+
+
+      try {
+
+        return getDNVisionDeviceSummary(
+          deviceInfo
+        );
+
+      } catch {
+
+        return null;
+      }
+
+    }, [deviceInfo]);
+
+
+  /* ==========================================================
+     SELECT IMAGE
+  ========================================================== */
+
+  async function handleFileChange(
+    event
+  ) {
+
     const file =
       event.target.files?.[0];
+
 
     if (!file) {
       return;
     }
 
 
-    if (
-      !file.type?.startsWith(
-        "image/"
-      )
-    ) {
-      setStatus(
-        "Please select a valid image."
-      );
-
-      return;
-    }
+    await loadImage(
+      file
+    );
 
 
-    if (imagePreview) {
-      URL.revokeObjectURL(
-        imagePreview
-      );
-    }
+    event.target.value =
+      "";
+  }
 
 
-    const previewURL =
-      URL.createObjectURL(
+  /* ==========================================================
+     PREPARE IMAGE
+  ========================================================== */
+
+  async function loadImage(
+    file
+  ) {
+
+    setError("");
+    setStatus(
+      "Preparing delivery note image..."
+    );
+
+    setScanComplete(false);
+
+    setRawAnswer("");
+
+    setDeliveryNote(
+      createEmptyDeliveryNote()
+    );
+
+
+    try {
+
+      const prepared =
+        await prepareDNVisionImage(
+          file
+        );
+
+
+      setSelectedFile(
         file
       );
 
 
-    setImageFile(
-      file
-    );
-
-    setImagePreview(
-      previewURL
-    );
-
-    setPreparedImage(
-      null
-    );
-
-    setAiAnswer(
-      ""
-    );
-
-    setAiError(
-      ""
-    );
-
-    setAiProgress(
-      null
-    );
-
-    setStatus(
-      "Delivery note image ready"
-    );
-  }
-
-
-  /* ============================================================
-     REMOVE IMAGE
-  ============================================================ */
-
-  function removeImage() {
-    if (
-      processing ||
-      deviceChecking ||
-      aiRunning
-    ) {
-      return;
-    }
-
-
-    if (imagePreview) {
-      URL.revokeObjectURL(
-        imagePreview
-      );
-    }
-
-
-    setImageFile(
-      null
-    );
-
-    setImagePreview(
-      ""
-    );
-
-    setPreparedImage(
-      null
-    );
-
-    setAiAnswer(
-      ""
-    );
-
-    setAiError(
-      ""
-    );
-
-    setAiProgress(
-      null
-    );
-
-    setStatus(
-      "Waiting for delivery note"
-    );
-
-
-    if (inputRef.current) {
-      inputRef.current.value =
-        "";
-    }
-  }
-
-
-  /* ============================================================
-     PREPARE IMAGE
-  ============================================================ */
-
-  async function prepareImage() {
-    if (!imageFile) {
-      setStatus(
-        "Take or select a delivery note first."
-      );
-
-      return;
-    }
-
-
-    try {
-      setProcessing(
-        true
-      );
-
       setPreparedImage(
-        null
-      );
-
-      setAiAnswer(
-        ""
-      );
-
-      setAiError(
-        ""
-      );
-
-      setAiProgress(
-        null
-      );
-
-      setStatus(
-        "Preparing delivery note image..."
+        prepared
       );
 
 
-      const result =
-        await prepareDNVisionImage(
-          imageFile
-        );
-
-
-      setPreparedImage(
-        result
-      );
-
-
-      console.log(
-        "DNVision prepared image:",
-        result
+      setPreviewURL(
+        prepared.dataUrl
       );
 
 
       setStatus(
-        "Image preparation successful"
+        "Image ready for DNVision."
       );
 
-    } catch (error) {
+    } catch (err) {
+
       console.error(
-        "DNVision preparation error:",
-        error
+        "DNVision image preparation:",
+        err
       );
 
 
-      setStatus(
-        error?.message ||
-          "Image preparation failed"
+      setError(
+        err?.message ||
+        "Unable to prepare image."
       );
 
-    } finally {
-      setProcessing(
-        false
-      );
+
+      setStatus("");
     }
   }
 
 
-  /* ============================================================
-     RUN DNVISION AI
-  ============================================================ */
+  /* ==========================================================
+     REMOVE IMAGE
+  ========================================================== */
 
-  async function testDNVision() {
-    if (!preparedImage?.blob) {
-      setAiError(
-        "Prepare the delivery note image first."
+  function clearImage() {
+
+    if (scanning) {
+      return;
+    }
+
+
+    setSelectedFile(
+      null
+    );
+
+    setPreparedImage(
+      null
+    );
+
+    setPreviewURL("");
+
+    setRawAnswer("");
+
+    setDeliveryNote(
+      createEmptyDeliveryNote()
+    );
+
+    setScanComplete(
+      false
+    );
+
+    setError("");
+
+    setStatus("");
+
+    setAiProgress(
+      null
+    );
+  }
+
+
+  /* ==========================================================
+     SCAN DELIVERY NOTE
+  ========================================================== */
+
+  async function scanDeliveryNote() {
+
+    if (
+      !preparedImage?.blob
+    ) {
+
+      setError(
+        "Please select a delivery note image first."
       );
 
       return;
     }
 
 
-    if (
-      aiRunning ||
-      processing
-    ) {
-      return;
-    }
+    setScanning(
+      true
+    );
 
+    setScanComplete(
+      false
+    );
 
-    if (
-      deviceResult &&
-      deviceResult.mode !==
-        "WEBGPU"
-    ) {
-      setAiError(
-        "This test requires WebGPU."
-      );
+    setError("");
 
-      return;
-    }
+    setRawAnswer("");
+
+    setAiProgress(
+      null
+    );
 
 
     try {
-      setAiRunning(
-        true
-      );
-
-      setAiAnswer(
-        ""
-      );
-
-      setAiError(
-        ""
-      );
-
-      setAiProgress(
-        null
-      );
-
-      setStatus(
-        "Starting DNVision WebGPU..."
-      );
-
 
       const result =
         await askDNVision(
           preparedImage.blob,
+          DNVISION_EXTRACTION_PROMPT,
 
-          [
-            "Look carefully at this delivery note.",
-            "Find the delivery note number.",
-            "Return only the delivery note number.",
-            "Do not explain anything.",
-          ].join(" "),
-
-          (progressInfo) => {
-            console.log(
-              "DNVision progress:",
-              progressInfo
-            );
-
+          (
+            progressInfo
+          ) => {
 
             if (
               typeof progressInfo?.progress ===
               "number"
             ) {
+
               setAiProgress(
                 progressInfo.progress
               );
@@ -485,6 +477,7 @@ export default function DNVisionScanner({
             if (
               progressInfo?.message
             ) {
+
               setStatus(
                 progressInfo.message
               );
@@ -493,142 +486,351 @@ export default function DNVisionScanner({
         );
 
 
-      console.log(
-        "DNVision result:",
-        result
-      );
-
-
       const answer =
-        result?.answer?.trim();
+        String(
+          result?.answer ||
+          ""
+        ).trim();
 
 
-      setAiAnswer(
-        answer ||
-          "No delivery note number detected"
+      setRawAnswer(
+        answer
+      );
+
+
+      if (!answer) {
+
+        throw new Error(
+          "DNVision returned an empty result."
+        );
+      }
+
+
+      const parsed =
+        parseDNVisionResult(
+          answer
+        );
+
+
+      setDeliveryNote(
+        parsed
+      );
+
+
+      setScanComplete(
+        true
+      );
+
+
+      setAiProgress(
+        100
       );
 
 
       setStatus(
-        "DNVision scan complete"
+        "Delivery note read successfully."
       );
 
-    } catch (error) {
+    } catch (err) {
+
       console.error(
-        "DNVision AI error:",
-        error
+        "DNVision scan:",
+        err
       );
 
 
-      setAiError(
-        error?.message ||
-          "DNVision scan failed"
+      setError(
+        err?.message ||
+        "DNVision could not read this delivery note."
       );
 
 
-      setStatus(
-        "DNVision scan failed"
-      );
+      setStatus("");
 
     } finally {
-      setAiRunning(
+
+      setScanning(
         false
       );
     }
   }
 
 
-  /* ============================================================
-     BACK
-  ============================================================ */
+  /* ==========================================================
+     HEADER FIELD CHANGE
+  ========================================================== */
 
-  function handleBack() {
-    if (
-      processing ||
-      deviceChecking ||
-      aiRunning
-    ) {
-      return;
-    }
+  function updateHeaderField(
+    field,
+    value
+  ) {
 
-    onBack?.();
+    setDeliveryNote(
+      (current) => ({
+        ...current,
+
+        [field]:
+          value,
+      })
+    );
   }
 
 
-  /* ============================================================
+  /* ==========================================================
+     ITEM CHANGE
+  ========================================================== */
+
+  function updateItem(
+    index,
+    field,
+    value
+  ) {
+
+    setDeliveryNote(
+      (current) => {
+
+        const items =
+          [...current.items];
+
+
+        items[index] = {
+          ...items[index],
+
+          [field]:
+            value,
+        };
+
+
+        return {
+          ...current,
+          items,
+        };
+      }
+    );
+  }
+
+
+  /* ==========================================================
+     REMOVE ITEM
+  ========================================================== */
+
+  function removeItem(
+    index
+  ) {
+
+    setDeliveryNote(
+      (current) => ({
+        ...current,
+
+        items:
+          current.items.filter(
+            (
+              _,
+              itemIndex
+            ) =>
+              itemIndex !==
+              index
+          ),
+      })
+    );
+  }
+
+
+  /* ==========================================================
+     ADD ITEM
+  ========================================================== */
+
+  function addItem() {
+
+    setDeliveryNote(
+      (current) => ({
+        ...current,
+
+        items: [
+          ...current.items,
+
+          {
+            sku: "",
+            description: "",
+            orderedQuantity: "",
+            orderedUom: "",
+            deliveredQuantity: "",
+            deliveredUom: "",
+          },
+        ],
+      })
+    );
+  }
+
+
+  /* ==========================================================
      UI
-  ============================================================ */
+  ========================================================== */
 
   return (
-    <div style={styles.page}>
+    <div
+      style={{
+        minHeight:
+          "100vh",
 
-      <div style={styles.container}>
+        background:
+          "#f4f7fb",
 
-        {/* TOP BAR */}
+        padding:
+          "24px",
+      }}
+    >
 
-        <div style={styles.topBar}>
+      <div
+        style={{
+          width:
+            "min(1100px, 100%)",
+
+          margin:
+            "0 auto",
+
+          background:
+            "#ffffff",
+
+          borderRadius:
+            "26px",
+
+          boxShadow:
+            "0 20px 60px rgba(15,23,42,0.08)",
+
+          overflow:
+            "hidden",
+
+          border:
+            "1px solid #e2e8f0",
+        }}
+      >
+
+        {/* ====================================================
+            HEADER
+        ==================================================== */}
+
+        <div
+          style={{
+            padding:
+              "26px",
+
+            borderBottom:
+              "1px solid #e2e8f0",
+
+            display:
+              "flex",
+
+            alignItems:
+              "center",
+
+            gap:
+              "16px",
+          }}
+        >
 
           <button
             type="button"
-            onClick={handleBack}
-            disabled={
-              processing ||
-              deviceChecking ||
-              aiRunning
+            onClick={
+              onBack
             }
-            style={{
-              ...styles.backButton,
-
-              opacity:
-                processing ||
-                deviceChecking ||
-                aiRunning
-                  ? 0.5
-                  : 1,
-            }}
+            style={
+              iconButtonStyle
+            }
           >
-            ← Back to Dashboard
+            <ArrowLeft
+              size={20}
+            />
           </button>
 
 
-          <div style={styles.branchBadge}>
-            {branch?.code ||
-              "BART"}
+          <div
+            style={{
+              width:
+                "48px",
+
+              height:
+                "48px",
+
+              borderRadius:
+                "15px",
+
+              display:
+                "grid",
+
+              placeItems:
+                "center",
+
+              background:
+                "#0f172a",
+
+              color:
+                "#ffffff",
+            }}
+          >
+            <FileScan
+              size={24}
+            />
           </div>
 
-        </div>
 
+          <div
+            style={{
+              flex: 1,
+            }}
+          >
 
-        {/* HEADER */}
+            <div
+              style={{
+                fontSize:
+                  "12px",
 
-        <div style={styles.header}>
+                fontWeight:
+                  800,
 
-          <div style={styles.logo}>
-            DN
-          </div>
+                letterSpacing:
+                  "1.3px",
 
-
-          <div>
-
-            <div style={styles.eyebrow}>
-              DELIVERY NOTE SYSTEM
+                color:
+                  "#64748b",
+              }}
+            >
+              DNVISION
             </div>
 
 
-            <h1 style={styles.title}>
-              DNVision
+            <h1
+              style={{
+                margin:
+                  "3px 0 0",
+
+                fontSize:
+                  "24px",
+
+                color:
+                  "#0f172a",
+              }}
+            >
+              Delivery Note Scanner
             </h1>
 
 
-            <p style={styles.subtitle}>
-              Scan and verify delivery
-              notes for{" "}
+            <div
+              style={{
+                marginTop:
+                  "4px",
 
-              <strong>
-                {branch?.name ||
-                  "BART Branch"}
-              </strong>
-            </p>
+                fontSize:
+                  "13px",
+
+                color:
+                  "#64748b",
+              }}
+            >
+              {branch?.name ||
+                branch?.code ||
+                "Branch"}
+            </div>
 
           </div>
 
@@ -636,232 +838,206 @@ export default function DNVisionScanner({
 
 
         {/* ====================================================
-            DEVICE CHECK
+            BODY
         ==================================================== */}
 
-        <div style={styles.deviceCard}>
+        <div
+          style={{
+            padding:
+              "26px",
+          }}
+        >
 
-          <div style={styles.deviceHeader}>
+          {/* ==================================================
+              DEVICE
+          ================================================== */}
 
-            <div>
+          {deviceSummary && (
 
-              <div style={styles.sectionLabel}>
-                LOCAL AI
-              </div>
+            <div
+              style={{
+                ...cardStyle,
 
+                marginBottom:
+                  "20px",
 
-              <h2 style={styles.deviceTitle}>
-                Device Capability
-              </h2>
+                display:
+                  "flex",
 
+                alignItems:
+                  "center",
 
-              <p style={styles.deviceDescription}>
-                DNVision runs locally
-                on this device using
-                browser AI acceleration.
-              </p>
-
-            </div>
-
-
-            {deviceResult && (
+                gap:
+                  "14px",
+              }}
+            >
 
               <div
                 style={{
-                  ...styles.modeBadge,
+                  ...smallIconStyle,
 
                   background:
-                    deviceResult.mode ===
-                    "WEBGPU"
-                      ? "#dcfce7"
-                      : deviceResult.mode ===
-                        "WASM"
-                      ? "#fef3c7"
-                      : "#fee2e2",
+                    "#eef2ff",
 
                   color:
-                    deviceResult.mode ===
-                    "WEBGPU"
-                      ? "#166534"
-                      : deviceResult.mode ===
-                        "WASM"
-                      ? "#92400e"
-                      : "#991b1b",
+                    "#4338ca",
                 }}
               >
-                {deviceResult.mode}
+                <Cpu
+                  size={20}
+                />
               </div>
 
-            )}
 
-          </div>
+              <div>
 
+                <div
+                  style={{
+                    fontWeight:
+                      800,
 
-          <button
-            type="button"
-            onClick={runDeviceCheck}
-            disabled={
-              deviceChecking ||
-              aiRunning
-            }
-            style={{
-              ...styles.secondaryFullButton,
-
-              opacity:
-                deviceChecking ||
-                aiRunning
-                  ? 0.6
-                  : 1,
-            }}
-          >
-
-            {deviceChecking
-              ? "Checking Device..."
-              : deviceResult
-              ? "Check Device Again"
-              : "Run Device Check"}
-
-          </button>
+                    color:
+                      "#0f172a",
+                  }}
+                >
+                  DNVision Device Engine
+                </div>
 
 
-          {deviceResult && (
+                <div
+                  style={{
+                    marginTop:
+                      "3px",
 
-            <div style={styles.deviceResults}>
+                    fontSize:
+                      "13px",
 
-              <DeviceRow
-                label="Browser"
-                value={
-                  deviceResult.browser
-                }
-              />
+                    color:
+                      "#64748b",
+                  }}
+                >
+                  {deviceInfo?.recommendedMode ||
+                    "WEBGPU"}
+                  {" • "}
 
+                  {deviceInfo?.hardwareConcurrency ||
+                    "?"}
+                  {" CPU Threads"}
+                </div>
 
-              <DeviceRow
-                label="WebGPU"
-                value={
-                  deviceResult.webGPU
-                }
-                good={
-                  deviceResult.webGPU ===
-                  "YES"
-                }
-              />
-
-
-              <DeviceRow
-                label="GPU Adapter"
-                value={
-                  deviceResult.gpuAdapter
-                }
-                good={
-                  deviceResult.gpuAdapter ===
-                  "AVAILABLE"
-                }
-              />
-
-
-              <DeviceRow
-                label="WebAssembly"
-                value={
-                  deviceResult.wasm
-                }
-                good={
-                  deviceResult.wasm ===
-                  "YES"
-                }
-              />
-
-
-              <DeviceRow
-                label="CPU Threads"
-                value={
-                  deviceResult.cpuThreads
-                }
-              />
-
-
-              <DeviceRow
-                label="Device Memory"
-                value={
-                  deviceResult.memory
-                }
-              />
-
-
-              <DeviceRow
-                label="Recommended Mode"
-                value={
-                  deviceResult.mode
-                }
-                good={
-                  deviceResult.mode ===
-                  "WEBGPU"
-                }
-              />
+              </div>
 
             </div>
 
           )}
 
 
-          {deviceError && (
+          {/* ==================================================
+              UPLOAD
+          ================================================== */}
 
-            <div style={styles.errorBox}>
-              {deviceError}
-            </div>
+          {!previewURL && (
 
-          )}
+            <div
+              style={{
+                border:
+                  "2px dashed #cbd5e1",
 
-        </div>
+                borderRadius:
+                  "22px",
 
+                padding:
+                  "52px 24px",
 
-        {/* ====================================================
-            SCANNER
-        ==================================================== */}
+                textAlign:
+                  "center",
 
-        <div style={styles.card}>
+                background:
+                  "#f8fafc",
+              }}
+            >
 
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleImage}
-            style={{
-              display: "none",
-            }}
-          />
+              <div
+                style={{
+                  width:
+                    "66px",
 
+                  height:
+                    "66px",
 
-          {!imagePreview && (
+                  borderRadius:
+                    "20px",
 
-            <div style={styles.emptyState}>
+                  display:
+                    "grid",
 
-              <div style={styles.cameraIcon}>
-                📄
+                  placeItems:
+                    "center",
+
+                  margin:
+                    "0 auto 18px",
+
+                  background:
+                    "#0f172a",
+
+                  color:
+                    "#ffffff",
+                }}
+              >
+                <Camera
+                  size={30}
+                />
               </div>
 
 
-              <h2 style={styles.emptyTitle}>
+              <h2
+                style={{
+                  margin:
+                    "0 0 8px",
+
+                  color:
+                    "#0f172a",
+                }}
+              >
                 Scan Delivery Note
               </h2>
 
 
-              <p style={styles.emptyText}>
-                Capture the complete
-                delivery note clearly.
-                Make sure all item rows,
-                quantities and document
-                details are visible.
+              <p
+                style={{
+                  margin:
+                    "0 auto 22px",
+
+                  maxWidth:
+                    "500px",
+
+                  color:
+                    "#64748b",
+
+                  lineHeight:
+                    1.6,
+                }}
+              >
+                Take a clear photo of the complete
+                delivery note. Keep the product table
+                visible and avoid strong shadows.
               </p>
 
 
               <button
                 type="button"
-                onClick={openCamera}
-                style={styles.primaryButton}
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
+                style={
+                  primaryButtonStyle
+                }
               >
-                Take / Select Photo
+                <Upload
+                  size={18}
+                />
+
+                Select / Take Photo
               </button>
 
             </div>
@@ -869,327 +1045,890 @@ export default function DNVisionScanner({
           )}
 
 
-          {imagePreview && (
-
-            <>
-
-              <div style={styles.sectionLabel}>
-                DELIVERY NOTE PHOTO
-              </div>
-
-
-              <div style={styles.previewBox}>
-
-                <img
-                  src={imagePreview}
-                  alt="Delivery note"
-                  style={styles.previewImage}
-                />
-
-              </div>
-
-
-              <div style={styles.buttonRow}>
-
-                <button
-                  type="button"
-                  onClick={openCamera}
-                  disabled={
-                    processing ||
-                    aiRunning
-                  }
-                  style={styles.secondaryButton}
-                >
-                  Change Photo
-                </button>
-
-
-                <button
-                  type="button"
-                  onClick={removeImage}
-                  disabled={
-                    processing ||
-                    aiRunning
-                  }
-                  style={styles.secondaryButton}
-                >
-                  Remove
-                </button>
-
-              </div>
-
-
-              <button
-                type="button"
-                onClick={prepareImage}
-                disabled={
-                  processing ||
-                  aiRunning
-                }
-                style={{
-                  ...styles.primaryButton,
-
-                  marginTop:
-                    "14px",
-
-                  opacity:
-                    processing ||
-                    aiRunning
-                      ? 0.6
-                      : 1,
-                }}
-              >
-
-                {processing
-                  ? "Preparing Image..."
-                  : preparedImage
-                  ? "Prepare Again"
-                  : "Prepare Image"}
-
-              </button>
-
-            </>
-
-          )}
-
-
-          {/* STATUS */}
-
-          <div style={styles.statusBox}>
-
-            <span
-              style={{
-                ...styles.statusDot,
-
-                background:
-                  processing ||
-                  deviceChecking ||
-                  aiRunning
-                    ? "#f59e0b"
-                    : preparedImage
-                    ? "#22c55e"
-                    : "#94a3b8",
-              }}
-            />
-
-
-            <span>
-              {status}
-            </span>
-
-          </div>
+          <input
+            ref={
+              fileInputRef
+            }
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={
+              handleFileChange
+            }
+            style={{
+              display:
+                "none",
+            }}
+          />
 
 
           {/* ==================================================
-              PREPARED IMAGE
+              IMAGE PREVIEW
           ================================================== */}
 
-          {preparedImage && (
+          {previewURL && (
 
-            <div style={styles.resultPanel}>
-
-              <div style={styles.resultHeader}>
-
-                <div>
-
-                  <div style={styles.sectionLabel}>
-                    DNVISION IMAGE
-                  </div>
-
-
-                  <h2 style={styles.resultTitle}>
-                    Image preparation
-                    successful
-                  </h2>
-
-                </div>
-
-
-                <div style={styles.successBadge}>
-                  READY
-                </div>
-
-              </div>
-
-
-              <div style={styles.infoGrid}>
-
-                <InfoCard
-                  label="Original"
-                  value={`${preparedImage.originalWidth} × ${preparedImage.originalHeight}`}
-                />
-
-
-                <InfoCard
-                  label="Prepared"
-                  value={`${preparedImage.width} × ${preparedImage.height}`}
-                />
-
-
-                <InfoCard
-                  label="Original Size"
-                  value={formatDNVisionBytes(
-                    preparedImage.originalSize
-                  )}
-                />
-
-
-                <InfoCard
-                  label="Prepared Size"
-                  value={formatDNVisionBytes(
-                    preparedImage.processedSize
-                  )}
-                />
-
-              </div>
-
+            <div>
 
               <div
                 style={{
-                  ...styles.sectionLabel,
+                  ...cardStyle,
 
-                  marginTop:
-                    "22px",
+                  padding:
+                    "16px",
                 }}
               >
-                PREPARED IMAGE
-              </div>
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+
+                    alignItems:
+                      "center",
+
+                    justifyContent:
+                      "space-between",
+
+                    gap:
+                      "12px",
+
+                    marginBottom:
+                      "14px",
+                  }}
+                >
+
+                  <div
+                    style={{
+                      display:
+                        "flex",
+
+                      alignItems:
+                        "center",
+
+                      gap:
+                        "10px",
+                    }}
+                  >
+
+                    <ImageIcon
+                      size={19}
+                    />
 
 
-              <div style={styles.previewBox}>
+                    <div>
 
-                <img
-                  src={
-                    preparedImage.dataUrl
-                  }
-                  alt="Prepared delivery note"
-                  style={styles.previewImage}
-                />
+                      <div
+                        style={{
+                          fontWeight:
+                            800,
+
+                          color:
+                            "#0f172a",
+                        }}
+                      >
+                        Delivery Note Image
+                      </div>
+
+
+                      <div
+                        style={{
+                          fontSize:
+                            "12px",
+
+                          color:
+                            "#64748b",
+
+                          marginTop:
+                            "2px",
+                        }}
+                      >
+                        {preparedImage?.width}
+                        ×
+                        {preparedImage?.height}
+
+                        {" • "}
+
+                        {formatDNVisionBytes(
+                          preparedImage?.processedSize
+                        )}
+                      </div>
+
+                    </div>
+
+                  </div>
+
+
+                  {!scanning && (
+
+                    <button
+                      type="button"
+                      onClick={
+                        clearImage
+                      }
+                      style={
+                        dangerIconButtonStyle
+                      }
+                    >
+                      <Trash2
+                        size={18}
+                      />
+                    </button>
+
+                  )}
+
+                </div>
+
+
+                <div
+                  style={{
+                    background:
+                      "#eef2f7",
+
+                    borderRadius:
+                      "16px",
+
+                    overflow:
+                      "hidden",
+
+                    textAlign:
+                      "center",
+                  }}
+                >
+
+                  <img
+                    src={
+                      previewURL
+                    }
+                    alt="Delivery Note"
+                    style={{
+                      display:
+                        "block",
+
+                      maxWidth:
+                        "100%",
+
+                      maxHeight:
+                        "720px",
+
+                      margin:
+                        "0 auto",
+
+                      objectFit:
+                        "contain",
+                    }}
+                  />
+
+                </div>
 
               </div>
 
 
               {/* ==============================================
-                  DNVISION WEBGPU TEST
+                  SCAN BUTTON
               ============================================== */}
 
-              <div style={styles.aiSection}>
+              {!scanComplete && (
 
-                <div style={styles.sectionLabel}>
-                  DNVISION WEBGPU
+                <div
+                  style={{
+                    marginTop:
+                      "22px",
+                  }}
+                >
+
+                  <button
+                    type="button"
+                    disabled={
+                      scanning
+                    }
+                    onClick={
+                      scanDeliveryNote
+                    }
+                    style={{
+                      ...primaryButtonStyle,
+
+                      width:
+                        "100%",
+
+                      minHeight:
+                        "58px",
+
+                      justifyContent:
+                        "center",
+
+                      opacity:
+                        scanning
+                          ? 0.75
+                          : 1,
+                    }}
+                  >
+
+                    {scanning ? (
+
+                      <>
+                        <Loader2
+                          size={20}
+                          className="dnvision-spin"
+                        />
+
+                        DNVision Reading...
+                      </>
+
+                    ) : (
+
+                      <>
+                        <ScanLine
+                          size={20}
+                        />
+
+                        Read With DNVision
+                      </>
+
+                    )}
+
+                  </button>
+
                 </div>
 
-
-                <h2 style={styles.aiTitle}>
-                  Test Vision Reading
-                </h2>
+              )}
 
 
-                <p style={styles.aiDescription}>
-                  DNVision will analyze
-                  this image locally and
-                  attempt to read the
-                  delivery note number.
-                </p>
+              {/* ==============================================
+                  PROGRESS
+              ============================================== */}
+
+              {scanning && (
+
+                <div
+                  style={{
+                    ...cardStyle,
+
+                    marginTop:
+                      "16px",
+                  }}
+                >
+
+                  <div
+                    style={{
+                      display:
+                        "flex",
+
+                      justifyContent:
+                        "space-between",
+
+                      gap:
+                        "12px",
+
+                      marginBottom:
+                        "10px",
+                    }}
+                  >
+
+                    <strong>
+                      {status ||
+                        "DNVision working..."}
+                    </strong>
+
+
+                    {typeof aiProgress ===
+                      "number" && (
+
+                      <span>
+                        {aiProgress}%
+                      </span>
+
+                    )}
+
+                  </div>
+
+
+                  <div
+                    style={{
+                      height:
+                        "9px",
+
+                      borderRadius:
+                        "999px",
+
+                      background:
+                        "#e2e8f0",
+
+                      overflow:
+                        "hidden",
+                    }}
+                  >
+
+                    <div
+                      style={{
+                        height:
+                          "100%",
+
+                        width:
+                          `${
+                            typeof aiProgress ===
+                            "number"
+                              ? aiProgress
+                              : 15
+                          }%`,
+
+                        background:
+                          "#0f172a",
+
+                        transition:
+                          "width .25s ease",
+                      }}
+                    />
+
+                  </div>
+
+                </div>
+
+              )}
+
+
+              {/* ==============================================
+                  ERROR
+              ============================================== */}
+
+              {error && (
+
+                <div
+                  style={{
+                    marginTop:
+                      "16px",
+
+                    padding:
+                      "16px",
+
+                    borderRadius:
+                      "15px",
+
+                    background:
+                      "#fff1f2",
+
+                    border:
+                      "1px solid #fecdd3",
+
+                    color:
+                      "#9f1239",
+
+                    display:
+                      "flex",
+
+                    gap:
+                      "10px",
+
+                    alignItems:
+                      "flex-start",
+                  }}
+                >
+
+                  <AlertTriangle
+                    size={20}
+                  />
+
+
+                  <div
+                    style={{
+                      fontWeight:
+                        700,
+                    }}
+                  >
+                    {error}
+                  </div>
+
+                </div>
+
+              )}
+
+            </div>
+
+          )}
+
+
+          {/* ==================================================
+              REVIEW
+          ================================================== */}
+
+          {scanComplete && (
+
+            <div
+              style={{
+                marginTop:
+                  "24px",
+              }}
+            >
+
+              <div
+                style={{
+                  padding:
+                    "18px",
+
+                  borderRadius:
+                    "18px",
+
+                  background:
+                    "#ecfdf5",
+
+                  border:
+                    "1px solid #a7f3d0",
+
+                  display:
+                    "flex",
+
+                  alignItems:
+                    "center",
+
+                  gap:
+                    "12px",
+
+                  marginBottom:
+                    "20px",
+                }}
+              >
+
+                <CheckCircle2
+                  size={24}
+                />
+
+
+                <div>
+
+                  <div
+                    style={{
+                      fontWeight:
+                        900,
+
+                      color:
+                        "#065f46",
+                    }}
+                  >
+                    DNVision Scan Complete
+                  </div>
+
+
+                  <div
+                    style={{
+                      marginTop:
+                        "3px",
+
+                      color:
+                        "#047857",
+
+                      fontSize:
+                        "13px",
+                    }}
+                  >
+                    Please verify every field before
+                    submission.
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              {/* ==============================================
+                  HEADER DETAILS
+              ============================================== */}
+
+              <section
+                style={
+                  sectionStyle
+                }
+              >
+
+                <SectionTitle
+                  icon={
+                    <Pencil
+                      size={19}
+                    />
+                  }
+                  title="Delivery Note Details"
+                  subtitle="Check the detected document information."
+                />
+
+
+                <div
+                  style={
+                    formGridStyle
+                  }
+                >
+
+                  <Field
+                    label="Delivery Note No."
+                    value={
+                      deliveryNote.deliveryNoteNumber
+                    }
+                    onChange={
+                      (value) =>
+                        updateHeaderField(
+                          "deliveryNoteNumber",
+                          value
+                        )
+                    }
+                  />
+
+
+                  <Field
+                    label="Shipping Date"
+                    value={
+                      deliveryNote.shippingDate
+                    }
+                    onChange={
+                      (value) =>
+                        updateHeaderField(
+                          "shippingDate",
+                          value
+                        )
+                    }
+                  />
+
+
+                  <Field
+                    label="Source Location"
+                    value={
+                      deliveryNote.sourceLocation
+                    }
+                    onChange={
+                      (value) =>
+                        updateHeaderField(
+                          "sourceLocation",
+                          value
+                        )
+                    }
+                  />
+
+
+                  <Field
+                    label="Destination Location"
+                    value={
+                      deliveryNote.destinationLocation
+                    }
+                    onChange={
+                      (value) =>
+                        updateHeaderField(
+                          "destinationLocation",
+                          value
+                        )
+                    }
+                  />
+
+                </div>
+
+              </section>
+
+
+              {/* ==============================================
+                  ITEMS
+              ============================================== */}
+
+              <section
+                style={{
+                  ...sectionStyle,
+
+                  marginTop:
+                    "20px",
+                }}
+              >
+
+                <SectionTitle
+                  icon={
+                    <PackageCheck
+                      size={20}
+                    />
+                  }
+                  title={`Detected Items (${deliveryNote.items.length})`}
+                  subtitle="Verify SKU, description and quantities."
+                />
+
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+
+                    gap:
+                      "14px",
+                  }}
+                >
+
+                  {deliveryNote.items.map(
+                    (
+                      item,
+                      index
+                    ) => (
+
+                      <div
+                        key={
+                          `${index}-${item.sku}`
+                        }
+                        style={
+                          itemCardStyle
+                        }
+                      >
+
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            justifyContent:
+                              "space-between",
+
+                            alignItems:
+                              "center",
+
+                            gap:
+                              "10px",
+
+                            marginBottom:
+                              "14px",
+                          }}
+                        >
+
+                          <strong
+                            style={{
+                              color:
+                                "#0f172a",
+                            }}
+                          >
+                            Item {index + 1}
+                          </strong>
+
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeItem(
+                                index
+                              )
+                            }
+                            style={
+                              dangerIconButtonStyle
+                            }
+                          >
+                            <Trash2
+                              size={17}
+                            />
+                          </button>
+
+                        </div>
+
+
+                        <div
+                          style={
+                            itemGridStyle
+                          }
+                        >
+
+                          <Field
+                            label="SKU"
+                            value={
+                              item.sku
+                            }
+                            onChange={
+                              (value) =>
+                                updateItem(
+                                  index,
+                                  "sku",
+                                  value
+                                )
+                            }
+                          />
+
+
+                          <Field
+                            label="Description"
+                            value={
+                              item.description
+                            }
+                            onChange={
+                              (value) =>
+                                updateItem(
+                                  index,
+                                  "description",
+                                  value
+                                )
+                            }
+                            wide
+                          />
+
+
+                          <Field
+                            label="Ordered Qty"
+                            value={
+                              item.orderedQuantity
+                            }
+                            onChange={
+                              (value) =>
+                                updateItem(
+                                  index,
+                                  "orderedQuantity",
+                                  value
+                                )
+                            }
+                          />
+
+
+                          <Field
+                            label="Ordered UOM"
+                            value={
+                              item.orderedUom
+                            }
+                            onChange={
+                              (value) =>
+                                updateItem(
+                                  index,
+                                  "orderedUom",
+                                  value
+                                )
+                            }
+                          />
+
+
+                          <Field
+                            label="Delivered Qty"
+                            value={
+                              item.deliveredQuantity
+                            }
+                            onChange={
+                              (value) =>
+                                updateItem(
+                                  index,
+                                  "deliveredQuantity",
+                                  value
+                                )
+                            }
+                          />
+
+
+                          <Field
+                            label="Delivered UOM"
+                            value={
+                              item.deliveredUom
+                            }
+                            onChange={
+                              (value) =>
+                                updateItem(
+                                  index,
+                                  "deliveredUom",
+                                  value
+                                )
+                            }
+                          />
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
 
 
                 <button
                   type="button"
-                  onClick={testDNVision}
-                  disabled={
-                    aiRunning ||
-                    processing
+                  onClick={
+                    addItem
                   }
                   style={{
-                    ...styles.aiButton,
+                    ...secondaryButtonStyle,
 
-                    opacity:
-                      aiRunning ||
-                      processing
-                        ? 0.6
-                        : 1,
+                    marginTop:
+                      "16px",
                   }}
                 >
+                  + Add Missing Item
+                </button>
 
-                  {aiRunning
-                    ? "DNVision Reading..."
-                    : "Read With DNVision"}
+              </section>
 
+
+              {/* ==============================================
+                  ACTIONS
+              ============================================== */}
+
+              <div
+                style={{
+                  display:
+                    "flex",
+
+                  gap:
+                    "12px",
+
+                  flexWrap:
+                    "wrap",
+
+                  marginTop:
+                    "22px",
+                }}
+              >
+
+                <button
+                  type="button"
+                  onClick={
+                    scanDeliveryNote
+                  }
+                  disabled={
+                    scanning
+                  }
+                  style={
+                    secondaryButtonStyle
+                  }
+                >
+                  <RefreshCw
+                    size={18}
+                  />
+
+                  Scan Again
                 </button>
 
 
-                {/* PROGRESS */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    fileInputRef.current?.click()
+                  }
+                  style={
+                    secondaryButtonStyle
+                  }
+                >
+                  <Camera
+                    size={18}
+                  />
 
-                {aiRunning &&
-                  aiProgress !== null && (
-
-                    <div style={styles.progressArea}>
-
-                      <div style={styles.progressTrack}>
-
-                        <div
-                          style={{
-                            ...styles.progressBar,
-
-                            width:
-                              `${Math.max(
-                                0,
-                                Math.min(
-                                  100,
-                                  aiProgress
-                                )
-                              )}%`,
-                          }}
-                        />
-
-                      </div>
+                  New Photo
+                </button>
 
 
-                      <div style={styles.progressText}>
-                        {Math.max(
-                          0,
-                          Math.min(
-                            100,
-                            aiProgress
-                          )
-                        )}
-                        %
-                      </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log(
+                      "DNVision verified delivery note:",
+                      deliveryNote
+                    );
 
-                    </div>
+                    alert(
+                      "Verification complete. Submission connection is the next step."
+                    );
+                  }}
+                  style={{
+                    ...primaryButtonStyle,
 
-                  )}
+                    marginLeft:
+                      "auto",
+                  }}
+                >
+                  <CheckCircle2
+                    size={19}
+                  />
 
-
-                {/* ANSWER */}
-
-                {aiAnswer && (
-
-                  <div style={styles.answerBox}>
-
-                    <div style={styles.answerLabel}>
-                      DETECTED DELIVERY NOTE NUMBER
-                    </div>
-
-
-                    <div style={styles.answerValue}>
-                      {aiAnswer}
-                    </div>
-
-                  </div>
-
-                )}
-
-
-                {/* ERROR */}
-
-                {aiError && (
-
-                  <div style={styles.errorBox}>
-                    {aiError}
-                  </div>
-
-                )}
+                  Confirm Verified Data
+                </button>
 
               </div>
 
@@ -1201,40 +1940,175 @@ export default function DNVisionScanner({
 
       </div>
 
+
+      {/* ======================================================
+          LOCAL ANIMATION
+      ====================================================== */}
+
+      <style>
+        {`
+          @keyframes dnvisionSpin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+
+          .dnvision-spin {
+            animation: dnvisionSpin 0.9s linear infinite;
+          }
+
+          @media (max-width: 700px) {
+            .dnvision-responsive-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}
+      </style>
+
     </div>
   );
 }
 
 
 /* ============================================================
-   DEVICE ROW
+   FIELD
 ============================================================ */
 
-function DeviceRow({
+function Field({
   label,
   value,
-  good = false,
+  onChange,
+  wide = false,
 }) {
+
   return (
-    <div style={styles.deviceRow}>
+    <label
+      style={{
+        display:
+          "grid",
 
-      <span style={styles.deviceRowLabel}>
-        {label}
-      </span>
+        gap:
+          "7px",
 
+        gridColumn:
+          wide
+            ? "span 2"
+            : "auto",
+      }}
+    >
 
-      <strong
+      <span
         style={{
-          ...styles.deviceRowValue,
+          fontSize:
+            "12px",
+
+          fontWeight:
+            800,
 
           color:
-            good
-              ? "#15803d"
-              : "#0f172a",
+            "#64748b",
+
+          textTransform:
+            "uppercase",
+
+          letterSpacing:
+            ".5px",
         }}
       >
-        {value}
-      </strong>
+        {label}
+      </span>
+
+
+      <input
+        value={
+          value ?? ""
+        }
+        onChange={
+          (event) =>
+            onChange(
+              event.target.value
+            )
+        }
+        style={
+          inputStyle
+        }
+      />
+
+    </label>
+  );
+}
+
+
+/* ============================================================
+   SECTION TITLE
+============================================================ */
+
+function SectionTitle({
+  icon,
+  title,
+  subtitle,
+}) {
+
+  return (
+    <div
+      style={{
+        display:
+          "flex",
+
+        gap:
+          "12px",
+
+        alignItems:
+          "flex-start",
+
+        marginBottom:
+          "18px",
+      }}
+    >
+
+      <div
+        style={
+          smallIconStyle
+        }
+      >
+        {icon}
+      </div>
+
+
+      <div>
+
+        <h2
+          style={{
+            margin:
+              0,
+
+            fontSize:
+              "18px",
+
+            color:
+              "#0f172a",
+          }}
+        >
+          {title}
+        </h2>
+
+
+        <div
+          style={{
+            marginTop:
+              "4px",
+
+            color:
+              "#64748b",
+
+            fontSize:
+              "13px",
+          }}
+        >
+          {subtitle}
+        </div>
+
+      </div>
 
     </div>
   );
@@ -1242,27 +2116,340 @@ function DeviceRow({
 
 
 /* ============================================================
-   INFO CARD
+   RESULT PARSER
 ============================================================ */
 
-function InfoCard({
-  label,
-  value,
-}) {
-  return (
-    <div style={styles.infoCard}>
+function parseDNVisionResult(
+  raw
+) {
 
-      <span style={styles.infoLabel}>
-        {label}
-      </span>
+  const cleaned =
+    cleanDNVisionJSON(
+      raw
+    );
 
 
-      <strong style={styles.infoValue}>
-        {value}
-      </strong>
+  let data;
 
-    </div>
-  );
+
+  try {
+
+    data =
+      JSON.parse(
+        cleaned
+      );
+
+  } catch (error) {
+
+    console.error(
+      "DNVision raw answer:",
+      raw
+    );
+
+
+    console.error(
+      "DNVision cleaned answer:",
+      cleaned
+    );
+
+
+    throw new Error(
+      "DNVision read the document but returned an invalid data format. Please scan again."
+    );
+  }
+
+
+  const result =
+    createEmptyDeliveryNote();
+
+
+  result.deliveryNoteNumber =
+    normalizeDeliveryNoteNumber(
+      data?.deliveryNoteNumber
+    );
+
+
+  result.shippingDate =
+    safeText(
+      data?.shippingDate
+    );
+
+
+  result.sourceLocation =
+    safeText(
+      data?.sourceLocation
+    );
+
+
+  result.destinationLocation =
+    safeText(
+      data?.destinationLocation
+    );
+
+
+  const sourceItems =
+    Array.isArray(
+      data?.items
+    )
+      ? data.items
+      : [];
+
+
+  result.items =
+    sourceItems
+      .map(
+        (item) => ({
+
+          sku:
+            normalizeSKU(
+              item?.sku
+            ),
+
+          description:
+            safeText(
+              item?.description
+            ),
+
+          orderedQuantity:
+            normalizeQuantity(
+              item?.orderedQuantity
+            ),
+
+          orderedUom:
+            safeText(
+              item?.orderedUom
+            ),
+
+          deliveredQuantity:
+            normalizeQuantity(
+              item?.deliveredQuantity
+            ),
+
+          deliveredUom:
+            safeText(
+              item?.deliveredUom
+            ),
+        })
+      )
+      .filter(
+        (item) =>
+          item.sku ||
+          item.description ||
+          item.orderedQuantity ||
+          item.deliveredQuantity
+      );
+
+
+  return result;
+}
+
+
+/* ============================================================
+   CLEAN MODEL JSON
+============================================================ */
+
+function cleanDNVisionJSON(
+  raw
+) {
+
+  let text =
+    String(
+      raw || ""
+    ).trim();
+
+
+  /*
+    Remove Markdown fences if model ignores
+    the instruction and returns ```json.
+  */
+
+  text =
+    text
+      .replace(
+        /^```json\s*/i,
+        ""
+      )
+      .replace(
+        /^```\s*/,
+        ""
+      )
+      .replace(
+        /\s*```$/,
+        ""
+      )
+      .trim();
+
+
+  /*
+    Remove accidental assistant prefix.
+  */
+
+  text =
+    text.replace(
+      /^assistant\s*:?\s*/i,
+      ""
+    );
+
+
+  /*
+    Find first JSON object.
+
+    This protects us if the model writes
+    a short sentence before the JSON.
+  */
+
+  const firstBrace =
+    text.indexOf(
+      "{"
+    );
+
+
+  const lastBrace =
+    text.lastIndexOf(
+      "}"
+    );
+
+
+  if (
+    firstBrace !== -1 &&
+    lastBrace !== -1 &&
+    lastBrace >
+    firstBrace
+  ) {
+
+    text =
+      text.slice(
+        firstBrace,
+        lastBrace + 1
+      );
+  }
+
+
+  return text.trim();
+}
+
+
+/* ============================================================
+   DELIVERY NOTE NORMALIZATION
+============================================================ */
+
+function normalizeDeliveryNoteNumber(
+  value
+) {
+
+  let text =
+    safeText(
+      value
+    )
+      .toUpperCase()
+      .replace(
+        /^DELIVERY\s*NOTE\s*/i,
+        ""
+      )
+      .trim();
+
+
+  /*
+    Example model output:
+
+    CKWH/INT 46389
+
+    becomes:
+
+    CKWH/INT/46389
+  */
+
+  if (
+    /^[A-Z0-9]+\/[A-Z0-9]+\s+\d+$/.test(
+      text
+    )
+  ) {
+
+    text =
+      text.replace(
+        /\s+(?=\d+$)/,
+        "/"
+      );
+  }
+
+
+  text =
+    text
+      .replace(
+        /\s*\/\s*/g,
+        "/"
+      )
+      .replace(
+        /\/+/g,
+        "/"
+      )
+      .trim();
+
+
+  return text;
+}
+
+
+/* ============================================================
+   SKU NORMALIZATION
+============================================================ */
+
+function normalizeSKU(
+  value
+) {
+
+  return safeText(
+    value
+  )
+    .toUpperCase()
+    .replace(
+      /\s+/g,
+      ""
+    );
+}
+
+
+/* ============================================================
+   QUANTITY NORMALIZATION
+============================================================ */
+
+function normalizeQuantity(
+  value
+) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+
+  return String(
+    value
+  ).trim();
+}
+
+
+/* ============================================================
+   SAFE TEXT
+============================================================ */
+
+function safeText(
+  value
+) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+
+  return String(
+    value
+  ).trim();
 }
 
 
@@ -1270,422 +2457,262 @@ function InfoCard({
    STYLES
 ============================================================ */
 
-const styles = {
+const cardStyle = {
+  padding:
+    "18px",
 
-  page: {
-    minHeight: "100vh",
-    background: "#f5f7fa",
-    padding: "24px 16px 50px",
-    boxSizing: "border-box",
-    fontFamily:
-      "Inter, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-  },
+  border:
+    "1px solid #e2e8f0",
 
-  container: {
-    width: "100%",
-    maxWidth: "850px",
-    margin: "0 auto",
-  },
+  borderRadius:
+    "18px",
 
-  topBar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-    marginBottom: "22px",
-  },
-
-  backButton: {
-    border: "1px solid #dbe1e8",
-    background: "#ffffff",
-    borderRadius: "10px",
-    padding: "10px 14px",
-    cursor: "pointer",
-    fontWeight: "700",
-    color: "#334155",
-  },
-
-  branchBadge: {
-    padding: "8px 12px",
-    borderRadius: "9px",
-    background: "#111827",
-    color: "#ffffff",
-    fontWeight: "800",
-    fontSize: "12px",
-    letterSpacing: "0.06em",
-  },
-
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-    marginBottom: "24px",
-  },
-
-  logo: {
-    width: "58px",
-    height: "58px",
-    flex: "0 0 58px",
-    borderRadius: "16px",
-    background: "#111827",
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: "900",
-    fontSize: "18px",
-  },
-
-  eyebrow: {
-    fontSize: "11px",
-    fontWeight: "800",
-    letterSpacing: "0.12em",
-    color: "#64748b",
-    marginBottom: "3px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "30px",
-    color: "#0f172a",
-  },
-
-  subtitle: {
-    margin: "5px 0 0",
-    color: "#64748b",
-    lineHeight: 1.5,
-  },
+  background:
+    "#ffffff",
+};
 
 
-  /* DEVICE */
+const sectionStyle = {
+  padding:
+    "20px",
 
-  deviceCard: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "20px",
-    padding: "22px",
-    marginBottom: "18px",
-    boxShadow:
-      "0 10px 35px rgba(15,23,42,0.05)",
-  },
+  border:
+    "1px solid #e2e8f0",
 
-  deviceHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "15px",
-    marginBottom: "18px",
-  },
+  borderRadius:
+    "20px",
 
-  deviceTitle: {
-    margin: 0,
-    fontSize: "20px",
-    color: "#0f172a",
-  },
-
-  deviceDescription: {
-    margin: "6px 0 0",
-    color: "#64748b",
-    fontSize: "13px",
-    lineHeight: 1.5,
-  },
-
-  modeBadge: {
-    padding: "7px 10px",
-    borderRadius: "999px",
-    fontSize: "11px",
-    fontWeight: "900",
-  },
-
-  secondaryFullButton: {
-    width: "100%",
-    border: "1px solid #d7dde5",
-    borderRadius: "10px",
-    padding: "12px 14px",
-    background: "#ffffff",
-    color: "#334155",
-    fontWeight: "800",
-    cursor: "pointer",
-  },
-
-  deviceResults: {
-    marginTop: "18px",
-    border: "1px solid #e5e7eb",
-    borderRadius: "12px",
-    overflow: "hidden",
-  },
-
-  deviceRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "20px",
-    padding: "12px 14px",
-    borderBottom: "1px solid #eef2f7",
-  },
-
-  deviceRowLabel: {
-    color: "#64748b",
-    fontSize: "13px",
-  },
-
-  deviceRowValue: {
-    textAlign: "right",
-    fontSize: "13px",
-  },
+  background:
+    "#ffffff",
+};
 
 
-  /* SCANNER */
+const itemCardStyle = {
+  padding:
+    "17px",
 
-  card: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "20px",
-    padding: "24px",
-    boxShadow:
-      "0 10px 35px rgba(15,23,42,0.06)",
-  },
+  borderRadius:
+    "17px",
 
-  emptyState: {
-    textAlign: "center",
-    padding: "45px 20px",
-  },
+  border:
+    "1px solid #e2e8f0",
 
-  cameraIcon: {
-    fontSize: "45px",
-    marginBottom: "15px",
-  },
-
-  emptyTitle: {
-    margin: 0,
-    color: "#0f172a",
-    fontSize: "22px",
-  },
-
-  emptyText: {
-    maxWidth: "500px",
-    margin: "10px auto 22px",
-    color: "#64748b",
-    lineHeight: 1.6,
-  },
-
-  primaryButton: {
-    width: "100%",
-    border: "none",
-    borderRadius: "11px",
-    padding: "15px 18px",
-    background: "#111827",
-    color: "#ffffff",
-    fontSize: "15px",
-    fontWeight: "800",
-    cursor: "pointer",
-  },
-
-  secondaryButton: {
-    flex: 1,
-    border: "1px solid #d7dde5",
-    borderRadius: "10px",
-    padding: "12px",
-    background: "#ffffff",
-    color: "#334155",
-    fontWeight: "700",
-    cursor: "pointer",
-  },
-
-  buttonRow: {
-    display: "flex",
-    gap: "10px",
-    marginTop: "12px",
-  },
-
-  sectionLabel: {
-    color: "#64748b",
-    fontSize: "11px",
-    fontWeight: "900",
-    letterSpacing: "0.11em",
-    marginBottom: "8px",
-  },
-
-  previewBox: {
-    width: "100%",
-    overflow: "hidden",
-    borderRadius: "14px",
-    border: "1px solid #e2e8f0",
-    background: "#f8fafc",
-  },
-
-  previewImage: {
-    display: "block",
-    width: "100%",
-    maxHeight: "600px",
-    objectFit: "contain",
-  },
-
-  statusBox: {
-    marginTop: "18px",
-    padding: "12px 14px",
-    background: "#f8fafc",
-    border: "1px solid #edf0f4",
-    borderRadius: "10px",
-    display: "flex",
-    alignItems: "center",
-    gap: "9px",
-    color: "#475569",
-    fontSize: "13px",
-  },
-
-  statusDot: {
-    width: "8px",
-    height: "8px",
-    flex: "0 0 8px",
-    borderRadius: "50%",
-  },
-
-  resultPanel: {
-    marginTop: "24px",
-    paddingTop: "22px",
-    borderTop: "1px solid #e5e7eb",
-  },
-
-  resultHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "15px",
-    marginBottom: "18px",
-  },
-
-  resultTitle: {
-    margin: 0,
-    fontSize: "19px",
-    color: "#0f172a",
-  },
-
-  successBadge: {
-    background: "#dcfce7",
-    color: "#166534",
-    borderRadius: "999px",
-    padding: "7px 10px",
-    fontWeight: "900",
-    fontSize: "11px",
-  },
-
-  infoGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(150px, 1fr))",
-    gap: "10px",
-  },
-
-  infoCard: {
-    padding: "13px",
-    background: "#f8fafc",
-    border: "1px solid #edf0f4",
-    borderRadius: "10px",
-  },
-
-  infoLabel: {
-    display: "block",
-    color: "#64748b",
-    fontSize: "11px",
-    marginBottom: "5px",
-  },
-
-  infoValue: {
-    color: "#0f172a",
-    fontSize: "14px",
-  },
+  background:
+    "#f8fafc",
+};
 
 
-  /* AI */
+const formGridStyle = {
+  display:
+    "grid",
 
-  aiSection: {
-    marginTop: "26px",
-    paddingTop: "24px",
-    borderTop: "1px solid #e5e7eb",
-  },
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
 
-  aiTitle: {
-    margin: "0 0 8px",
-    color: "#0f172a",
-    fontSize: "20px",
-  },
+  gap:
+    "15px",
+};
 
-  aiDescription: {
-    margin: "0 0 17px",
-    color: "#64748b",
-    fontSize: "14px",
-    lineHeight: 1.55,
-  },
 
-  aiButton: {
-    width: "100%",
-    border: "none",
-    borderRadius: "11px",
-    padding: "15px 18px",
-    background: "#0f172a",
-    color: "#ffffff",
-    fontSize: "15px",
-    fontWeight: "900",
-    cursor: "pointer",
-  },
+const itemGridStyle = {
+  display:
+    "grid",
 
-  progressArea: {
-    marginTop: "15px",
-  },
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
 
-  progressTrack: {
-    width: "100%",
-    height: "8px",
-    background: "#e2e8f0",
-    borderRadius: "999px",
-    overflow: "hidden",
-  },
+  gap:
+    "13px",
+};
 
-  progressBar: {
-    height: "100%",
-    background: "#111827",
-    transition: "width 0.2s ease",
-  },
 
-  progressText: {
-    marginTop: "6px",
-    color: "#64748b",
-    fontSize: "12px",
-    fontWeight: "700",
-  },
+const inputStyle = {
+  width:
+    "100%",
 
-  answerBox: {
-    marginTop: "17px",
-    padding: "17px",
-    background: "#ecfdf5",
-    border: "1px solid #a7f3d0",
-    borderRadius: "12px",
-  },
+  boxSizing:
+    "border-box",
 
-  answerLabel: {
-    color: "#047857",
-    fontSize: "10px",
-    fontWeight: "900",
-    letterSpacing: "0.08em",
-    marginBottom: "7px",
-  },
+  minHeight:
+    "44px",
 
-  answerValue: {
-    color: "#064e3b",
-    fontSize: "22px",
-    fontWeight: "900",
-    wordBreak: "break-word",
-  },
+  border:
+    "1px solid #cbd5e1",
 
-  errorBox: {
-    marginTop: "16px",
-    padding: "14px",
-    borderRadius: "10px",
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    color: "#991b1b",
-    fontSize: "13px",
-    fontWeight: "600",
-  },
+  borderRadius:
+    "11px",
+
+  padding:
+    "10px 12px",
+
+  background:
+    "#ffffff",
+
+  color:
+    "#0f172a",
+
+  fontSize:
+    "14px",
+
+  outline:
+    "none",
+};
+
+
+const primaryButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "13px",
+
+  minHeight:
+    "46px",
+
+  padding:
+    "0 20px",
+
+  background:
+    "#0f172a",
+
+  color:
+    "#ffffff",
+
+  fontWeight:
+    800,
+
+  cursor:
+    "pointer",
+
+  display:
+    "inline-flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "9px",
+};
+
+
+const secondaryButtonStyle = {
+  border:
+    "1px solid #cbd5e1",
+
+  borderRadius:
+    "13px",
+
+  minHeight:
+    "46px",
+
+  padding:
+    "0 18px",
+
+  background:
+    "#ffffff",
+
+  color:
+    "#0f172a",
+
+  fontWeight:
+    800,
+
+  cursor:
+    "pointer",
+
+  display:
+    "inline-flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+};
+
+
+const iconButtonStyle = {
+  width:
+    "44px",
+
+  height:
+    "44px",
+
+  borderRadius:
+    "13px",
+
+  border:
+    "1px solid #e2e8f0",
+
+  background:
+    "#ffffff",
+
+  color:
+    "#0f172a",
+
+  cursor:
+    "pointer",
+
+  display:
+    "grid",
+
+  placeItems:
+    "center",
+};
+
+
+const dangerIconButtonStyle = {
+  width:
+    "38px",
+
+  height:
+    "38px",
+
+  borderRadius:
+    "11px",
+
+  border:
+    "1px solid #fecdd3",
+
+  background:
+    "#fff1f2",
+
+  color:
+    "#be123c",
+
+  cursor:
+    "pointer",
+
+  display:
+    "grid",
+
+  placeItems:
+    "center",
+};
+
+
+const smallIconStyle = {
+  width:
+    "42px",
+
+  height:
+    "42px",
+
+  flex:
+    "0 0 42px",
+
+  borderRadius:
+    "13px",
+
+  background:
+    "#f1f5f9",
+
+  color:
+    "#0f172a",
+
+  display:
+    "grid",
+
+  placeItems:
+    "center",
 };
