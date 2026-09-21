@@ -7,53 +7,6 @@ import {
 } from "@huggingface/transformers";
 
 
-
-
-
-/* ============================================================
-   DNVISION NETWORK DIAGNOSTICS
-============================================================ */
-
-env.allowRemoteModels = true;
-env.allowLocalModels = false;
-env.useBrowserCache = true;
-
-const originalFetch = globalThis.fetch.bind(globalThis);
-
-env.fetch = async (url, options) => {
-  console.log(
-    "DNVision FETCH:",
-    String(url)
-  );
-
-  try {
-    const response = await originalFetch(
-      url,
-      options
-    );
-
-    console.log(
-      "DNVision FETCH RESULT:",
-      response.status,
-      response.statusText,
-      String(url)
-    );
-
-    return response;
-  } catch (error) {
-    console.error(
-      "DNVision FETCH FAILED:",
-      String(url),
-      error
-    );
-
-    throw new Error(
-      `Network fetch failed for: ${String(url)}`
-    );
-  }
-};
-
-
 /* ============================================================
    DNVISION CONFIG
 ============================================================ */
@@ -63,6 +16,15 @@ const DNVISION_MODEL =
 
 const DNVISION_DEVICE =
   "webgpu";
+
+
+/* ============================================================
+   TRANSFORMERS.JS ENVIRONMENT
+============================================================ */
+
+env.allowRemoteModels = true;
+env.allowLocalModels = false;
+env.useBrowserCache = true;
 
 
 /* ============================================================
@@ -77,7 +39,7 @@ let loadingPromise = null;
 
 
 /* ============================================================
-   LOAD ENGINE
+   LOAD DNVISION ENGINE
 ============================================================ */
 
 export async function loadDNVisionEngine(
@@ -91,8 +53,7 @@ export async function loadDNVisionEngine(
     onProgress?.({
       stage: "ready",
       progress: 100,
-      message:
-        "DNVision AI ready",
+      message: "DNVision AI ready",
     });
 
     return {
@@ -115,7 +76,11 @@ export async function loadDNVisionEngine(
 
 
   try {
-    return await loadingPromise;
+    const engine =
+      await loadingPromise;
+
+    return engine;
+
   } catch (error) {
     processor = null;
     tokenizer = null;
@@ -129,13 +94,18 @@ export async function loadDNVisionEngine(
 
 
 /* ============================================================
-   LOAD MODEL FILES
+   ACTUAL MODEL LOADING
 ============================================================ */
 
 async function loadDNVisionModel(
   onProgress
 ) {
   try {
+
+    /* --------------------------------------------------------
+       START
+    -------------------------------------------------------- */
+
     onProgress?.({
       stage: "starting",
       progress: 0,
@@ -152,7 +122,7 @@ async function loadDNVisionModel(
       stage: "processor",
       progress: null,
       message:
-        "Loading DNVision processor...",
+        "Loading DNVision image processor...",
     });
 
 
@@ -195,14 +165,23 @@ async function loadDNVisionModel(
 
 
     /* --------------------------------------------------------
-       MODEL
+       VISION MODEL
+
+       IMPORTANT:
+       Do NOT use:
+
+           dtype: "q4"
+
+       for the whole multimodal model.
+
+       SmolVLM contains separate components.
     -------------------------------------------------------- */
 
     onProgress?.({
       stage: "model",
       progress: null,
       message:
-        "Loading DNVision vision model...",
+        "Loading DNVision WebGPU vision model...",
     });
 
 
@@ -213,14 +192,16 @@ async function loadDNVisionModel(
           device:
             DNVISION_DEVICE,
 
-          /*
-            Use quantized weights where
-            available to reduce memory
-            and download requirements.
-          */
+          dtype: {
+            embed_tokens:
+              "fp16",
 
-          dtype:
-            "q4",
+            vision_encoder:
+              "q4",
+
+            decoder_model_merged:
+              "q4",
+          },
 
           progress_callback:
             createProgressHandler(
@@ -231,12 +212,21 @@ async function loadDNVisionModel(
       );
 
 
+    /* --------------------------------------------------------
+       READY
+    -------------------------------------------------------- */
+
     onProgress?.({
       stage: "ready",
       progress: 100,
       message:
         "DNVision WebGPU model ready",
     });
+
+
+    console.log(
+      "DNVision ENGINE READY"
+    );
 
 
     return {
@@ -246,6 +236,7 @@ async function loadDNVisionModel(
     };
 
   } catch (error) {
+
     console.error(
       "DNVision MODEL LOAD ERROR:",
       error
@@ -294,6 +285,7 @@ export async function askDNVision(
 
 
   try {
+
     /* --------------------------------------------------------
        LOAD ENGINE
     -------------------------------------------------------- */
@@ -313,7 +305,7 @@ export async function askDNVision(
 
 
     /* --------------------------------------------------------
-       LOAD IMAGE
+       IMAGE
     -------------------------------------------------------- */
 
     onProgress?.({
@@ -331,7 +323,7 @@ export async function askDNVision(
 
 
     /* --------------------------------------------------------
-       BUILD PROMPT
+       CLEAN QUESTION
     -------------------------------------------------------- */
 
     const cleanQuestion =
@@ -342,6 +334,10 @@ export async function askDNVision(
         )
         .trim();
 
+
+    /* --------------------------------------------------------
+       CHAT MESSAGE
+    -------------------------------------------------------- */
 
     const messages = [
       {
@@ -354,7 +350,6 @@ export async function askDNVision(
 
           {
             type: "text",
-
             text:
               cleanQuestion,
           },
@@ -363,82 +358,115 @@ export async function askDNVision(
     ];
 
 
-    let prompt;
+    /* --------------------------------------------------------
+       CHAT TEMPLATE
+    -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "prompt",
+      progress: null,
+      message:
+        "Preparing DNVision instruction...",
+    });
 
 
-    /*
-      SmolVLM uses a chat template.
-
-      Use the tokenizer template when
-      available.
-    */
-
-    if (
-      typeof engine.tokenizer
-        .apply_chat_template ===
-      "function"
-    ) {
-      prompt =
-        engine.tokenizer
+    const prompt =
+      engine.processor
+        .apply_chat_template
+      ? engine.processor
           .apply_chat_template(
             messages,
             {
-              tokenize: false,
+              add_generation_prompt:
+                true,
+            }
+          )
+      : engine.tokenizer
+          .apply_chat_template(
+            messages,
+            {
+              tokenize:
+                false,
 
               add_generation_prompt:
                 true,
             }
           );
-    } else {
-      /*
-        Safety fallback.
-      */
-
-      prompt =
-        `<|im_start|>User:<image>${cleanQuestion}<end_of_utterance>\nAssistant:`;
-    }
 
 
     console.log(
-      "DNVision prompt:",
+      "DNVision PROMPT:",
       prompt
     );
 
 
     /* --------------------------------------------------------
-       PROCESS IMAGE
+       PROCESS IMAGE + TEXT
     -------------------------------------------------------- */
 
     onProgress?.({
       stage: "processing",
       progress: null,
       message:
-        "Preparing image for DNVision...",
+        "Preparing delivery note for AI...",
     });
 
 
-    const imageInputs =
-      await engine.processor(
-        image
+    let inputs;
+
+
+    /*
+      Newer multimodal processors can
+      receive both the image and text.
+    */
+
+    try {
+
+      inputs =
+        await engine.processor(
+          prompt,
+          [image]
+        );
+
+    } catch (firstError) {
+
+      console.warn(
+        "DNVision combined processor fallback:",
+        firstError
       );
 
 
+      /*
+        Compatibility fallback for
+        Transformers.js builds where
+        processor() only handles images.
+      */
+
+      const imageInputs =
+        await engine.processor(
+          image
+        );
+
+
+      const textInputs =
+        engine.tokenizer(
+          prompt,
+          {
+            add_special_tokens:
+              false,
+          }
+        );
+
+
+      inputs = {
+        ...textInputs,
+        ...imageInputs,
+      };
+    }
+
+
     /* --------------------------------------------------------
-       TOKENIZE PROMPT
-    -------------------------------------------------------- */
-
-    const textInputs =
-      engine.tokenizer(
-        prompt,
-        {
-          add_special_tokens:
-            false,
-        }
-      );
-
-
-    /* --------------------------------------------------------
-       GENERATE
+       INFERENCE
     -------------------------------------------------------- */
 
     onProgress?.({
@@ -449,22 +477,39 @@ export async function askDNVision(
     });
 
 
+    console.log(
+      "DNVision GENERATION START"
+    );
+
+
     const generatedIds =
       await engine.model.generate({
-        ...textInputs,
-        ...imageInputs,
+        ...inputs,
 
         max_new_tokens:
-          100,
+          80,
 
         do_sample:
           false,
       });
 
 
+    console.log(
+      "DNVision GENERATION COMPLETE"
+    );
+
+
     /* --------------------------------------------------------
        DECODE
     -------------------------------------------------------- */
+
+    onProgress?.({
+      stage: "decode",
+      progress: null,
+      message:
+        "Reading DNVision result...",
+    });
+
 
     const decoded =
       engine.tokenizer
@@ -478,7 +523,7 @@ export async function askDNVision(
 
 
     console.log(
-      "DNVision decoded:",
+      "DNVision RAW OUTPUT:",
       decoded
     );
 
@@ -499,10 +544,14 @@ export async function askDNVision(
 
 
     console.log(
-      "DNVision answer:",
+      "DNVision FINAL ANSWER:",
       answer
     );
 
+
+    /* --------------------------------------------------------
+       COMPLETE
+    -------------------------------------------------------- */
 
     onProgress?.({
       stage: "complete",
@@ -529,6 +578,7 @@ export async function askDNVision(
     };
 
   } catch (error) {
+
     console.error(
       "DNVision AI ERROR:",
       error
@@ -549,7 +599,7 @@ export async function askDNVision(
 
 
 /* ============================================================
-   EXTRACT ASSISTANT RESPONSE
+   CLEAN MODEL RESPONSE
 ============================================================ */
 
 function extractAssistantAnswer(
@@ -568,8 +618,10 @@ function extractAssistantAnswer(
 
 
   /*
-    Remove the original question if the
-    decoded output contains the prompt.
+    Some generated outputs include
+    the original prompt.
+
+    Remove the question portion.
   */
 
   if (
@@ -595,7 +647,7 @@ function extractAssistantAnswer(
 
 
   /*
-    Remove common assistant prefixes.
+    Remove common assistant labels.
   */
 
   result =
@@ -625,8 +677,9 @@ function createProgressHandler(
   stage
 ) {
   return (info) => {
+
     console.log(
-      "DNVision download:",
+      "DNVision MODEL FILE:",
       info
     );
 
@@ -645,9 +698,38 @@ function createProgressHandler(
       "number"
     ) {
       progress =
-        Math.round(
-          info.progress
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              info.progress
+            )
+          )
         );
+    }
+
+
+    let message =
+      `Loading DNVision ${stage}...`;
+
+
+    if (
+      progress !== null
+    ) {
+      message =
+        `Loading DNVision ${progress}%`;
+    }
+
+
+    if (
+      info?.file &&
+      progress === null
+    ) {
+      message =
+        `Loading ${getShortFileName(
+          info.file
+        )}...`;
     }
 
 
@@ -664,12 +746,35 @@ function createProgressHandler(
         info?.status ||
         "",
 
-      message:
-        progress !== null
-          ? `Loading DNVision ${progress}%`
-          : `Loading DNVision ${stage}...`,
+      message,
     });
   };
+}
+
+
+/* ============================================================
+   SHORT FILE NAME
+============================================================ */
+
+function getShortFileName(
+  file
+) {
+  if (!file) {
+    return "model";
+  }
+
+
+  const parts =
+    String(file)
+      .split("/");
+
+
+  return (
+    parts[
+      parts.length - 1
+    ] ||
+    "model"
+  );
 }
 
 
@@ -682,7 +787,7 @@ function getErrorMessage(
 ) {
   if (
     typeof error?.message ===
-    "string" &&
+      "string" &&
     error.message.trim()
   ) {
     return error.message;
@@ -696,14 +801,14 @@ function getErrorMessage(
   } catch {
     return String(
       error ||
-      "Unknown error"
+        "Unknown error"
     );
   }
 }
 
 
 /* ============================================================
-   STATUS
+   READY STATUS
 ============================================================ */
 
 export function isDNVisionReady() {
@@ -727,8 +832,16 @@ export function getDNVisionModelInfo() {
     device:
       DNVISION_DEVICE,
 
-    dtype:
-      "q4",
+    dtype: {
+      embed_tokens:
+        "fp16",
+
+      vision_encoder:
+        "q4",
+
+      decoder_model_merged:
+        "q4",
+    },
 
     loaded:
       isDNVisionReady(),
