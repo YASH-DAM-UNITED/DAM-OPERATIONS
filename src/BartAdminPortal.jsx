@@ -13,41 +13,44 @@ import * as XLSX from "xlsx-js-style";
 import "./BartAdminPortal.css";
 
 const GROUPS = [
-  { id:"reports", label:"REPORTS / DOWNLOADS", tabs:[
-    ["report-studio","Download Center",FileSpreadsheet],["date-range-reports","Date Range Reports",FileChartColumn],
-    ["executive-report","Executive Report",Download],["custom-export","Custom Export",Filter],
-    ["report-history","Report History",History],
+  { id:"priority", label:"CORE OPERATIONS", tabs:[
+    ["command-center","Command Center",LayoutDashboard],
+    ["global-search","Global Inventory Search",Search],
+    ["daily-inventory","Daily Stock",ClipboardCheck],
+    ["weekly-inventory","Weekly Stock",CalendarDays],
+    ["category-explorer","Category Stock",Tags],
+    ["report-studio","Report Center",FileSpreadsheet],
+    ["area-managers","Area Managers",UserRoundCog],
   ]},
-  { id:"command", label:"COMMAND", tabs:[
-    ["command-center","Command Center",LayoutDashboard],["live-operations","Live Operations",Activity],
-    ["branch-network","Branch Network",Building2],["attention-center","Attention Center",ShieldAlert],
-  ]},
-  { id:"inventory", label:"INVENTORY", tabs:[
-    ["inventory-matrix","Inventory Matrix",Table2],["daily-inventory","Daily Inventory",ClipboardCheck],
-    ["weekly-inventory","Weekly Inventory",CalendarDays],["global-search","Global Item Search",Search],
-    ["sku-explorer","SKU Explorer",PackageSearch],["category-explorer","Category Explorer",Tags],
+  { id:"network", label:"NETWORK", tabs:[
+    ["branch-network","All Branches",Building2],
+    ["data-health","Data Health",Database],
+    ["exception-center","Exceptions",AlertTriangle],
+    ["zero-stock","Zero Stock",XCircle],
+    ["uncategorized","Uncategorized",Tags],
   ]},
   { id:"intelligence", label:"INTELLIGENCE", tabs:[
-    ["stock-movement","Stock Movement",ChartNoAxesCombined],["item-history","Item History",History],
-    ["branch-trends","Branch Trends",TrendingUp],["fast-movers","Fast Movers",Gauge],
-    ["slow-movers","Slow Movers",TrendingDown],["stock-distribution","Stock Distribution",Warehouse],
-  ]},
-  { id:"analysis", label:"ANALYSIS", tabs:[
-    ["branch-comparison","Branch Comparison",GitCompareArrows],["item-comparison","Item Comparison",Layers3],
-    ["date-comparison","Date Comparison",CalendarDays],["category-comparison","Category Comparison",BarChart3],
+    ["inventory-matrix","Inventory Matrix",Table2],
+    ["stock-movement","Stock Movement",ChartNoAxesCombined],
+    ["item-history","Item History",History],
+    ["branch-trends","Branch Trends",TrendingUp],
+    ["fast-movers","Fast Movers",Gauge],
+    ["slow-movers","Slow Movers",TrendingDown],
+    ["branch-comparison","Branch Comparison",GitCompareArrows],
+    ["item-comparison","Item Comparison",Layers3],
+    ["date-comparison","Date Comparison",CalendarDays],
+    ["category-comparison","Category Comparison",BarChart3],
     ["variance-analyzer","Variance Analyzer",CircleGauge],
   ]},
-  { id:"exceptions", label:"EXCEPTIONS", tabs:[
-    ["exception-center","Exception Center",AlertTriangle],["zero-stock","Zero Stock",XCircle],
-    ["missing-submissions","Missing Data",ShieldAlert],["uncategorized","Uncategorized",Tags],
-    ["data-anomalies","Data Anomalies",HeartPulse],
-  ]},
   { id:"management", label:"MANAGEMENT", tabs:[
-    ["area-managers","Area Managers",UserRoundCog],["manager-branches","Manager Branch View",UsersRound],
+    ["manager-branches","Manager Branch View",UsersRound],
     ["area-comparison","Area Comparison",MapPinned],
   ]},
-  { id:"system", label:"SYSTEM", tabs:[
-    ["data-health","Data Health",Database],["system-settings","System Settings",Settings2],
+  { id:"reports", label:"EXPORTS", tabs:[
+    ["date-range-reports","Date Range Movement",FileChartColumn],
+    ["executive-report","Executive Report",Download],
+    ["custom-export","Custom Export",Filter],
+    ["report-history","Report History",History],
   ]},
 ];
 const ALL_TABS = GROUPS.flatMap(g=>g.tabs.map(t=>({id:t[0],label:t[1],Icon:t[2],group:g.id})));
@@ -89,12 +92,96 @@ function CommandCenter({data,date,setTab}){
   const all=[...(data.daily||[]),...(data.weekly||[])];
   const unc=all.filter(x=>x.category==="UNCATEGORIZED DETECTED").length;
   const zero=all.reduce((a,r)=>a+(data.branches||[]).filter(b=>n(r[b.name])===0).length,0);
-  return <div className="ba-stack">
-    <section className="ba-hero"><div><span className="eyebrow">BART / OPERATIONS COMMAND</span><h1>Good day, Admin.</h1><p>One surface for the signals that deserve management attention on <b>{date}</b>.</p></div><div className="hero-radar"><div className="radar-ring r1"/><div className="radar-ring r2"/><div className="radar-dot"/><strong>{data.loadedBranchCount||0}</strong><span>BRANCHES ONLINE</span></div></section>
-    <div className="ba-metrics"><Metric label="NETWORK" value={`${data.loadedBranchCount||0}/${data.branchCount||0}`} detail="branches responding" Icon={Building2}/><Metric label="DAILY ITEMS" value={(data.daily||[]).length} detail="items detected" Icon={ClipboardCheck}/><Metric label="WEEKLY ITEMS" value={(data.weekly||[]).length} detail="items detected" Icon={CalendarDays}/><Metric label="ATTENTION" value={(data.failedBranches||[]).length+unc} detail="signals to review" Icon={AlertTriangle}/></div>
-    <div className="ba-grid-2"><section className="ba-panel"><header><div><span className="eyebrow">NETWORK CONDITION</span><h3>Branch availability</h3></div><button onClick={()=>setTab("data-health")}>Open health <ChevronRight size={15}/></button></header><div className="health-bar"><i style={{width:`${data.branchCount?((data.loadedBranchCount||0)/data.branchCount)*100:0}%`}}/></div><div className="health-numbers"><b>{data.loadedBranchCount||0} healthy</b><span>{(data.failedBranches||[]).length} unavailable</span></div></section>
-    <section className="ba-panel"><header><div><span className="eyebrow">DATA SIGNALS</span><h3>Immediate checks</h3></div><button onClick={()=>setTab("exception-center")}>Inspect <ChevronRight size={15}/></button></header><div className="signal-list"><div><AlertTriangle/><span><b>{unc}</b> uncategorized item records</span></div><div><XCircle/><span><b>{fmt(zero)}</b> zero branch/item cells</span></div><div><Database/><span><b>{(data.failedBranches||[]).length}</b> branch fetch failures</span></div></div></section></div>
-    <section className="ba-panel quick"><header><div><span className="eyebrow">QUICK INTELLIGENCE</span><h3>Jump directly into analysis</h3></div></header><div className="quick-grid">{[["global-search","Find any SKU",Search],["branch-comparison","Compare branches",GitCompareArrows],["stock-movement","Stock movement",ChartNoAxesCombined],["report-studio","Build report",FileSpreadsheet],["exception-center","Exceptions",ShieldAlert],["inventory-matrix","Inventory matrix",Table2]].map(([id,l,I])=><button key={id} onClick={()=>setTab(id)}><I/><span>{l}</span><ChevronRight/></button>)}</div></section>
+  const operations=[
+    ["global-search","01","GLOBAL SEARCH","Search Daily + Weekly together",Search],
+    ["daily-inventory","02","DAILY STOCK","Selected-date daily inventory",ClipboardCheck],
+    ["weekly-inventory","03","WEEKLY STOCK","Selected-date weekly inventory",CalendarDays],
+    ["category-explorer","04","CATEGORY STOCK","Food, Dry, Misc and safety bucket",Tags],
+    ["report-studio","05","REPORT CENTER","Live, transposed and movement exports",FileSpreadsheet],
+    ["area-managers","06","AREA MANAGERS","Restricted assigned-branch views",UserRoundCog],
+  ];
+  return <div className="new-command">
+    <section className="editorial-hero">
+      <motion.div className="hero-kicker" initial={{opacity:0,y:18}} animate={{opacity:1,y:0}}>
+        <span className="live-dot"/> BART ADMIN / LIVE OPERATIONS / {date}
+      </motion.div>
+      <div className="hero-title-row">
+        <motion.h1 initial={{opacity:0,y:50}} animate={{opacity:1,y:0}} transition={{type:"spring",stiffness:95,damping:16}}>
+          INVENTORY<br/><em>INTELLIGENCE.</em>
+        </motion.h1>
+        <motion.div className="hero-stat" initial={{scale:.8,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:.15,type:"spring"}}>
+          <strong>{data.loadedBranchCount||0}</strong>
+          <span>OF {data.branchCount||0}<br/>BRANCHES LIVE</span>
+        </motion.div>
+      </div>
+      <p className="hero-copy">The operational surface for stock visibility, branch intelligence and management reporting.</p>
+    </section>
+
+    <div className="marquee-shell" aria-hidden="true">
+      <div className="marquee-track">
+        <span>BART OPERATIONS</span><i>•</i><span>LIVE INVENTORY</span><i>•</i><span>BRANCH INTELLIGENCE</span><i>•</i><span>REPORTING</span><i>•</i>
+        <span>BART OPERATIONS</span><i>•</i><span>LIVE INVENTORY</span><i>•</i><span>BRANCH INTELLIGENCE</span><i>•</i><span>REPORTING</span><i>•</i>
+      </div>
+    </div>
+
+    <section className="operation-section">
+      <div className="section-heading">
+        <div><span>01 / PRIORITY</span><h2>Core operations</h2></div>
+        <p>Drag or scroll horizontally. These are the real Streamlit operations, rebuilt for React.</p>
+      </div>
+      <div className="operation-carousel">
+        {operations.map(([id,no,title,copy,Icon],i)=>
+          <motion.button key={id} className="operation-card" onClick={()=>setTab(id)}
+            initial={{opacity:0,y:45}} whileInView={{opacity:1,y:0}} viewport={{once:true,amount:.2}}
+            transition={{delay:i*.055,type:"spring",stiffness:115,damping:16}}
+            whileHover={{y:-12,rotate:-.6}} whileTap={{scale:.965}}>
+            <div className="op-top"><span>{no}</span><ArrowUpRight/></div>
+            <Icon className="op-icon"/>
+            <div><small>OPEN OPERATION</small><h3>{title}</h3><p>{copy}</p></div>
+          </motion.button>
+        )}
+      </div>
+    </section>
+
+    <section className="signal-stage">
+      <motion.article className="signal-big" initial={{opacity:0,x:-45}} whileInView={{opacity:1,x:0}} viewport={{once:true}} transition={{type:"spring",stiffness:100,damping:17}}>
+        <span>NETWORK CONDITION</span>
+        <div className="network-number">{data.loadedBranchCount||0}<small>/{data.branchCount||0}</small></div>
+        <div className="health-bar"><i style={{width:`${data.branchCount?((data.loadedBranchCount||0)/data.branchCount)*100:0}%`}}/></div>
+        <button onClick={()=>setTab("data-health")}>VIEW DATA HEALTH <ArrowUpRight/></button>
+      </motion.article>
+      <div className="signal-stack">
+        <motion.button onClick={()=>setTab("daily-inventory")} whileHover={{x:8}}><ClipboardCheck/><span>DAILY ITEMS</span><strong>{(data.daily||[]).length}</strong></motion.button>
+        <motion.button onClick={()=>setTab("weekly-inventory")} whileHover={{x:8}}><CalendarDays/><span>WEEKLY ITEMS</span><strong>{(data.weekly||[]).length}</strong></motion.button>
+        <motion.button onClick={()=>setTab("uncategorized")} whileHover={{x:8}}><Tags/><span>UNCATEGORIZED</span><strong>{unc}</strong></motion.button>
+        <motion.button onClick={()=>setTab("exception-center")} whileHover={{x:8}}><AlertTriangle/><span>ZERO CELLS</span><strong>{fmt(zero)}</strong></motion.button>
+      </div>
+    </section>
+
+    <section className="report-feature">
+      <div className="report-copy">
+        <span>02 / REPORT CENTER</span>
+        <h2>Reports that actually<br/><em>match operations.</em></h2>
+        <p>Professional live inventory, selected-item transposed export and date-range stock movement.</p>
+        <button onClick={()=>setTab("report-studio")}>ENTER REPORT CENTER <ArrowUpRight/></button>
+      </div>
+      <div className="report-carousel">
+        {[
+          ["LIVE","BART_Report_<date>.xlsx","Daily · Weekly · Categories"],
+          ["SELECT","Selected_Items_Transposed","Multi-product branch export"],
+          ["RANGE","BART_Stock_Movement","Daily · Weekly · Combined · Fast Moving"]
+        ].map((r,i)=><motion.div key={r[0]} initial={{opacity:0,y:35}} whileInView={{opacity:1,y:0}} viewport={{once:true}} transition={{delay:i*.08,type:"spring"}}>
+          <b>{r[0]}</b><h3>{r[1]}</h3><p>{r[2]}</p><span>0{i+1}</span>
+        </motion.div>)}
+      </div>
+    </section>
+
+    <div className="marquee-shell reverse" aria-hidden="true">
+      <div className="marquee-track">
+        <span>SEARCH</span><i>•</i><span>DAILY</span><i>•</i><span>WEEKLY</span><i>•</i><span>CATEGORIES</span><i>•</i><span>REPORTS</span><i>•</i><span>MANAGERS</span><i>•</i>
+        <span>SEARCH</span><i>•</i><span>DAILY</span><i>•</i><span>WEEKLY</span><i>•</i><span>CATEGORIES</span><i>•</i><span>REPORTS</span><i>•</i><span>MANAGERS</span><i>•</i>
+      </div>
+    </div>
   </div>
 }
 
@@ -410,10 +497,36 @@ export default function BartAdminPortal({onBack}){
    else if(["report-studio","executive-report","custom-export","report-history"].includes(tab))body=reports;
    else body=<div className="ba-stack"><PageHead eyebrow={meta?.group?.toUpperCase()} title={meta?.label} text="This workspace is intentionally distinct and will only display data supported by its source."/><Empty text="No unsupported or duplicated analytics are shown here."/></div>;
  }
- return <div className="bart-admin"><aside className={navOpen?"open":""}><div className="admin-brand"><div className="brand-mark">B</div><div><b>BART</b><span>ADMIN COMMAND</span></div></div><nav>{GROUPS.map(g=><div className="nav-group" key={g.id}><button className="group-title" onClick={()=>setOpenGroup(openGroup===g.id?"":g.id)}><span>{g.label}</span><small>{g.tabs.length}</small></button><AnimatePresence initial={false}>{openGroup===g.id&&<motion.div className="group-tabs" initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}}>{g.tabs.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>choose(id,g.id)}><Icon size={16}/><span>{label}</span></button>)}</motion.div>}</AnimatePresence></div>)}</nav><button className="all-brands" onClick={onBack}><ArrowLeft/> ALL BRANDS</button></aside>
- <main><header className="admin-top"><button className="mobile-nav" onClick={()=>setNavOpen(!navOpen)}><Command/></button><div className="crumb"><span>DAM UNITED / BART</span><b>{meta?.label||"Command Center"}</b></div><div className="top-actions">
-<button className="theme-toggle" onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} title="Switch theme">
-{theme==="dark"?<Sun/>:<Moon/>}<span>{theme==="dark"?"Light":"Night"}</span>
-</button>
-<button className="top-download" onClick={()=>choose("report-studio","reports")}><Download/> Download Center</button><label><CalendarDays/><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><button onClick={()=>load(true)} disabled={loading}><RefreshCcw className={loading?"spin":""}/> Refresh</button></div></header><div className="admin-content">{branch&&data?<BranchWorkspace branch={branch} data={data} onBack={()=>setBranch(null)}/>:error?<div className="fatal"><AlertTriangle/><h2>Admin data unavailable</h2><p>{error}</p><button onClick={()=>{setError("");load(true)}}>Retry connection</button></div>:<AnimatePresence mode="wait">{loading?<motion.div key={`load-${tab}`} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><TabLoader tab={tab}/></motion.div>:<motion.div key={tab} initial={{opacity:0,y:18,filter:"blur(8px)"}} animate={{opacity:1,y:0,filter:"blur(0px)"}} exit={{opacity:0,y:-8}} transition={{duration:.35}}>{body}</motion.div>}</AnimatePresence>}</div></main></div>
+ return <div className="bart-admin-new">
+   <header className="editorial-topbar">
+     <button className="brand-back" onClick={onBack}><ArrowLeft/><span>ALL BRANDS</span></button>
+     <div className="bart-wordmark"><b>BART</b><span>ADMIN / OPERATIONS</span></div>
+     <nav className="priority-nav">
+       {GROUPS[0].tabs.slice(0,7).map(([id,label])=><button key={id} className={tab===id?"active":""} onClick={()=>choose(id,"priority")}>{label}</button>)}
+     </nav>
+     <div className="top-tools">
+       <button className="icon-tool" onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} title="Switch theme">{theme==="dark"?<Sun/>:<Moon/>}</button>
+       <label className="date-tool"><CalendarDays/><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
+       <button className="refresh-tool" onClick={()=>load(true)} disabled={loading}><RefreshCcw className={loading?"spin":""}/><span>REFRESH</span></button>
+       <button className="menu-tool" onClick={()=>setNavOpen(!navOpen)}><Command/></button>
+     </div>
+   </header>
+
+   <AnimatePresence>
+     {navOpen&&<motion.div className="command-drawer" initial={{opacity:0,x:50}} animate={{opacity:1,x:0}} exit={{opacity:0,x:50}}>
+       <div className="drawer-head"><span>ALL WORKSPACES</span><button onClick={()=>setNavOpen(false)}>×</button></div>
+       {GROUPS.map(g=><section key={g.id}><small>{g.label}</small>{g.tabs.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>choose(id,g.id)}><Icon/><span>{label}</span><ArrowUpRight/></button>)}</section>)}
+     </motion.div>}
+   </AnimatePresence>
+
+   <main className="editorial-main">
+     {branch&&data?<BranchWorkspace branch={branch} data={data} onBack={()=>setBranch(null)}/>:
+      error?<div className="fatal"><AlertTriangle/><h2>Admin data unavailable</h2><p>{error}</p><button onClick={()=>{setError("");load(true)}}>Retry connection</button></div>:
+      <AnimatePresence mode="wait">
+        {loading?
+          <motion.div key={`load-${tab}`} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><TabLoader tab={tab}/></motion.div>:
+          <motion.div key={tab} initial={{opacity:0,y:30,scale:.992}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-16}} transition={{type:"spring",stiffness:125,damping:20}}>{body}</motion.div>}
+      </AnimatePresence>}
+   </main>
+ </div>
 }
