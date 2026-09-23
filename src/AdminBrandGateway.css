@@ -1,7 +1,7 @@
 /* =========================================================
    DAM UNITED — ADMIN BRAND GATEWAY
-   File: src/AdminBrandGateway.css
-========================================================= */
+   MEDIUM+ TYPOGRAPHY VERSION
+   ========================================================= */
 
 .dam-admin-gateway {
   --gateway-x: 50%;
@@ -30,12 +30,12 @@
 
   position: relative;
   isolation: isolate;
-
   width: 100%;
   min-height: 100vh;
   overflow: hidden;
 
   color: var(--text);
+
   background:
     radial-gradient(
       circle at 10% 15%,
@@ -73,7 +73,7 @@
 
 /* =========================================================
    LIGHT THEME
-========================================================= */
+   ========================================================= */
 
 .dam-admin-gateway.theme-light {
   --bg: #f7f4ff;
@@ -114,8 +114,8 @@
 }
 
 /* =========================================================
-   GLOBAL RESET INSIDE GATEWAY
-========================================================= */
+   RESET
+   ========================================================= */
 
 .dam-admin-gateway *,
 .dam-admin-gateway *::before,
@@ -138,7 +138,7 @@
 
 /* =========================================================
    FLOATING UNIVERSE
-========================================================= */
+   ========================================================= */
 
 .dam-floating-universe {
   position: absolute;
@@ -151,7 +151,6 @@
 .dam-orb {
   position: absolute;
   border-radius: 999px;
-  filter: blur(2px);
   opacity: 0.82;
   will-change: transform;
 }
@@ -216,8 +215,8 @@
 }
 
 /* =========================================================
-   BACKGROUND GRID
-========================================================= */
+   GRID + VIGNETTE
+   ========================================================= */
 
 .dam-grid-overlay {
   position: absolute;
@@ -280,7 +279,7 @@
 
 /* =========================================================
    CURSOR AMBIENT LIGHT
-========================================================= */
+   ========================================================= */
 
 .dam-global-pointer-light {
   position: fixed;
@@ -305,7 +304,6 @@
     );
 
   filter: blur(15px);
-
   pointer-events: none;
 }
 
@@ -321,7 +319,7 @@
 
 /* =========================================================
    HEADER
-========================================================= */
+   ========================================================= */
 
 .dam-gateway-header {
   position: relative;
@@ -330,7 +328,7 @@
   width: min(1500px, calc(100% - 64px));
   margin: 0 auto;
 
-  min-height: 94px;
+  min-height: 88px;
 
   display: flex;
   align-items: center;
@@ -377,6 +375,7 @@
 .dam-logo-mark::before {
   content: "";
   position: absolute;
+
   width: 160%;
   height: 45%;
 
@@ -412,7 +411,7 @@
   position: relative;
   z-index: 2;
 
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 950;
 }
 
@@ -425,7 +424,7 @@
 .dam-logo-copy strong {
   font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.11em;
 }
 
 .dam-logo-copy span {
@@ -435,7 +434,7 @@
 
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.19em;
+  letter-spacing: 0.16em;
 }
 
 .dam-gateway-header-actions {
@@ -445,12 +444,12 @@
 }
 
 .dam-system-status {
+  min-height: 38px;
+  padding: 0 14px;
+
   display: flex;
   align-items: center;
   gap: 8px;
-
-  min-height: 38px;
-  padding: 0 14px;
 
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -462,9 +461,9 @@
 
   color: var(--muted);
 
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 850;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.1em;
 }
 
 .dam-live-dot,
@@ -513,8 +512,8 @@
 }
 
 /* =========================================================
-   THEME BUTTON
-========================================================= */
+   THEME + EXIT BUTTON
+   ========================================================= */
 
 .dam-theme-toggle,
 .dam-gateway-back {
@@ -524,7 +523,6 @@
   border-radius: 999px;
 
   background: var(--glass);
-
   color: var(--text);
 
   cursor: pointer;
@@ -578,22 +576,22 @@
 }
 
 .dam-theme-text {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
 }
 
 .dam-gateway-back {
   padding: 0 16px;
 
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.12em;
 }
 
 /* =========================================================
-   HERO
-========================================================= */
+   HERO — REDUCED TO MEDIUM+
+   ========================================================= */
 
 .dam-gateway-hero {
   position: relative;
@@ -602,7 +600,7 @@
   width: min(1500px, calc(100% - 64px));
   margin: 0 auto;
 
-  padding: 72px 0 48px;
+  padding: 58px 0 42px;
 }
 
 .dam-hero-kicker {
@@ -612,9 +610,9 @@
 
   color: var(--muted);
 
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
 }
 
 .dam-kicker-line {
@@ -636,7 +634,7 @@
   display: inline-flex;
   align-items: flex-start;
 
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .dam-gateway-title {
@@ -647,16 +645,20 @@
 
   color: var(--text);
 
-  font-size: clamp(68px, 10vw, 158px);
+  /*
+     MAIN CHANGE:
+     Was up to 158px.
+     Now controlled medium+.
+  */
+  font-size: clamp(48px, 6.2vw, 92px);
   font-weight: 950;
 
-  line-height: 0.76;
-  letter-spacing: -0.09em;
+  line-height: 0.86;
+  letter-spacing: -0.065em;
 }
 
 .dam-gateway-title span {
   position: relative;
-
   width: max-content;
 
   color: transparent;
@@ -690,14 +692,18 @@
   }
 }
 
+/* =========================================================
+   SELECT YOUR BRAND BADGE
+   ========================================================= */
+
 .dam-hero-badge {
   position: absolute;
 
-  right: -105px;
-  top: 20px;
+  right: -92px;
+  top: 10px;
 
-  width: 98px;
-  height: 98px;
+  width: 82px;
+  height: 82px;
 
   display: flex;
   flex-direction: column;
@@ -723,31 +729,31 @@
 
   backdrop-filter: blur(14px);
 
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 800;
-  letter-spacing: 0.11em;
-
+  letter-spacing: 0.1em;
   line-height: 1.25;
 }
 
 .dam-hero-badge strong {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 950;
 }
 
 .dam-gateway-subtitle {
-  margin: 35px 0 0;
+  margin: 28px 0 0;
+
   max-width: 580px;
 
   color: var(--muted);
 
-  font-size: clamp(14px, 1.25vw, 18px);
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 /* =========================================================
    MARQUEE
-========================================================= */
+   ========================================================= */
 
 .dam-gateway-marquee {
   position: relative;
@@ -776,30 +782,31 @@
   display: flex;
   align-items: center;
 
-  padding: 15px 0;
+  padding: 13px 0;
 
   white-space: nowrap;
 }
 
 .dam-gateway-marquee-track span {
-  padding: 0 28px;
+  padding: 0 27px;
 
   color: var(--text);
 
   font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.15em;
 }
 
 .dam-gateway-marquee-track i {
   color: #ff4da8;
+
   font-size: 10px;
   font-style: normal;
 }
 
 /* =========================================================
    BRAND STAGE
-========================================================= */
+   ========================================================= */
 
 .dam-brand-stage {
   position: relative;
@@ -808,7 +815,7 @@
   width: min(1500px, calc(100% - 64px));
   margin: 0 auto;
 
-  padding: 52px 0 60px;
+  padding: 44px 0 55px;
 }
 
 .dam-brand-stage-heading {
@@ -829,15 +836,15 @@
 .dam-brand-stage-heading span {
   color: var(--muted-2);
 
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.17em;
+  letter-spacing: 0.14em;
 }
 
 .dam-brand-stage-heading strong {
   font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.045em;
 }
 
 .dam-stage-hint {
@@ -846,19 +853,20 @@
 
 /* =========================================================
    BRAND GRID
-========================================================= */
+   ========================================================= */
 
 .dam-brand-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+
   gap: 18px;
 
   perspective: 1500px;
 }
 
 /* =========================================================
-   CARD
-========================================================= */
+   BRAND CARD
+   ========================================================= */
 
 .dam-brand-card {
   --mouse-x: 50%;
@@ -868,12 +876,12 @@
   isolation: isolate;
 
   min-width: 0;
-  min-height: 570px;
+  min-height: 500px;
 
   overflow: hidden;
 
   border: 1px solid var(--border);
-  border-radius: 30px;
+  border-radius: 28px;
 
   cursor: pointer;
 
@@ -935,18 +943,23 @@
 
 .dam-brand-grid.has-active-brand .dam-brand-card.is-muted {
   opacity: 0.67;
-  filter: saturate(0.65) brightness(0.8);
+
+  filter:
+    saturate(0.65)
+    brightness(0.8);
 }
 
 .theme-light
   .dam-brand-grid.has-active-brand
   .dam-brand-card.is-muted {
-  filter: saturate(0.68) brightness(0.96);
+  filter:
+    saturate(0.68)
+    brightness(0.96);
 }
 
 /* =========================================================
-   BRAND COLOR IDENTITIES
-========================================================= */
+   BRAND IDENTITIES
+   ========================================================= */
 
 .brand-bart {
   --brand-a: #ff3d9a;
@@ -971,7 +984,7 @@
 
 /* =========================================================
    CARD AURORA
-========================================================= */
+   ========================================================= */
 
 .dam-card-aurora {
   position: absolute;
@@ -1040,7 +1053,7 @@
 
 /* =========================================================
    POINTER GLOW
-========================================================= */
+   ========================================================= */
 
 .dam-card-pointer-glow {
   position: absolute;
@@ -1076,7 +1089,7 @@
 
 /* =========================================================
    GLASS / NOISE / SHINE
-========================================================= */
+   ========================================================= */
 
 .dam-card-glass-layer {
   position: absolute;
@@ -1141,7 +1154,8 @@
 
   pointer-events: none;
 
-  transition: left 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition:
+    left 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .dam-brand-card:hover .dam-card-shine {
@@ -1150,13 +1164,13 @@
 
 /* =========================================================
    BACKGROUND WORD
-========================================================= */
+   ========================================================= */
 
 .dam-card-background-word {
   position: absolute;
 
-  right: -28px;
-  bottom: 52px;
+  right: -18px;
+  bottom: 45px;
 
   z-index: -1;
 
@@ -1165,13 +1179,19 @@
   -webkit-text-stroke:
     1px rgba(255, 255, 255, 0.075);
 
-  font-size: clamp(82px, 9vw, 145px);
+  /*
+     Was enormous.
+     Now decorative but controlled.
+  */
+  font-size: clamp(58px, 6vw, 88px);
   font-weight: 950;
 
   line-height: 0.8;
-  letter-spacing: -0.09em;
+  letter-spacing: -0.07em;
 
-  transform: rotate(-90deg) translateX(35%);
+  transform:
+    rotate(-90deg)
+    translateX(35%);
 
   transform-origin: bottom right;
 
@@ -1198,15 +1218,15 @@
 
 /* =========================================================
    CARD CONTENT
-========================================================= */
+   ========================================================= */
 
 .dam-brand-card-inner {
   position: relative;
   z-index: 5;
 
-  min-height: 570px;
+  min-height: 500px;
 
-  padding: 26px;
+  padding: 25px;
 
   display: flex;
   flex-direction: column;
@@ -1219,8 +1239,8 @@
 }
 
 .dam-brand-number {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
 
   display: grid;
   place-items: center;
@@ -1234,7 +1254,7 @@
 
   font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 
   backdrop-filter: blur(12px);
 }
@@ -1244,14 +1264,14 @@
 }
 
 .dam-brand-icon-shell {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
 
   display: grid;
   place-items: center;
 
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
+  border-radius: 15px;
 
   color: white;
 
@@ -1268,14 +1288,14 @@
 }
 
 /* =========================================================
-   BRAND MAIN
-========================================================= */
+   BRAND TEXT — MEDIUM+
+   ========================================================= */
 
 .dam-brand-main {
   margin-top: auto;
   margin-bottom: auto;
 
-  padding: 60px 0 48px;
+  padding: 46px 0 38px;
 }
 
 .dam-brand-eyebrow {
@@ -1285,25 +1305,29 @@
 
   color: var(--muted);
 
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.12em;
 }
 
 .dam-brand-title {
-  margin: 14px 0 18px;
+  margin: 14px 0 17px;
 
   width: max-content;
-
   max-width: 100%;
 
   color: var(--text);
 
-  font-size: clamp(62px, 6vw, 94px);
+  /*
+     MAIN CARD TITLE CHANGE
+     Was 62–94px.
+     Now 42–62px.
+  */
+  font-size: clamp(42px, 4.2vw, 62px);
   font-weight: 950;
 
-  line-height: 0.86;
-  letter-spacing: -0.075em;
+  line-height: 0.95;
+  letter-spacing: -0.055em;
 }
 
 .dam-brand-title-dot {
@@ -1318,11 +1342,11 @@
   color: var(--muted);
 
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 
 .dam-brand-tags {
-  margin-top: 24px;
+  margin-top: 22px;
 
   display: flex;
   flex-wrap: wrap;
@@ -1339,9 +1363,9 @@
 
   background: rgba(255, 255, 255, 0.045);
 
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 850;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
 
   backdrop-filter: blur(10px);
 }
@@ -1352,7 +1376,7 @@
 
 /* =========================================================
    CARD BOTTOM
-========================================================= */
+   ========================================================= */
 
 .dam-brand-card-bottom {
   display: flex;
@@ -1368,9 +1392,9 @@
 
   color: var(--muted);
 
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
 }
 
 .dam-magnetic-button {
@@ -1379,13 +1403,13 @@
 }
 
 .dam-enter-brand {
-  height: 48px;
+  height: 46px;
 
-  padding: 5px 5px 5px 17px;
+  padding: 5px 5px 5px 16px;
 
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 13px;
 
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
@@ -1402,14 +1426,14 @@
   box-shadow:
     0 13px 30px var(--brand-glow);
 
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 950;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
 }
 
 .dam-enter-arrow {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
 
   display: grid;
   place-items: center;
@@ -1431,8 +1455,8 @@
 }
 
 /* =========================================================
-   ACTIVE BOTTOM LINE
-========================================================= */
+   ACTIVE LINE
+   ========================================================= */
 
 .dam-card-active-line {
   position: absolute;
@@ -1461,7 +1485,7 @@
 
 /* =========================================================
    FOOTER
-========================================================= */
+   ========================================================= */
 
 .dam-gateway-footer {
   position: relative;
@@ -1470,7 +1494,7 @@
   width: min(1500px, calc(100% - 64px));
   margin: 0 auto;
 
-  min-height: 78px;
+  min-height: 72px;
 
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -1481,9 +1505,9 @@
 
   color: var(--muted-2);
 
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 850;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.1em;
 }
 
 .dam-footer-left {
@@ -1512,8 +1536,70 @@
 }
 
 /* =========================================================
-   BRAND TAKEOVER
-========================================================= */
+   ANIMATED BORDER
+   ========================================================= */
+
+.dam-brand-card::after {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  z-index: 0;
+
+  padding: 1px;
+
+  border-radius: inherit;
+
+  opacity: 0;
+
+  background:
+    linear-gradient(
+      120deg,
+      transparent 5%,
+      var(--brand-a),
+      var(--brand-b),
+      var(--brand-c),
+      transparent 95%
+    );
+
+  background-size: 300% 300%;
+
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+
+  pointer-events: none;
+
+  transition: opacity 0.4s ease;
+
+  animation: damBorderTravel 5s linear infinite;
+}
+
+.dam-brand-card:hover::after {
+  opacity: 0.9;
+}
+
+@keyframes damBorderTravel {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* =========================================================
+   TAKEOVER TRANSITION
+   ========================================================= */
 
 .dam-brand-takeover {
   position: fixed;
@@ -1624,33 +1710,37 @@
 }
 
 .dam-takeover-content > svg {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .dam-takeover-content > span {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.35em;
+  letter-spacing: 0.25em;
 }
 
+/*
+   Was up to 150px.
+   Now medium+ takeover title.
+*/
 .dam-takeover-content > strong {
   margin-top: 8px;
 
-  font-size: clamp(70px, 11vw, 150px);
+  font-size: clamp(48px, 7vw, 86px);
   font-weight: 950;
 
-  line-height: 0.9;
-  letter-spacing: -0.08em;
+  line-height: 0.95;
+  letter-spacing: -0.06em;
 
   text-shadow:
     0 15px 50px rgba(0, 0, 0, 0.18);
 }
 
 .dam-takeover-loader {
-  width: 190px;
+  width: 180px;
   height: 2px;
 
-  margin-top: 30px;
+  margin-top: 26px;
 
   overflow: hidden;
 
@@ -1676,70 +1766,8 @@
 }
 
 /* =========================================================
-   SMALL ANIMATED COLOR BORDER
-========================================================= */
-
-.dam-brand-card::after {
-  content: "";
-
-  position: absolute;
-  inset: 0;
-
-  z-index: 0;
-
-  padding: 1px;
-
-  border-radius: inherit;
-
-  opacity: 0;
-
-  background:
-    linear-gradient(
-      120deg,
-      transparent 5%,
-      var(--brand-a),
-      var(--brand-b),
-      var(--brand-c),
-      transparent 95%
-    );
-
-  background-size: 300% 300%;
-
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-
-  pointer-events: none;
-
-  transition: opacity 0.4s ease;
-
-  animation: damBorderTravel 5s linear infinite;
-}
-
-.dam-brand-card:hover::after {
-  opacity: 0.9;
-}
-
-@keyframes damBorderTravel {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-/* =========================================================
    OPENING STATE
-========================================================= */
+   ========================================================= */
 
 .dam-admin-gateway.is-opening
   .dam-gateway-header,
@@ -1755,28 +1783,8 @@
 }
 
 /* =========================================================
-   LARGE DESKTOP
-========================================================= */
-
-@media (min-width: 1500px) {
-  .dam-brand-card {
-    min-height: 610px;
-  }
-
-  .dam-brand-card-inner {
-    min-height: 610px;
-    padding: 30px;
-  }
-
-  .dam-brand-main {
-    padding-top: 75px;
-    padding-bottom: 58px;
-  }
-}
-
-/* =========================================================
    LAPTOP
-========================================================= */
+   ========================================================= */
 
 @media (max-width: 1200px) {
   .dam-gateway-header,
@@ -1787,37 +1795,33 @@
   }
 
   .dam-gateway-title {
-    font-size: clamp(65px, 11vw, 125px);
+    font-size: clamp(46px, 6.5vw, 78px);
   }
 
   .dam-hero-badge {
-    right: -85px;
+    right: -78px;
 
-    width: 82px;
-    height: 82px;
+    width: 72px;
+    height: 72px;
   }
 
   .dam-brand-card {
-    min-height: 525px;
+    min-height: 475px;
   }
 
   .dam-brand-card-inner {
-    min-height: 525px;
-    padding: 22px;
+    min-height: 475px;
+    padding: 21px;
   }
 
   .dam-brand-title {
-    font-size: clamp(52px, 6vw, 78px);
-  }
-
-  .dam-brand-description {
-    font-size: 12px;
+    font-size: clamp(40px, 4.5vw, 56px);
   }
 }
 
 /* =========================================================
    TABLET
-========================================================= */
+   ========================================================= */
 
 @media (max-width: 900px) {
   .dam-admin-gateway {
@@ -1825,10 +1829,7 @@
     overflow-x: hidden;
   }
 
-  .dam-gateway-header {
-    width: calc(100% - 32px);
-  }
-
+  .dam-gateway-header,
   .dam-gateway-hero,
   .dam-brand-stage,
   .dam-gateway-footer {
@@ -1840,7 +1841,7 @@
   }
 
   .dam-gateway-hero {
-    padding-top: 58px;
+    padding-top: 50px;
   }
 
   .dam-hero-badge {
@@ -1852,19 +1853,19 @@
   }
 
   .dam-brand-card {
-    min-height: 430px;
+    min-height: 390px;
   }
 
   .dam-brand-card-inner {
-    min-height: 430px;
+    min-height: 390px;
   }
 
   .dam-brand-main {
-    padding: 50px 0 40px;
+    padding: 38px 0 32px;
   }
 
   .dam-brand-title {
-    font-size: clamp(65px, 15vw, 100px);
+    font-size: 52px;
   }
 
   .dam-brand-description {
@@ -1874,7 +1875,7 @@
   .dam-card-background-word {
     right: -10px;
 
-    font-size: 125px;
+    font-size: 72px;
 
     transform:
       rotate(0deg)
@@ -1900,11 +1901,11 @@
 
 /* =========================================================
    MOBILE
-========================================================= */
+   ========================================================= */
 
 @media (max-width: 620px) {
   .dam-gateway-header {
-    min-height: 78px;
+    min-height: 76px;
   }
 
   .dam-logo-mark {
@@ -1935,7 +1936,7 @@
   }
 
   .dam-gateway-hero {
-    padding: 48px 0 38px;
+    padding: 42px 0 34px;
   }
 
   .dam-hero-kicker {
@@ -1945,18 +1946,18 @@
   .dam-gateway-title {
     margin-top: 8px;
 
-    font-size: clamp(55px, 20vw, 88px);
-    line-height: 0.8;
+    font-size: clamp(42px, 13vw, 58px);
+    line-height: 0.87;
   }
 
   .dam-gateway-subtitle {
-    margin-top: 25px;
+    margin-top: 23px;
 
     font-size: 13px;
   }
 
   .dam-gateway-marquee-track {
-    padding: 12px 0;
+    padding: 11px 0;
   }
 
   .dam-gateway-marquee-track span {
@@ -1966,7 +1967,7 @@
   }
 
   .dam-brand-stage {
-    padding-top: 38px;
+    padding-top: 34px;
   }
 
   .dam-brand-stage-heading {
@@ -1979,23 +1980,23 @@
   }
 
   .dam-brand-card {
-    min-height: 440px;
+    min-height: 410px;
 
     border-radius: 24px;
   }
 
   .dam-brand-card-inner {
-    min-height: 440px;
+    min-height: 410px;
 
-    padding: 20px;
+    padding: 19px;
   }
 
   .dam-brand-main {
-    padding: 42px 0 34px;
+    padding: 36px 0 30px;
   }
 
   .dam-brand-title {
-    font-size: clamp(60px, 20vw, 88px);
+    font-size: 48px;
   }
 
   .dam-brand-description {
@@ -2010,7 +2011,7 @@
   .dam-brand-tags span {
     padding: 6px 8px;
 
-    font-size: 7px;
+    font-size: 8px;
   }
 
   .dam-brand-card-bottom {
@@ -2018,7 +2019,7 @@
   }
 
   .dam-branch-count {
-    max-width: 100px;
+    max-width: 110px;
 
     font-size: 8px;
     line-height: 1.4;
@@ -2067,7 +2068,7 @@
 
 /* =========================================================
    VERY SMALL MOBILE
-========================================================= */
+   ========================================================= */
 
 @media (max-width: 390px) {
   .dam-gateway-header,
@@ -2082,19 +2083,20 @@
   }
 
   .dam-gateway-title {
-    font-size: 54px;
+    font-size: 40px;
   }
 
   .dam-brand-title {
-    font-size: 62px;
+    font-size: 43px;
   }
 
   .dam-brand-card {
-    min-height: 425px;
+    min-height: 400px;
   }
 
   .dam-brand-card-inner {
-    min-height: 425px;
+    min-height: 400px;
+
     padding: 17px;
   }
 
@@ -2105,7 +2107,7 @@
 
 /* =========================================================
    TOUCH DEVICES
-========================================================= */
+   ========================================================= */
 
 @media (hover: none) {
   .dam-brand-card {
@@ -2114,6 +2116,7 @@
 
   .dam-card-pointer-glow {
     opacity: 0.28;
+
     left: 70%;
     top: 20%;
   }
@@ -2131,7 +2134,7 @@
 
 /* =========================================================
    REDUCED MOTION
-========================================================= */
+   ========================================================= */
 
 @media (prefers-reduced-motion: reduce) {
   .dam-admin-gateway *,
