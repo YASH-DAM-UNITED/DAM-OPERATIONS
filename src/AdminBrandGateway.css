@@ -1,0 +1,2149 @@
+/* =========================================================
+   DAM UNITED — ADMIN BRAND GATEWAY
+   File: src/AdminBrandGateway.css
+========================================================= */
+
+.dam-admin-gateway {
+  --gateway-x: 50%;
+  --gateway-y: 50%;
+
+  --bg: #090713;
+  --bg-soft: #110d21;
+  --text: #fffaf7;
+  --muted: rgba(255, 255, 255, 0.62);
+  --muted-2: rgba(255, 255, 255, 0.42);
+
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-strong: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.25);
+
+  --purple: #8b5cf6;
+  --violet: #6d28d9;
+  --pink: #ec4899;
+  --hot-pink: #ff2d8d;
+  --orange: #ff7a18;
+  --yellow: #ffd43b;
+  --cyan: #22d3ee;
+  --blue: #3b82f6;
+  --green: #22c55e;
+
+  position: relative;
+  isolation: isolate;
+
+  width: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+
+  color: var(--text);
+  background:
+    radial-gradient(
+      circle at 10% 15%,
+      rgba(139, 92, 246, 0.16),
+      transparent 31%
+    ),
+    radial-gradient(
+      circle at 92% 10%,
+      rgba(236, 72, 153, 0.13),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 50% 90%,
+      rgba(34, 211, 238, 0.08),
+      transparent 34%
+    ),
+    var(--bg);
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  transition:
+    background 0.55s ease,
+    color 0.55s ease;
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+/* =========================================================
+   LIGHT THEME
+========================================================= */
+
+.dam-admin-gateway.theme-light {
+  --bg: #f7f4ff;
+  --bg-soft: #ffffff;
+
+  --text: #17121f;
+  --muted: rgba(23, 18, 31, 0.64);
+  --muted-2: rgba(23, 18, 31, 0.43);
+
+  --glass: rgba(255, 255, 255, 0.58);
+  --glass-strong: rgba(255, 255, 255, 0.78);
+
+  --border: rgba(72, 50, 110, 0.12);
+  --border-strong: rgba(72, 50, 110, 0.22);
+
+  background:
+    radial-gradient(
+      circle at 8% 14%,
+      rgba(255, 124, 188, 0.26),
+      transparent 31%
+    ),
+    radial-gradient(
+      circle at 90% 8%,
+      rgba(127, 102, 255, 0.22),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 55% 94%,
+      rgba(46, 216, 255, 0.18),
+      transparent 34%
+    ),
+    linear-gradient(
+      135deg,
+      #fff9fd 0%,
+      #f7f4ff 44%,
+      #f1fbff 100%
+    );
+}
+
+/* =========================================================
+   GLOBAL RESET INSIDE GATEWAY
+========================================================= */
+
+.dam-admin-gateway *,
+.dam-admin-gateway *::before,
+.dam-admin-gateway *::after {
+  box-sizing: border-box;
+}
+
+.dam-admin-gateway button {
+  font: inherit;
+}
+
+.dam-admin-gateway button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 4px;
+}
+
+.dam-admin-gateway.theme-light button:focus-visible {
+  outline-color: rgba(74, 44, 140, 0.8);
+}
+
+/* =========================================================
+   FLOATING UNIVERSE
+========================================================= */
+
+.dam-floating-universe {
+  position: absolute;
+  inset: 0;
+  z-index: -4;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dam-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(2px);
+  opacity: 0.82;
+  will-change: transform;
+}
+
+.dam-orb-one {
+  width: 480px;
+  height: 480px;
+  top: -170px;
+  left: -120px;
+
+  background:
+    radial-gradient(
+      circle at 35% 35%,
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(255, 116, 191, 0.58) 13%,
+      rgba(145, 73, 255, 0.42) 40%,
+      transparent 72%
+    );
+
+  filter: blur(24px);
+}
+
+.dam-orb-two {
+  width: 560px;
+  height: 560px;
+  right: -210px;
+  top: 18%;
+
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(49, 221, 255, 0.58),
+      rgba(53, 100, 255, 0.32) 32%,
+      rgba(178, 64, 255, 0.18) 58%,
+      transparent 73%
+    );
+
+  filter: blur(35px);
+}
+
+.dam-orb-three {
+  width: 430px;
+  height: 430px;
+  left: 35%;
+  bottom: -260px;
+
+  background:
+    conic-gradient(
+      from 20deg,
+      rgba(255, 88, 180, 0.35),
+      rgba(255, 175, 49, 0.32),
+      rgba(62, 229, 255, 0.35),
+      rgba(135, 83, 255, 0.36),
+      rgba(255, 88, 180, 0.35)
+    );
+
+  filter: blur(45px);
+}
+
+.theme-light .dam-orb {
+  opacity: 0.68;
+}
+
+/* =========================================================
+   BACKGROUND GRID
+========================================================= */
+
+.dam-grid-overlay {
+  position: absolute;
+  inset: 0;
+
+  background-image:
+    linear-gradient(
+      rgba(255, 255, 255, 0.026) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.026) 1px,
+      transparent 1px
+    );
+
+  background-size: 62px 62px;
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.8),
+      transparent 88%
+    );
+}
+
+.theme-light .dam-grid-overlay {
+  background-image:
+    linear-gradient(
+      rgba(76, 55, 116, 0.045) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(76, 55, 116, 0.045) 1px,
+      transparent 1px
+    );
+}
+
+.dam-vignette {
+  position: absolute;
+  inset: 0;
+
+  background:
+    radial-gradient(
+      ellipse at center,
+      transparent 38%,
+      rgba(0, 0, 0, 0.34) 110%
+    );
+}
+
+.theme-light .dam-vignette {
+  background:
+    radial-gradient(
+      ellipse at center,
+      transparent 40%,
+      rgba(76, 41, 125, 0.08) 110%
+    );
+}
+
+/* =========================================================
+   CURSOR AMBIENT LIGHT
+========================================================= */
+
+.dam-global-pointer-light {
+  position: fixed;
+  z-index: -2;
+
+  width: 600px;
+  height: 600px;
+
+  left: var(--gateway-x);
+  top: var(--gateway-y);
+
+  transform: translate(-50%, -50%);
+
+  border-radius: 50%;
+
+  background:
+    radial-gradient(
+      circle,
+      rgba(172, 113, 255, 0.13) 0%,
+      rgba(255, 76, 178, 0.065) 32%,
+      transparent 70%
+    );
+
+  filter: blur(15px);
+
+  pointer-events: none;
+}
+
+.theme-light .dam-global-pointer-light {
+  background:
+    radial-gradient(
+      circle,
+      rgba(116, 73, 255, 0.1),
+      rgba(255, 102, 184, 0.07) 35%,
+      transparent 70%
+    );
+}
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.dam-gateway-header {
+  position: relative;
+  z-index: 30;
+
+  width: min(1500px, calc(100% - 64px));
+  margin: 0 auto;
+
+  min-height: 94px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+
+  border-bottom: 1px solid var(--border);
+}
+
+.dam-gateway-logo {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.dam-logo-mark {
+  position: relative;
+
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 13px;
+
+  color: #fff;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ff4ba8,
+      #8b5cf6 48%,
+      #22d3ee
+    );
+
+  box-shadow:
+    0 10px 30px rgba(139, 92, 246, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+
+  overflow: hidden;
+}
+
+.dam-logo-mark::before {
+  content: "";
+  position: absolute;
+  width: 160%;
+  height: 45%;
+
+  left: -30%;
+  top: -20%;
+
+  transform: rotate(-30deg);
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.75),
+      transparent
+    );
+
+  animation: damLogoShine 5s ease-in-out infinite;
+}
+
+@keyframes damLogoShine {
+  0%,
+  65% {
+    transform: translateY(-40px) rotate(-30deg);
+  }
+
+  85%,
+  100% {
+    transform: translateY(100px) rotate(-30deg);
+  }
+}
+
+.dam-logo-mark span {
+  position: relative;
+  z-index: 2;
+
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.dam-logo-copy {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.dam-logo-copy strong {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.dam-logo-copy span {
+  margin-top: 6px;
+
+  color: var(--muted);
+
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.19em;
+}
+
+.dam-gateway-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dam-system-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  min-height: 38px;
+  padding: 0 14px;
+
+  border: 1px solid var(--border);
+  border-radius: 999px;
+
+  background: var(--glass);
+
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+
+  color: var(--muted);
+
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.dam-live-dot,
+.dam-status-dot,
+.dam-footer-pulse {
+  position: relative;
+
+  width: 7px;
+  height: 7px;
+
+  flex: 0 0 auto;
+
+  border-radius: 50%;
+
+  background: #5df28d;
+
+  box-shadow:
+    0 0 0 4px rgba(93, 242, 141, 0.09),
+    0 0 16px rgba(93, 242, 141, 0.85);
+}
+
+.dam-live-dot::after,
+.dam-status-dot::after,
+.dam-footer-pulse::after {
+  content: "";
+
+  position: absolute;
+  inset: -5px;
+
+  border: 1px solid rgba(93, 242, 141, 0.5);
+  border-radius: inherit;
+
+  animation: damStatusPulse 2s ease-out infinite;
+}
+
+@keyframes damStatusPulse {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.5);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
+
+/* =========================================================
+   THEME BUTTON
+========================================================= */
+
+.dam-theme-toggle,
+.dam-gateway-back {
+  min-height: 38px;
+
+  border: 1px solid var(--border);
+  border-radius: 999px;
+
+  background: var(--glass);
+
+  color: var(--text);
+
+  cursor: pointer;
+
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+
+  transition:
+    transform 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+}
+
+.dam-theme-toggle:hover,
+.dam-gateway-back:hover {
+  transform: translateY(-2px);
+
+  border-color: var(--border-strong);
+  background: var(--glass-strong);
+}
+
+.dam-theme-toggle {
+  padding: 5px 12px 5px 6px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dam-theme-toggle-track {
+  width: 28px;
+  height: 28px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  color: #fff;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ff4ba8,
+      #8757ff,
+      #20c7f3
+    );
+
+  box-shadow:
+    0 6px 18px rgba(124, 80, 255, 0.3);
+}
+
+.dam-theme-text {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.dam-gateway-back {
+  padding: 0 16px;
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+/* =========================================================
+   HERO
+========================================================= */
+
+.dam-gateway-hero {
+  position: relative;
+  z-index: 5;
+
+  width: min(1500px, calc(100% - 64px));
+  margin: 0 auto;
+
+  padding: 72px 0 48px;
+}
+
+.dam-hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  color: var(--muted);
+
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.dam-kicker-line {
+  width: 42px;
+  height: 1px;
+
+  background:
+    linear-gradient(
+      90deg,
+      #ff4ba8,
+      #8b5cf6,
+      #22d3ee
+    );
+}
+
+.dam-hero-title-wrap {
+  position: relative;
+
+  display: inline-flex;
+  align-items: flex-start;
+
+  margin-top: 14px;
+}
+
+.dam-gateway-title {
+  margin: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  color: var(--text);
+
+  font-size: clamp(68px, 10vw, 158px);
+  font-weight: 950;
+
+  line-height: 0.76;
+  letter-spacing: -0.09em;
+}
+
+.dam-gateway-title span {
+  position: relative;
+
+  width: max-content;
+
+  color: transparent;
+
+  -webkit-background-clip: text;
+  background-clip: text;
+
+  background-image:
+    linear-gradient(
+      100deg,
+      #ff45a0 0%,
+      #ff8a1f 20%,
+      #ffd83d 38%,
+      #6fe7ff 58%,
+      #816cff 78%,
+      #e552ff 100%
+    );
+
+  background-size: 220% 100%;
+
+  animation: damHeroGradient 8s linear infinite;
+}
+
+@keyframes damHeroGradient {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 220% 50%;
+  }
+}
+
+.dam-hero-badge {
+  position: absolute;
+
+  right: -105px;
+  top: 20px;
+
+  width: 98px;
+  height: 98px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+
+  color: white;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 64, 160, 0.88),
+      rgba(123, 76, 255, 0.88),
+      rgba(28, 198, 242, 0.86)
+    );
+
+  box-shadow:
+    0 20px 55px rgba(114, 63, 255, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+
+  backdrop-filter: blur(14px);
+
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+
+  line-height: 1.25;
+}
+
+.dam-hero-badge strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.dam-gateway-subtitle {
+  margin: 35px 0 0;
+  max-width: 580px;
+
+  color: var(--muted);
+
+  font-size: clamp(14px, 1.25vw, 18px);
+  line-height: 1.65;
+}
+
+/* =========================================================
+   MARQUEE
+========================================================= */
+
+.dam-gateway-marquee {
+  position: relative;
+  z-index: 8;
+
+  width: 100%;
+  overflow: hidden;
+
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 76, 171, 0.08),
+      rgba(133, 81, 255, 0.09),
+      rgba(30, 207, 239, 0.08)
+    );
+
+  backdrop-filter: blur(12px);
+}
+
+.dam-gateway-marquee-track {
+  width: max-content;
+
+  display: flex;
+  align-items: center;
+
+  padding: 15px 0;
+
+  white-space: nowrap;
+}
+
+.dam-gateway-marquee-track span {
+  padding: 0 28px;
+
+  color: var(--text);
+
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.dam-gateway-marquee-track i {
+  color: #ff4da8;
+  font-size: 10px;
+  font-style: normal;
+}
+
+/* =========================================================
+   BRAND STAGE
+========================================================= */
+
+.dam-brand-stage {
+  position: relative;
+  z-index: 10;
+
+  width: min(1500px, calc(100% - 64px));
+  margin: 0 auto;
+
+  padding: 52px 0 60px;
+}
+
+.dam-brand-stage-heading {
+  margin-bottom: 20px;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.dam-brand-stage-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dam-brand-stage-heading span {
+  color: var(--muted-2);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.dam-brand-stage-heading strong {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.dam-stage-hint {
+  text-align: right;
+}
+
+/* =========================================================
+   BRAND GRID
+========================================================= */
+
+.dam-brand-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+
+  perspective: 1500px;
+}
+
+/* =========================================================
+   CARD
+========================================================= */
+
+.dam-brand-card {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+
+  position: relative;
+  isolation: isolate;
+
+  min-width: 0;
+  min-height: 570px;
+
+  overflow: hidden;
+
+  border: 1px solid var(--border);
+  border-radius: 30px;
+
+  cursor: pointer;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.095),
+      rgba(255, 255, 255, 0.035)
+    );
+
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+
+  transform-origin: center center;
+
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    opacity 0.35s ease,
+    filter 0.35s ease;
+}
+
+.theme-light .dam-brand-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.74),
+      rgba(255, 255, 255, 0.38)
+    );
+
+  box-shadow:
+    0 30px 80px rgba(78, 54, 124, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.dam-brand-card:hover,
+.dam-brand-card.is-active {
+  border-color: rgba(255, 255, 255, 0.32);
+
+  box-shadow:
+    0 42px 100px rgba(0, 0, 0, 0.32),
+    0 0 50px rgba(139, 92, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.theme-light .dam-brand-card:hover,
+.theme-light .dam-brand-card.is-active {
+  border-color: rgba(106, 69, 177, 0.22);
+
+  box-shadow:
+    0 42px 100px rgba(83, 52, 139, 0.18),
+    0 0 55px rgba(160, 93, 255, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.dam-brand-grid.has-active-brand .dam-brand-card.is-muted {
+  opacity: 0.67;
+  filter: saturate(0.65) brightness(0.8);
+}
+
+.theme-light
+  .dam-brand-grid.has-active-brand
+  .dam-brand-card.is-muted {
+  filter: saturate(0.68) brightness(0.96);
+}
+
+/* =========================================================
+   BRAND COLOR IDENTITIES
+========================================================= */
+
+.brand-bart {
+  --brand-a: #ff3d9a;
+  --brand-b: #ff7a1a;
+  --brand-c: #ffd43b;
+  --brand-glow: rgba(255, 71, 150, 0.38);
+}
+
+.brand-glor {
+  --brand-a: #8b5cf6;
+  --brand-b: #4668ff;
+  --brand-c: #22d3ee;
+  --brand-glow: rgba(112, 83, 255, 0.4);
+}
+
+.brand-mooma {
+  --brand-a: #10d6a0;
+  --brand-b: #25c7f5;
+  --brand-c: #7667ff;
+  --brand-glow: rgba(27, 209, 188, 0.36);
+}
+
+/* =========================================================
+   CARD AURORA
+========================================================= */
+
+.dam-card-aurora {
+  position: absolute;
+  z-index: -3;
+
+  border-radius: 50%;
+
+  filter: blur(30px);
+
+  pointer-events: none;
+
+  transition:
+    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.5s ease;
+}
+
+.dam-card-aurora-one {
+  width: 340px;
+  height: 340px;
+
+  top: -130px;
+  right: -130px;
+
+  opacity: 0.62;
+
+  background:
+    radial-gradient(
+      circle,
+      var(--brand-a),
+      transparent 67%
+    );
+}
+
+.dam-card-aurora-two {
+  width: 360px;
+  height: 360px;
+
+  bottom: -180px;
+  left: -150px;
+
+  opacity: 0.38;
+
+  background:
+    radial-gradient(
+      circle,
+      var(--brand-b),
+      transparent 68%
+    );
+}
+
+.dam-brand-card:hover .dam-card-aurora-one {
+  transform:
+    translate(-55px, 55px)
+    scale(1.25);
+
+  opacity: 0.8;
+}
+
+.dam-brand-card:hover .dam-card-aurora-two {
+  transform:
+    translate(60px, -50px)
+    scale(1.2);
+
+  opacity: 0.6;
+}
+
+/* =========================================================
+   POINTER GLOW
+========================================================= */
+
+.dam-card-pointer-glow {
+  position: absolute;
+  z-index: -1;
+
+  width: 420px;
+  height: 420px;
+
+  left: var(--mouse-x);
+  top: var(--mouse-y);
+
+  transform: translate(-50%, -50%);
+
+  border-radius: 50%;
+
+  opacity: 0;
+
+  background:
+    radial-gradient(
+      circle,
+      var(--brand-glow) 0%,
+      transparent 68%
+    );
+
+  transition: opacity 0.35s ease;
+
+  pointer-events: none;
+}
+
+.dam-brand-card:hover .dam-card-pointer-glow {
+  opacity: 1;
+}
+
+/* =========================================================
+   GLASS / NOISE / SHINE
+========================================================= */
+
+.dam-card-glass-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+
+  background:
+    linear-gradient(
+      125deg,
+      rgba(255, 255, 255, 0.1),
+      transparent 35%,
+      transparent 70%,
+      rgba(255, 255, 255, 0.04)
+    );
+
+  pointer-events: none;
+}
+
+.dam-card-noise {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+
+  opacity: 0.08;
+
+  pointer-events: none;
+
+  background-image:
+    radial-gradient(
+      rgba(255, 255, 255, 0.7) 0.55px,
+      transparent 0.55px
+    );
+
+  background-size: 7px 7px;
+
+  mix-blend-mode: soft-light;
+}
+
+.theme-light .dam-card-noise {
+  opacity: 0.055;
+}
+
+.dam-card-shine {
+  position: absolute;
+  z-index: 2;
+
+  width: 45%;
+  height: 160%;
+
+  left: -70%;
+  top: -30%;
+
+  transform: rotate(18deg);
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.13),
+      transparent
+    );
+
+  pointer-events: none;
+
+  transition: left 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.dam-brand-card:hover .dam-card-shine {
+  left: 130%;
+}
+
+/* =========================================================
+   BACKGROUND WORD
+========================================================= */
+
+.dam-card-background-word {
+  position: absolute;
+
+  right: -28px;
+  bottom: 52px;
+
+  z-index: -1;
+
+  color: transparent;
+
+  -webkit-text-stroke:
+    1px rgba(255, 255, 255, 0.075);
+
+  font-size: clamp(82px, 9vw, 145px);
+  font-weight: 950;
+
+  line-height: 0.8;
+  letter-spacing: -0.09em;
+
+  transform: rotate(-90deg) translateX(35%);
+
+  transform-origin: bottom right;
+
+  user-select: none;
+
+  transition:
+    opacity 0.4s ease,
+    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.theme-light .dam-card-background-word {
+  -webkit-text-stroke:
+    1px rgba(54, 37, 82, 0.08);
+}
+
+.dam-brand-card:hover .dam-card-background-word {
+  opacity: 0.8;
+
+  transform:
+    rotate(-90deg)
+    translateX(30%)
+    scale(1.05);
+}
+
+/* =========================================================
+   CARD CONTENT
+========================================================= */
+
+.dam-brand-card-inner {
+  position: relative;
+  z-index: 5;
+
+  min-height: 570px;
+
+  padding: 26px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.dam-brand-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dam-brand-number {
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid var(--border);
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.055);
+
+  color: var(--muted);
+
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+
+  backdrop-filter: blur(12px);
+}
+
+.theme-light .dam-brand-number {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.dam-brand-icon-shell {
+  width: 48px;
+  height: 48px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+
+  color: white;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--brand-a),
+      var(--brand-b)
+    );
+
+  box-shadow:
+    0 12px 35px var(--brand-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+/* =========================================================
+   BRAND MAIN
+========================================================= */
+
+.dam-brand-main {
+  margin-top: auto;
+  margin-bottom: auto;
+
+  padding: 60px 0 48px;
+}
+
+.dam-brand-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  color: var(--muted);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.dam-brand-title {
+  margin: 14px 0 18px;
+
+  width: max-content;
+
+  max-width: 100%;
+
+  color: var(--text);
+
+  font-size: clamp(62px, 6vw, 94px);
+  font-weight: 950;
+
+  line-height: 0.86;
+  letter-spacing: -0.075em;
+}
+
+.dam-brand-title-dot {
+  color: var(--brand-a);
+}
+
+.dam-brand-description {
+  max-width: 330px;
+
+  margin: 0;
+
+  color: var(--muted);
+
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.dam-brand-tags {
+  margin-top: 24px;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.dam-brand-tags span {
+  padding: 7px 9px;
+
+  border: 1px solid var(--border);
+  border-radius: 999px;
+
+  color: var(--muted);
+
+  background: rgba(255, 255, 255, 0.045);
+
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+
+  backdrop-filter: blur(10px);
+}
+
+.theme-light .dam-brand-tags span {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* =========================================================
+   CARD BOTTOM
+========================================================= */
+
+.dam-brand-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dam-branch-count {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  color: var(--muted);
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.dam-magnetic-button {
+  border: 0;
+  cursor: pointer;
+}
+
+.dam-enter-brand {
+  height: 48px;
+
+  padding: 5px 5px 5px 17px;
+
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+
+  color: white;
+
+  background:
+    linear-gradient(
+      110deg,
+      var(--brand-a),
+      var(--brand-b)
+    );
+
+  box-shadow:
+    0 13px 30px var(--brand-glow);
+
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+}
+
+.dam-enter-arrow {
+  width: 38px;
+  height: 38px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  color: #17121f;
+
+  background: rgba(255, 255, 255, 0.93);
+
+  transition:
+    transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.dam-enter-brand:hover .dam-enter-arrow {
+  transform:
+    rotate(45deg)
+    scale(1.06);
+}
+
+/* =========================================================
+   ACTIVE BOTTOM LINE
+========================================================= */
+
+.dam-card-active-line {
+  position: absolute;
+
+  left: 25px;
+  right: 25px;
+  bottom: 0;
+
+  height: 3px;
+
+  transform-origin: left center;
+
+  border-radius: 99px 99px 0 0;
+
+  background:
+    linear-gradient(
+      90deg,
+      var(--brand-a),
+      var(--brand-b),
+      var(--brand-c)
+    );
+
+  box-shadow:
+    0 0 25px var(--brand-glow);
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.dam-gateway-footer {
+  position: relative;
+  z-index: 10;
+
+  width: min(1500px, calc(100% - 64px));
+  margin: 0 auto;
+
+  min-height: 78px;
+
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+
+  border-top: 1px solid var(--border);
+
+  color: var(--muted-2);
+
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.dam-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dam-footer-left i {
+  width: 24px;
+  height: 1px;
+
+  background: var(--border-strong);
+}
+
+.dam-footer-center {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.dam-footer-right {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+/* =========================================================
+   BRAND TAKEOVER
+========================================================= */
+
+.dam-brand-takeover {
+  position: fixed;
+
+  z-index: 9999;
+
+  width: 170vmax;
+  height: 170vmax;
+
+  left: 50%;
+  top: 50%;
+
+  transform: translate(-50%, -50%);
+
+  display: grid;
+  place-items: center;
+
+  color: white;
+
+  overflow: hidden;
+
+  transform-origin: center;
+
+  box-shadow:
+    0 0 120px rgba(0, 0, 0, 0.35);
+}
+
+.takeover-bart {
+  background:
+    radial-gradient(
+      circle at 28% 28%,
+      #ffd43b,
+      transparent 23%
+    ),
+    radial-gradient(
+      circle at 70% 32%,
+      #ff3d9a,
+      transparent 31%
+    ),
+    radial-gradient(
+      circle at 50% 85%,
+      #7c4dff,
+      transparent 37%
+    ),
+    linear-gradient(
+      135deg,
+      #ff641e,
+      #e83e8c 47%,
+      #6c4cff
+    );
+}
+
+.takeover-glor {
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      #22d3ee,
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 72% 25%,
+      #b154ff,
+      transparent 32%
+    ),
+    linear-gradient(
+      135deg,
+      #3b65ff,
+      #714dff,
+      #d347ff
+    );
+}
+
+.takeover-mooma {
+  background:
+    radial-gradient(
+      circle at 25% 28%,
+      #83ffd8,
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 75% 28%,
+      #2dc8ff,
+      transparent 30%
+    ),
+    linear-gradient(
+      135deg,
+      #05b98d,
+      #18aee2,
+      #6b59ff
+    );
+}
+
+.dam-takeover-content {
+  position: fixed;
+
+  left: 50%;
+  top: 50%;
+
+  transform: translate(-50%, -50%);
+
+  width: min(430px, 80vw);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  text-align: center;
+}
+
+.dam-takeover-content > svg {
+  margin-bottom: 20px;
+}
+
+.dam-takeover-content > span {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.35em;
+}
+
+.dam-takeover-content > strong {
+  margin-top: 8px;
+
+  font-size: clamp(70px, 11vw, 150px);
+  font-weight: 950;
+
+  line-height: 0.9;
+  letter-spacing: -0.08em;
+
+  text-shadow:
+    0 15px 50px rgba(0, 0, 0, 0.18);
+}
+
+.dam-takeover-loader {
+  width: 190px;
+  height: 2px;
+
+  margin-top: 30px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.23);
+}
+
+.dam-takeover-loader span {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  transform-origin: left;
+
+  border-radius: inherit;
+
+  background: white;
+
+  box-shadow:
+    0 0 18px rgba(255, 255, 255, 0.8);
+}
+
+/* =========================================================
+   SMALL ANIMATED COLOR BORDER
+========================================================= */
+
+.dam-brand-card::after {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  z-index: 0;
+
+  padding: 1px;
+
+  border-radius: inherit;
+
+  opacity: 0;
+
+  background:
+    linear-gradient(
+      120deg,
+      transparent 5%,
+      var(--brand-a),
+      var(--brand-b),
+      var(--brand-c),
+      transparent 95%
+    );
+
+  background-size: 300% 300%;
+
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+
+  pointer-events: none;
+
+  transition: opacity 0.4s ease;
+
+  animation: damBorderTravel 5s linear infinite;
+}
+
+.dam-brand-card:hover::after {
+  opacity: 0.9;
+}
+
+@keyframes damBorderTravel {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* =========================================================
+   OPENING STATE
+========================================================= */
+
+.dam-admin-gateway.is-opening
+  .dam-gateway-header,
+.dam-admin-gateway.is-opening
+  .dam-gateway-hero,
+.dam-admin-gateway.is-opening
+  .dam-gateway-marquee,
+.dam-admin-gateway.is-opening
+  .dam-brand-stage,
+.dam-admin-gateway.is-opening
+  .dam-gateway-footer {
+  pointer-events: none;
+}
+
+/* =========================================================
+   LARGE DESKTOP
+========================================================= */
+
+@media (min-width: 1500px) {
+  .dam-brand-card {
+    min-height: 610px;
+  }
+
+  .dam-brand-card-inner {
+    min-height: 610px;
+    padding: 30px;
+  }
+
+  .dam-brand-main {
+    padding-top: 75px;
+    padding-bottom: 58px;
+  }
+}
+
+/* =========================================================
+   LAPTOP
+========================================================= */
+
+@media (max-width: 1200px) {
+  .dam-gateway-header,
+  .dam-gateway-hero,
+  .dam-brand-stage,
+  .dam-gateway-footer {
+    width: min(100% - 40px, 1200px);
+  }
+
+  .dam-gateway-title {
+    font-size: clamp(65px, 11vw, 125px);
+  }
+
+  .dam-hero-badge {
+    right: -85px;
+
+    width: 82px;
+    height: 82px;
+  }
+
+  .dam-brand-card {
+    min-height: 525px;
+  }
+
+  .dam-brand-card-inner {
+    min-height: 525px;
+    padding: 22px;
+  }
+
+  .dam-brand-title {
+    font-size: clamp(52px, 6vw, 78px);
+  }
+
+  .dam-brand-description {
+    font-size: 12px;
+  }
+}
+
+/* =========================================================
+   TABLET
+========================================================= */
+
+@media (max-width: 900px) {
+  .dam-admin-gateway {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .dam-gateway-header {
+    width: calc(100% - 32px);
+  }
+
+  .dam-gateway-hero,
+  .dam-brand-stage,
+  .dam-gateway-footer {
+    width: calc(100% - 32px);
+  }
+
+  .dam-system-status {
+    display: none;
+  }
+
+  .dam-gateway-hero {
+    padding-top: 58px;
+  }
+
+  .dam-hero-badge {
+    display: none;
+  }
+
+  .dam-brand-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dam-brand-card {
+    min-height: 430px;
+  }
+
+  .dam-brand-card-inner {
+    min-height: 430px;
+  }
+
+  .dam-brand-main {
+    padding: 50px 0 40px;
+  }
+
+  .dam-brand-title {
+    font-size: clamp(65px, 15vw, 100px);
+  }
+
+  .dam-brand-description {
+    max-width: 520px;
+  }
+
+  .dam-card-background-word {
+    right: -10px;
+
+    font-size: 125px;
+
+    transform:
+      rotate(0deg)
+      translateY(20px);
+  }
+
+  .dam-brand-card:hover
+    .dam-card-background-word {
+    transform:
+      rotate(0deg)
+      translateY(12px)
+      scale(1.03);
+  }
+
+  .dam-gateway-footer {
+    grid-template-columns: 1fr auto;
+  }
+
+  .dam-footer-center {
+    display: none;
+  }
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 620px) {
+  .dam-gateway-header {
+    min-height: 78px;
+  }
+
+  .dam-logo-mark {
+    width: 37px;
+    height: 37px;
+
+    border-radius: 11px;
+  }
+
+  .dam-logo-copy strong {
+    font-size: 11px;
+  }
+
+  .dam-logo-copy span {
+    font-size: 7px;
+  }
+
+  .dam-theme-text {
+    display: none;
+  }
+
+  .dam-theme-toggle {
+    padding: 4px;
+  }
+
+  .dam-gateway-back {
+    padding: 0 12px;
+  }
+
+  .dam-gateway-hero {
+    padding: 48px 0 38px;
+  }
+
+  .dam-hero-kicker {
+    font-size: 8px;
+  }
+
+  .dam-gateway-title {
+    margin-top: 8px;
+
+    font-size: clamp(55px, 20vw, 88px);
+    line-height: 0.8;
+  }
+
+  .dam-gateway-subtitle {
+    margin-top: 25px;
+
+    font-size: 13px;
+  }
+
+  .dam-gateway-marquee-track {
+    padding: 12px 0;
+  }
+
+  .dam-gateway-marquee-track span {
+    padding: 0 18px;
+
+    font-size: 8px;
+  }
+
+  .dam-brand-stage {
+    padding-top: 38px;
+  }
+
+  .dam-brand-stage-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dam-stage-hint {
+    display: none;
+  }
+
+  .dam-brand-card {
+    min-height: 440px;
+
+    border-radius: 24px;
+  }
+
+  .dam-brand-card-inner {
+    min-height: 440px;
+
+    padding: 20px;
+  }
+
+  .dam-brand-main {
+    padding: 42px 0 34px;
+  }
+
+  .dam-brand-title {
+    font-size: clamp(60px, 20vw, 88px);
+  }
+
+  .dam-brand-description {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .dam-brand-tags {
+    margin-top: 18px;
+  }
+
+  .dam-brand-tags span {
+    padding: 6px 8px;
+
+    font-size: 7px;
+  }
+
+  .dam-brand-card-bottom {
+    align-items: flex-end;
+  }
+
+  .dam-branch-count {
+    max-width: 100px;
+
+    font-size: 8px;
+    line-height: 1.4;
+  }
+
+  .dam-enter-brand {
+    height: 44px;
+
+    padding-left: 14px;
+  }
+
+  .dam-enter-arrow {
+    width: 34px;
+    height: 34px;
+  }
+
+  .dam-gateway-footer {
+    min-height: 65px;
+
+    grid-template-columns: 1fr auto;
+  }
+
+  .dam-footer-left span:nth-child(3),
+  .dam-footer-left i {
+    display: none;
+  }
+
+  .dam-footer-right span:last-child {
+    display: none;
+  }
+
+  .dam-orb-one {
+    width: 330px;
+    height: 330px;
+  }
+
+  .dam-orb-two {
+    width: 380px;
+    height: 380px;
+  }
+
+  .dam-global-pointer-light {
+    display: none;
+  }
+}
+
+/* =========================================================
+   VERY SMALL MOBILE
+========================================================= */
+
+@media (max-width: 390px) {
+  .dam-gateway-header,
+  .dam-gateway-hero,
+  .dam-brand-stage,
+  .dam-gateway-footer {
+    width: calc(100% - 24px);
+  }
+
+  .dam-logo-copy span {
+    display: none;
+  }
+
+  .dam-gateway-title {
+    font-size: 54px;
+  }
+
+  .dam-brand-title {
+    font-size: 62px;
+  }
+
+  .dam-brand-card {
+    min-height: 425px;
+  }
+
+  .dam-brand-card-inner {
+    min-height: 425px;
+    padding: 17px;
+  }
+
+  .dam-brand-tags span:nth-child(4) {
+    display: none;
+  }
+}
+
+/* =========================================================
+   TOUCH DEVICES
+========================================================= */
+
+@media (hover: none) {
+  .dam-brand-card {
+    transform: none !important;
+  }
+
+  .dam-card-pointer-glow {
+    opacity: 0.28;
+    left: 70%;
+    top: 20%;
+  }
+
+  .dam-card-shine {
+    display: none;
+  }
+
+  .dam-brand-grid.has-active-brand
+    .dam-brand-card.is-muted {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+/* =========================================================
+   REDUCED MOTION
+========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .dam-admin-gateway *,
+  .dam-admin-gateway *::before,
+  .dam-admin-gateway *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+
+    scroll-behavior: auto !important;
+  }
+
+  .dam-global-pointer-light {
+    display: none;
+  }
+}
