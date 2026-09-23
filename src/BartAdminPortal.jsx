@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, AlertTriangle, ArrowLeft, ArrowRight, BarChart3, Boxes, Building2, CalendarDays,
+  Activity, AlertTriangle, ArrowLeft, BarChart3, Boxes, Building2, CalendarDays,
   ChartNoAxesCombined, ChevronRight, CircleGauge, ClipboardCheck, Command, Database,
   Download, FileChartColumn, FileSpreadsheet, Filter, Gauge, GitCompareArrows,
-  HeartPulse, History, Layers3, LayoutDashboard, ListFilter, LoaderCircle, LockKeyhole, LogOut, Eye, EyeOff, MapPinned,
+  HeartPulse, History, Layers3, LayoutDashboard, ListFilter, LoaderCircle, MapPinned,
   PackageSearch, RefreshCcw, Search, Settings2, ShieldAlert, Sparkles, Table2,
   Tags, TrendingDown, TrendingUp, UserRoundCog, UsersRound, Warehouse, XCircle,
   Zero
 } from "lucide-react";
+import * as XLSX from "xlsx-js-style";
 import "./BartAdminPortal.css";
 
 const GROUPS = [
+  { id:"reports", label:"REPORTS / DOWNLOADS", tabs:[
+    ["report-studio","Download Center",FileSpreadsheet],["date-range-reports","Date Range Reports",FileChartColumn],
+    ["executive-report","Executive Report",Download],["custom-export","Custom Export",Filter],
+    ["report-history","Report History",History],
+  ]},
   { id:"command", label:"COMMAND", tabs:[
     ["command-center","Command Center",LayoutDashboard],["live-operations","Live Operations",Activity],
     ["branch-network","Branch Network",Building2],["attention-center","Attention Center",ShieldAlert],
@@ -39,11 +45,6 @@ const GROUPS = [
   { id:"management", label:"MANAGEMENT", tabs:[
     ["area-managers","Area Managers",UserRoundCog],["manager-branches","Manager Branch View",UsersRound],
     ["area-comparison","Area Comparison",MapPinned],
-  ]},
-  { id:"reports", label:"REPORTS", tabs:[
-    ["report-studio","Report Studio",FileSpreadsheet],["date-range-reports","Date Range Reports",FileChartColumn],
-    ["executive-report","Executive Report",Download],["custom-export","Custom Export",Filter],
-    ["report-history","Report History",History],
   ]},
   { id:"system", label:"SYSTEM", tabs:[
     ["data-health","Data Health",Database],["system-settings","System Settings",Settings2],
@@ -77,56 +78,6 @@ function TabLoader({ tab }) {
 
 const n = v => Number.isFinite(Number(v)) ? Number(v) : 0;
 const fmt = v => new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(n(v));
-
-
-async function adminApi(path, options={}) {
-  const response = await fetch(path, {
-    ...options,
-    credentials: "same-origin",
-    headers: { "Content-Type":"application/json", ...(options.headers||{}) },
-  });
-  const payload = await response.json().catch(()=>({}));
-  if (!response.ok || payload?.success === false) {
-    const error = new Error(payload?.error || payload?.message || `HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-  return payload;
-}
-
-function SecureLogin({onDone,onBack}) {
-  const [password,setPassword]=useState("");
-  const [show,setShow]=useState(false);
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState("");
-  async function submit(e){
-    e.preventDefault();
-    if(!password.trim()||busy)return;
-    setBusy(true); setError("");
-    try{
-      await adminApi("/api/admin/bart/login",{method:"POST",body:JSON.stringify({password})});
-      setPassword(""); onDone();
-    }catch(err){setError(err.message||"Admin password could not be verified.")}
-    finally{setBusy(false)}
-  }
-  return <div className="ba-login">
-    <div className="ba-cosmos" aria-hidden="true"><i/><i/><i/><i/></div>
-    <motion.form className="ba-login-card" onSubmit={submit} initial={{opacity:0,scale:.92,y:30}} animate={{opacity:1,scale:1,y:0}} transition={{type:"spring",stiffness:120,damping:18}}>
-      <button type="button" className="ba-login-back" onClick={onBack}><ArrowLeft/> BRAND GATEWAY</button>
-      <div className="ba-lock-orbit"><span><LockKeyhole/></span><i/><i/></div>
-      <small>DAM UNITED / BART / RESTRICTED ADMIN</small>
-      <h1>Enter the <em>command layer.</em></h1>
-      <p>Your password is verified securely by the Worker. The password is never stored inside the React bundle.</p>
-      <label>ADMIN PASSWORD</label>
-      <div className="ba-password"><LockKeyhole/><input autoFocus autoComplete="current-password" value={password} onChange={e=>{setPassword(e.target.value);if(error)setError("")}} type={show?"text":"password"} placeholder="Enter Admin password"/><button type="button" onClick={()=>setShow(v=>!v)} aria-label={show?"Hide password":"Show password"}>{show?<EyeOff/>:<Eye/>}</button></div>
-      <AnimatePresence>{error&&<motion.div className="ba-login-error" initial={{opacity:0,y:-5}} animate={{opacity:1,y:0}} exit={{opacity:0}}><AlertTriangle/>{error}</motion.div>}</AnimatePresence>
-      <button className="ba-login-submit" disabled={busy||!password.trim()}>{busy?<><span className="ba-mini-spin"/> VERIFYING SECURE SESSION</>:<>AUTHENTICATE & ENTER <ArrowRight/></>}</button>
-      <div className="ba-login-meta"><span><i/> ENCRYPTED SESSION</span><span>WORKER VERIFIED</span><span>8 HOUR ACCESS</span></div>
-    </motion.form>
-  </div>
-}
-
-function SessionLoader(){return <div className="ba-login"><div className="ba-cosmos" aria-hidden="true"><i/><i/><i/><i/></div><div className="ba-login-card ba-session-card"><div className="ba-lock-orbit"><span><LockKeyhole/></span><i/><i/></div><small>DAM UNITED / BART</small><h1>Verifying <em>session.</em></h1><p>Opening the secure BART Admin environment.</p><div className="ba-load-line"><i/></div></div></div>}
 
 function Metric({label,value,detail,Icon=Activity}) { return <motion.div className="ba-metric" whileHover={{y:-4}}><div className="metric-icon"><Icon size={18}/></div><span>{label}</span><strong>{value}</strong><small>{detail}</small></motion.div> }
 
@@ -223,11 +174,99 @@ function ManagementWorkspace({tab,data,managers,managerLoading,loadManagers}){
  return null;
 }
 
-function ReportsWorkspace({tab,data}){const all=[...(data.daily||[]),...(data.weekly||[])];const branches=(data.branches||[]).map(b=>b.name);const exportCsv=()=>{const head=["SKU","Item Name","UOM","Category",...branches,"Total"];const lines=[head,...all.map(r=>[r.SKU,r["Item Name"],r.UOM,r.category,...branches.map(b=>r[b]),r.total])].map(row=>row.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(","));const blob=new Blob([lines.join("\n")],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`BART_Admin_${data.date||"inventory"}.csv`;a.click();URL.revokeObjectURL(a.href)};
- if(tab==="report-studio")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Report Studio" text="Current selected-date reporting dataset, ready for export."/><div className="ba-metrics"><Metric label="ROWS" value={all.length} detail="daily + weekly" Icon={FileSpreadsheet}/><Metric label="BRANCHES" value={branches.length} detail="network columns" Icon={Building2}/><Metric label="DATE" value={data.date||"—"} detail="snapshot" Icon={CalendarDays}/></div><button className="primary-action" onClick={exportCsv}><Download/> Export current CSV</button></div>;
- if(tab==="executive-report")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Executive Report" text="Compact management summary of the selected-date snapshot."/><div className="ba-metrics"><Metric label="NETWORK QTY" value={fmt(all.reduce((s,r)=>s+n(r.total),0))} detail="daily + weekly" Icon={Boxes}/><Metric label="FAILED BRANCHES" value={(data.failedBranches||[]).length} detail="data pipeline" Icon={ShieldAlert}/><Metric label="UNCATEGORIZED" value={all.filter(r=>r.category==="UNCATEGORIZED DETECTED").length} detail="classification" Icon={Tags}/></div></div>;
- if(tab==="custom-export")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Custom Export" text="Export the complete current snapshot without changing the underlying Sheets."/><div className="notice"><FileSpreadsheet/><div><b>Current export includes identity, category, every branch and total.</b><span>Use filters in the inventory screens before analysis; this export intentionally keeps the complete dataset.</span></div></div><button className="primary-action" onClick={exportCsv}><Download/> Download CSV</button></div>;
- if(tab==="report-history")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Report History" text="No fake history: generated reports are not persisted by the current backend."/><div className="notice"><History/><div><b>Report persistence is not enabled.</b><span>This page will remain empty until a real report-history store is added.</span></div></div></div>;
+const REPORT_CATEGORIES=["FOOD ITEMS","DRY ITEMS","MISC ITEMS","UNCATEGORIZED DETECTED"];
+const safeSheetName=v=>String(v||"Report").replace(/[\\/?*\[\]:]/g," ").slice(0,31);
+const reportDateLabel=v=>String(v||"").replaceAll("-","/");
+const cellBorder={top:{style:"thin",color:{rgb:"D9E2F0"}},bottom:{style:"thin",color:{rgb:"D9E2F0"}},left:{style:"thin",color:{rgb:"D9E2F0"}},right:{style:"thin",color:{rgb:"D9E2F0"}}};
+const headerStyle={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"17365D"}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border:cellBorder};
+const subHeaderStyle={font:{bold:true,color:{rgb:"17365D"}},fill:{fgColor:{rgb:"DCE6F1"}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border:cellBorder};
+const titleStyle={font:{bold:true,color:{rgb:"FFFFFF"},sz:18},fill:{fgColor:{rgb:"0F243E"}},alignment:{horizontal:"left",vertical:"center"}};
+const bodyStyle={alignment:{vertical:"center"},border:cellBorder};
+const numberStyle={alignment:{horizontal:"right",vertical:"center"},border:cellBorder,numFmt:"0.00"};
+
+function applyReportSheetStyle(ws,{titleRows=0,freeze="D2",autoFilter=true}={}){
+  if(!ws["!ref"])return;
+  const range=XLSX.utils.decode_range(ws["!ref"]);
+  for(let r=0;r<=range.e.r;r++)for(let c=0;c<=range.e.c;c++){
+    const addr=XLSX.utils.encode_cell({r,c}); const cell=ws[addr]; if(!cell)continue;
+    if(r<titleRows) cell.s=titleStyle;
+    else if(r===titleRows) cell.s=headerStyle;
+    else cell.s=typeof cell.v==="number"?numberStyle:bodyStyle;
+  }
+  ws["!rows"]=[...Array(titleRows).fill({hpt:26}),{hpt:28}];
+  ws["!freeze"]={xSplit:3,ySplit:titleRows+1,topLeftCell:freeze,activePane:"bottomRight",state:"frozen"};
+  if(autoFilter)ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:titleRows,c:0},e:{r:range.e.r,c:range.e.c}})};
+}
+
+function makeInventorySheet(title,date,rows,branches){
+  const head=["Item Name","SKU","UOM","Category",...branches,"Total"];
+  const aoa=[[`${title} · ${reportDateLabel(date)}`],head,...rows.map(r=>[r["Item Name"]||r.itemName||"",r.SKU||r.sku||"",r.UOM||r.uom||"",r.category||"",...branches.map(b=>n(r[b]??r.branches?.[b])),n(r.Total??r.total)])];
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:head.length-1}}];
+  ws["!cols"]=[{wch:42},{wch:14},{wch:12},{wch:24},...branches.map(()=>({wch:15})),{wch:15}];
+  applyReportSheetStyle(ws,{titleRows:1,freeze:"E3"});
+  return ws;
+}
+
+function downloadWorkbook(wb,fileName){XLSX.writeFile(wb,fileName,{compression:true,bookType:"xlsx"});}
+
+function buildLiveWorkbook(data){
+  const branches=(data.branches||[]).map(b=>b.name); const daily=data.daily||[], weekly=data.weekly||[]; const all=[...daily,...weekly];
+  const wb=XLSX.utils.book_new();
+  const summary=[
+    ["BART INVENTORY REPORT"],["Report Date",data.date||""],["Generated",new Date().toLocaleString()],[],
+    ["Metric","Value"],["Branches",branches.length],["Daily Items",daily.length],["Weekly Items",weekly.length],["Total Item Records",all.length],["Network Quantity",all.reduce((a,r)=>a+n(r.Total??r.total),0)],["Failed Branches",(data.failedBranches||[]).length],[],
+    ["Category","Items","Network Quantity"],...REPORT_CATEGORIES.map(c=>{const rows=all.filter(r=>r.category===c);return[c,rows.length,rows.reduce((a,r)=>a+n(r.Total??r.total),0)]})
+  ];
+  const sws=XLSX.utils.aoa_to_sheet(summary); sws["!cols"]=[{wch:34},{wch:24},{wch:24}]; sws["A1"].s=titleStyle; sws["A5"].s=headerStyle; sws["B5"].s=headerStyle; [13].forEach(rr=>{for(let c=0;c<3;c++){const a=XLSX.utils.encode_cell({r:rr-1,c});if(sws[a])sws[a].s=headerStyle}}); XLSX.utils.book_append_sheet(wb,sws,"Dashboard Summary");
+  XLSX.utils.book_append_sheet(wb,makeInventorySheet("DAILY INVENTORY",data.date,daily,branches),"Daily");
+  XLSX.utils.book_append_sheet(wb,makeInventorySheet("WEEKLY INVENTORY",data.date,weekly,branches),"Weekly");
+  REPORT_CATEGORIES.forEach(c=>{const rows=all.filter(r=>r.category===c);if(rows.length)XLSX.utils.book_append_sheet(wb,makeInventorySheet(c,data.date,rows,branches),safeSheetName(c));});
+  return wb;
+}
+
+function flattenRange(historical,mode){
+  const branches=(historical.branches||[]).map(b=>b.name); const out=[];
+  for(const date of historical.dates||[]){
+    const bucket=historical.byDate?.[date]||{}; const modes=mode?[mode]:["daily","weekly"];
+    for(const m of modes)for(const r of bucket[m]||[])out.push({date,mode:m==="daily"?"Daily":"Weekly",...r});
+  }
+  return {rows:out,branches};
+}
+function makeRangeSheet(title,rows,branches){
+  const head=["Date","Type","Item Name","SKU","UOM","Category",...branches,"Total"];
+  const aoa=[[title],head,...rows.map(r=>[r.date,r.mode,r["Item Name"]||r.itemName||"",r.SKU||r.sku||"",r.UOM||r.uom||"",r.category||"",...branches.map(b=>n(r[b]??r.branches?.[b])),n(r.Total??r.total)])];
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:head.length-1}}]; ws["!cols"]=[{wch:13},{wch:10},{wch:42},{wch:14},{wch:12},{wch:24},...branches.map(()=>({wch:15})),{wch:15}]; applyReportSheetStyle(ws,{titleRows:1,freeze:"G3"}); return ws;
+}
+function buildRangeWorkbook(historical,selectedSkus=[]){
+  const daily=flattenRange(historical,"daily"), weekly=flattenRange(historical,"weekly"), combined=flattenRange(historical); const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,makeRangeSheet(`DAILY · ${historical.startDate} → ${historical.endDate}`,daily.rows,daily.branches),"Daily");
+  XLSX.utils.book_append_sheet(wb,makeRangeSheet(`WEEKLY · ${historical.startDate} → ${historical.endDate}`,weekly.rows,weekly.branches),"Weekly");
+  XLSX.utils.book_append_sheet(wb,makeRangeSheet(`COMBINED · ${historical.startDate} → ${historical.endDate}`,combined.rows,combined.branches),"Combined");
+  const chosen=new Set(selectedSkus); const fast=chosen.size?combined.rows.filter(r=>chosen.has(r.SKU||r.sku)):[];
+  const fws=makeRangeSheet(`FAST MOVING SELECTION · ${historical.startDate} → ${historical.endDate}`,fast,combined.branches); XLSX.utils.book_append_sheet(wb,fws,"Fast Moving");
+  return wb;
+}
+
+function ReportsWorkspace({tab,data}){
+ const all=[...(data.daily||[]),...(data.weekly||[])],branches=(data.branches||[]).map(b=>b.name);
+ const d=new Date();d.setDate(d.getDate()-7);const defaultStart=d.toISOString().slice(0,10);
+ const [range,setRange]=useState({start:defaultStart,end:data.date||new Date().toISOString().slice(0,10)});
+ const [rangeData,setRangeData]=useState(null),[busy,setBusy]=useState(false),[reportError,setReportError]=useState("");
+ const [skuSearch,setSkuSearch]=useState(""),[selectedSkus,setSelectedSkus]=useState([]);
+ const skuOptions=useMemo(()=>{const m=new Map();all.forEach(r=>{const sku=String(r.SKU||"").trim();if(sku&&!m.has(sku))m.set(sku,{sku,name:r["Item Name"]||"",uom:r.UOM||""})});return [...m.values()].sort((a,b)=>a.sku.localeCompare(b.sku))},[data]);
+ const visibleSkus=skuOptions.filter(x=>`${x.sku} ${x.name} ${x.uom}`.toLowerCase().includes(skuSearch.toLowerCase())).slice(0,40);
+ const exportCsv=()=>{const head=["SKU","Item Name","UOM","Category",...branches,"Total"];const lines=[head,...all.map(r=>[r.SKU,r["Item Name"],r.UOM,r.category,...branches.map(b=>r[b]),r.total])].map(row=>row.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(","));const blob=new Blob([lines.join("\n")],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`BART_Admin_${data.date||"inventory"}.csv`;a.click();URL.revokeObjectURL(a.href)};
+ const liveExcel=()=>downloadWorkbook(buildLiveWorkbook(data),`BART_Report_${data.date}.xlsx`);
+ async function loadRangeAndDownload(){
+   if(!range.start||!range.end)return; setBusy(true);setReportError("");
+   try{const r=await fetch(`/api/admin/bart/date-range?start=${range.start}&end=${range.end}`);const j=await r.json();if(!r.ok||j.success===false)throw new Error(j.error||j.message||`HTTP ${r.status}`);setRangeData(j);downloadWorkbook(buildRangeWorkbook(j,selectedSkus),`BART_Stock_Movement_${range.start}_${range.end}.xlsx`)}catch(e){setReportError(e.message||"Unable to generate date-range report")}finally{setBusy(false)}
+ }
+ function toggleSku(sku){setSelectedSkus(x=>x.includes(sku)?x.filter(v=>v!==sku):[...x,sku])}
+ if(tab==="report-studio")return <div className="ba-stack"><PageHead eyebrow="TOP PRIORITY / REPORTS" title="BART Download Center" text="Generate the same operational Excel reports from the Admin portal — without changing Staff operations or Google Sheets."/><section className="download-hero"><div><span className="eyebrow">LIVE PROFESSIONAL REPORT</span><h2>{data.date}</h2><p>Dashboard Summary + Daily + Weekly + category worksheets in one formatted Excel workbook.</p><div className="download-tags"><span>{branches.length} branches</span><span>{data.daily?.length||0} daily items</span><span>{data.weekly?.length||0} weekly items</span></div></div><button className="download-main" onClick={liveExcel}><FileSpreadsheet/><span><b>Generate LIVE Excel</b><small>BART_Report_{data.date}.xlsx</small></span><Download/></button></section><section className="ba-panel report-range-card"><header><div><span className="eyebrow">STOCK MOVEMENT</span><h3>Date Range Excel Report</h3></div></header><div className="report-range-grid"><label><span>FROM DATE</span><input type="date" value={range.start} onChange={e=>setRange(x=>({...x,start:e.target.value}))}/></label><label><span>TO DATE</span><input type="date" value={range.end} onChange={e=>setRange(x=>({...x,end:e.target.value}))}/></label></div><div className="sku-picker"><div className="searchbox"><Search/><input value={skuSearch} onChange={e=>setSkuSearch(e.target.value)} placeholder="Search SKU or item for Fast Moving sheet…"/></div>{skuSearch&&<div className="sku-results">{visibleSkus.map(x=><button key={x.sku} className={selectedSkus.includes(x.sku)?"selected":""} onClick={()=>toggleSku(x.sku)}><b>{x.sku}</b><span>{x.name}</span><small>{x.uom}</small></button>)}</div>}<div className="selected-skus">{selectedSkus.map(sku=><button key={sku} onClick={()=>toggleSku(sku)}>{sku} ×</button>)}</div></div>{reportError&&<div className="report-error"><AlertTriangle/>{reportError}</div>}<button className="download-range" disabled={busy||!range.start||!range.end} onClick={loadRangeAndDownload}>{busy?<LoaderCircle className="spin"/>:<FileChartColumn/>}<span><b>{busy?"Building workbook…":"Generate Date Range Excel"}</b><small>Daily · Weekly · Combined · Fast Moving</small></span><Download/></button>{rangeData&&<div className="report-ready"><ClipboardCheck/>Last report loaded {rangeData.dates?.length||0} dates across {rangeData.branches?.length||0} branches.</div>}</section></div>;
+ if(tab==="executive-report")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Executive Report" text="Compact management summary of the selected-date snapshot."/><div className="ba-metrics"><Metric label="NETWORK QTY" value={fmt(all.reduce((s,r)=>s+n(r.total),0))} detail="daily + weekly" Icon={Boxes}/><Metric label="FAILED BRANCHES" value={(data.failedBranches||[]).length} detail="data pipeline" Icon={ShieldAlert}/><Metric label="UNCATEGORIZED" value={all.filter(r=>r.category==="UNCATEGORIZED DETECTED").length} detail="classification" Icon={Tags}/></div><button className="primary-action" onClick={liveExcel}><Download/> Download Professional Excel</button></div>;
+ if(tab==="custom-export")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Custom Export" text="Raw current snapshot export for ad-hoc analysis."/><div className="notice"><FileSpreadsheet/><div><b>CSV includes identity, category, every branch and total.</b><span>The professional Excel report remains available in Download Center.</span></div></div><button className="primary-action" onClick={exportCsv}><Download/> Download CSV</button></div>;
+ if(tab==="report-history")return <div className="ba-stack"><PageHead eyebrow="REPORTS" title="Report History" text="Generated files download directly to the Admin device; they are not persisted by the current backend."/><div className="notice"><History/><div><b>No fake report history is stored.</b><span>Use Download Center whenever a fresh workbook is required.</span></div></div></div>;
  return null;
 }
 
@@ -236,19 +275,16 @@ function Empty({text}){return <div className="empty"><PackageSearch/><b>{text}</
 function BranchWorkspace({branch,data,onBack}){const status=(data.failedBranches||[]).find(x=>(x.name||x.branch)===branch.name||x.code===branch.code);const daily=(data.daily||[]).filter(r=>r[branch.name]!==undefined);const weekly=(data.weekly||[]).filter(r=>r[branch.name]!==undefined);return <div className="branch-workspace"><button className="backline" onClick={onBack}><ArrowLeft/> BART / BRANCHES</button><section className="branch-hero"><div><span className="eyebrow">BRANCH WORKSPACE</span><h1>{branch.name}</h1><p>{branch.code} · Selected inventory snapshot</p></div><div className="branch-health"><i/> {status?"FETCH FAILED":"DATA CONNECTED"}</div></section><div className="ba-metrics"><Metric label="DAILY RECORDS" value={daily.length} detail="available item rows" Icon={ClipboardCheck}/><Metric label="WEEKLY RECORDS" value={weekly.length} detail="available item rows" Icon={CalendarDays}/><Metric label="DAILY QTY" value={fmt(daily.reduce((a,r)=>a+n(r[branch.name]),0))} detail="branch snapshot" Icon={Boxes}/><Metric label="WEEKLY QTY" value={fmt(weekly.reduce((a,r)=>a+n(r[branch.name]),0))} detail="branch snapshot" Icon={Warehouse}/></div><section className="ba-panel"><header><div><span className="eyebrow">BRANCH INVENTORY</span><h3>Complete loaded stock</h3></div></header><div className="branch-items">{[...daily,...weekly].map((r,i)=><div key={i}><b>{r["Item Name"]}</b><span>{r.SKU||"—"} · {r.UOM}</span><strong>{fmt(r[branch.name])}</strong></div>)}</div></section></div>}
 
 export default function BartAdminPortal({onBack}){
- const [auth,setAuth]=useState(null);
  const yesterday=()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10)};
  const weekAgo=()=>{const d=new Date();d.setDate(d.getDate()-8);return d.toISOString().slice(0,10)};
  const [tab,setTab]=useState("command-center"),[openGroup,setOpenGroup]=useState("command"),[date,setDate]=useState(yesterday),[data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[branch,setBranch]=useState(null),[navOpen,setNavOpen]=useState(false);
  const [managers,setManagers]=useState(null),[managerLoading,setManagerLoading]=useState(false);
  const [historical,setHistorical]=useState(null),[historicalLoading,setHistoricalLoading]=useState(false),[range,setRange]=useState({start:weekAgo(),end:yesterday()});
- async function getJson(url,opts={}){const r=await fetch(url,{...opts,credentials:"same-origin"});const j=await r.json();if(!r.ok||j.success===false)throw new Error(j.error||j.message||`HTTP ${r.status}`);return j}
+ async function getJson(url,opts){const r=await fetch(url,opts);const j=await r.json();if(!r.ok||j.success===false)throw new Error(j.error||j.message||`HTTP ${r.status}`);return j}
  async function load(force=false){setLoading(true);setError("");try{setData(await getJson(`/api/admin/bart/inventory?date=${date}${force?"&force=1":""}`))}catch(e){setError(e.message||"Unable to load Admin inventory")}finally{setTimeout(()=>setLoading(false),420)}}
  async function loadManagers(force=false){setManagerLoading(true);try{setManagers(await getJson(`/api/admin/bart/manager-mapping${force?"?force=1":""}`))}catch(e){setError(e.message)}finally{setManagerLoading(false)}}
  async function loadHistorical(force=false){if(!range.start||!range.end)return;setHistoricalLoading(true);try{setHistorical(await getJson(`/api/admin/bart/date-range?start=${range.start}&end=${range.end}${force?"&force=1":""}`))}catch(e){setError(e.message)}finally{setHistoricalLoading(false)}}
- useEffect(()=>{if(auth===true)load(false)},[date,auth]);
- useEffect(()=>{let live=true;adminApi("/api/admin/bart/session").then(x=>{if(live)setAuth(Boolean(x.authenticated))}).catch(()=>{if(live)setAuth(false)});return()=>{live=false}},[]);
- async function logout(){try{await adminApi("/api/admin/bart/logout",{method:"POST"})}catch{}setAuth(false);setData(null);setBranch(null);}
+ useEffect(()=>{load(false)},[date]);
  const historicalTabs=new Set(["stock-movement","item-history","branch-trends","fast-movers","slow-movers","date-comparison","variance-analyzer","date-range-reports"]);
  useEffect(()=>{if(historicalTabs.has(tab)&&!historical&&!historicalLoading)loadHistorical(false)},[tab]);
  function choose(id,g){setTab(id);setOpenGroup(g);setBranch(null);setNavOpen(false)}
@@ -277,8 +313,6 @@ export default function BartAdminPortal({onBack}){
    else if(["report-studio","executive-report","custom-export","report-history"].includes(tab))body=reports;
    else body=<div className="ba-stack"><PageHead eyebrow={meta?.group?.toUpperCase()} title={meta?.label} text="This workspace is intentionally distinct and will only display data supported by its source."/><Empty text="No unsupported or duplicated analytics are shown here."/></div>;
  }
- if(auth===null)return <SessionLoader/>;
- if(auth===false)return <SecureLogin onDone={()=>setAuth(true)} onBack={onBack}/>;
- return <div className="bart-admin"><aside className={navOpen?"open":""}><div className="admin-brand"><div className="brand-mark">B</div><div><b>BART</b><span>ADMIN COMMAND</span></div></div><nav>{GROUPS.map(g=><div className="nav-group" key={g.id}><button className="group-title" onClick={()=>setOpenGroup(openGroup===g.id?"":g.id)}><span>{g.label}</span><small>{g.tabs.length}</small></button><AnimatePresence initial={false}>{openGroup===g.id&&<motion.div className="group-tabs" initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}}>{g.tabs.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>choose(id,g.id)}><Icon size={16}/><span>{label}</span></button>)}</motion.div>}</AnimatePresence></div>)}</nav><div className="admin-side-actions"><button className="admin-logout" onClick={logout}><LogOut/> LOG OUT</button><button className="all-brands" onClick={onBack}><ArrowLeft/> ALL BRANDS</button></div></aside>
- <main><header className="admin-top"><button className="mobile-nav" onClick={()=>setNavOpen(!navOpen)}><Command/></button><div className="crumb"><span>DAM UNITED / BART</span><b>{meta?.label||"Command Center"}</b></div><div className="top-actions"><label><CalendarDays/><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><button onClick={()=>load(true)} disabled={loading}><RefreshCcw className={loading?"spin":""}/> Refresh</button></div></header><div className="admin-content">{branch&&data?<BranchWorkspace branch={branch} data={data} onBack={()=>setBranch(null)}/>:error?<div className="fatal"><AlertTriangle/><h2>Admin data unavailable</h2><p>{error}</p><button onClick={()=>{setError("");load(true)}}>Retry connection</button></div>:<AnimatePresence mode="wait">{loading?<motion.div key={`load-${tab}`} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><TabLoader tab={tab}/></motion.div>:<motion.div key={tab} initial={{opacity:0,y:18,filter:"blur(8px)"}} animate={{opacity:1,y:0,filter:"blur(0px)"}} exit={{opacity:0,y:-8}} transition={{duration:.35}}>{body}</motion.div>}</AnimatePresence>}</div></main></div>
+ return <div className="bart-admin"><aside className={navOpen?"open":""}><div className="admin-brand"><div className="brand-mark">B</div><div><b>BART</b><span>ADMIN COMMAND</span></div></div><nav>{GROUPS.map(g=><div className="nav-group" key={g.id}><button className="group-title" onClick={()=>setOpenGroup(openGroup===g.id?"":g.id)}><span>{g.label}</span><small>{g.tabs.length}</small></button><AnimatePresence initial={false}>{openGroup===g.id&&<motion.div className="group-tabs" initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}}>{g.tabs.map(([id,label,Icon])=><button key={id} className={tab===id?"active":""} onClick={()=>choose(id,g.id)}><Icon size={16}/><span>{label}</span></button>)}</motion.div>}</AnimatePresence></div>)}</nav><button className="all-brands" onClick={onBack}><ArrowLeft/> ALL BRANDS</button></aside>
+ <main><header className="admin-top"><button className="mobile-nav" onClick={()=>setNavOpen(!navOpen)}><Command/></button><div className="crumb"><span>DAM UNITED / BART</span><b>{meta?.label||"Command Center"}</b></div><div className="top-actions"><button className="top-download" onClick={()=>choose("report-studio","reports")}><Download/> Download Center</button><label><CalendarDays/><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><button onClick={()=>load(true)} disabled={loading}><RefreshCcw className={loading?"spin":""}/> Refresh</button></div></header><div className="admin-content">{branch&&data?<BranchWorkspace branch={branch} data={data} onBack={()=>setBranch(null)}/>:error?<div className="fatal"><AlertTriangle/><h2>Admin data unavailable</h2><p>{error}</p><button onClick={()=>{setError("");load(true)}}>Retry connection</button></div>:<AnimatePresence mode="wait">{loading?<motion.div key={`load-${tab}`} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><TabLoader tab={tab}/></motion.div>:<motion.div key={tab} initial={{opacity:0,y:18,filter:"blur(8px)"}} animate={{opacity:1,y:0,filter:"blur(0px)"}} exit={{opacity:0,y:-8}} transition={{duration:.35}}>{body}</motion.div>}</AnimatePresence>}</div></main></div>
 }
