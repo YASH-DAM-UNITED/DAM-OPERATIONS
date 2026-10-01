@@ -13,6 +13,7 @@
     "@huggingface/transformers": "^3.7.6",
     "@vitejs/plugin-react": "^5.2.0",
     "framer-motion": "^12.43.0",
+    "jspdf": "^3.0.2",
     "lucide-react": "^0.468.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
