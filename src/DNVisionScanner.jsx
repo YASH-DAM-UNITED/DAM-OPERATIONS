@@ -9,9 +9,11 @@ import "./DNVisionScanner.css";
 
 const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g;
 const UOMS = ["PCS","PC","PIECE","PIECES","BOTTLE","BOTTLES","BTL","BOX","BOXES","PACK","PACKS","PKT","KG","G","GM","ML","L","LTR","CAN","CANS","BAG","BAGS","CTN","CARTON","CARTONS"];
-const NAME_ACCEPT = 0.86;
-const NAME_STRONG = 0.93;
+const NAME_ACCEPT = 0.84;
+const NAME_STRONG = 0.92;
 const AMBIGUITY_GAP = 0.035;
+const ROW_MIN_HEIGHT = 24;
+const ROW_MAX_HEIGHT = 260;
 
 function cleanText(v) {
   return String(v ?? "").normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(ARABIC, " ").replace(/[^a-zA-Z0-9.&()/'\- ]+/g, " ").replace(/\s+/g, " ").trim();
@@ -66,88 +68,178 @@ async function imageToCanvas(file, variant = "contrast") {
   return canvas;
 }
 
-function parseText(text) {
-  const lines = String(text || "").split(/\r?\n/).map(x => x.replace(ARABIC, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
-  const rows = [];
-  for (const raw of lines) {
-    const bracket = raw.match(/\[\s*([A-Za-z0-9()\-]+)\s*\]/);
-    if (!bracket) continue;
-    const deliverySku = normSku(bracket[1]);
-    let tail = raw.slice((bracket.index || 0) + bracket[0].length).trim();
-    const qtyMatches = [...tail.matchAll(new RegExp(`(?:^|\\s|-)\\s*(\\d+(?:[.,]\\d+)?)\\s*(${UOMS.join("|")})\\b`, "gi"))];
-    const q = qtyMatches.length ? qtyMatches[qtyMatches.length - 1] : null;
-    const qty = q ? Number(q[1].replace(",", ".")) : 0;
-    const uom = q ? norm(q[2]) : ""; // ALWAYS delivery-note UOM; never replaced from Stocks.
-    let item = q ? tail.slice(0, q.index).replace(/\s*-\s*$/, "").trim() : tail.replace(/\s+-\s+.*$/, "").trim();
-    item = cleanText(item);
-    if (deliverySku || item) rows.push({ deliverySku, scannedItem: item, qty, uom, raw });
-  }
-  return rows;
+function parseRowText(text) {
+  const raw = String(text || "").replace(ARABIC, " ").replace(/\s+/g, " ").trim();
+  const bracket = raw.match(/\[\s*([A-Za-z0-9()\-]+)\s*\]/);
+  const deliverySku = bracket ? normSku(bracket[1]) : "";
+  let tail = bracket ? raw.slice((bracket.index || 0) + bracket[0].length).trim() : raw;
+
+  const qtyMatches = [...tail.matchAll(new RegExp(`(?:^|\\s|-)\\s*(\\d+(?:[.,]\\d+)?)\\s*(${UOMS.join("|")})\\b`, "gi"))];
+  const q = qtyMatches.length ? qtyMatches[qtyMatches.length - 1] : null;
+  const qty = q ? Number(q[1].replace(",", ".")) : 0;
+  const uom = q ? norm(q[2]) : ""; // DELIVERY NOTE is authoritative for UOM.
+
+  let item = q ? tail.slice(0, q.index).replace(/\s*-\s*$/, "").trim() : tail;
+  item = item.replace(/^(ITEMS?|DESCRIPTION|PRODUCTS?)\s*[:\-]?\s*/i, "");
+  item = cleanText(item);
+
+  return { deliverySku, scannedItem: item, qty, uom, raw };
 }
 
-function mergePasses(a, b) {
-  const used = new Set();
-  return a.map((row, index) => {
-    let bestIndex = -1; let bestScore = -1;
-    b.forEach((candidate, j) => {
-      if (used.has(j)) return;
-      const score = Math.max(
-        normSku(row.deliverySku) && normSku(row.deliverySku) === normSku(candidate.deliverySku) ? 1 : 0,
-        similarity(row.scannedItem, candidate.scannedItem)
-      );
-      if (score > bestScore) { bestScore = score; bestIndex = j; }
-    });
-    if (bestIndex < 0 || bestScore < 0.55) return { ...row, passAgreement: false };
-    used.add(bestIndex); const other = b[bestIndex];
-    const chooseOtherName = norm(other.scannedItem).length > norm(row.scannedItem).length && similarity(row.scannedItem, other.scannedItem) > 0.70;
-    return {
-      ...row,
-      deliverySku: row.deliverySku || other.deliverySku,
-      scannedItem: chooseOtherName ? other.scannedItem : row.scannedItem,
-      qty: row.qty > 0 ? row.qty : other.qty,
-      uom: row.uom || other.uom,
-      passAgreement: bestScore >= 0.86 && (!row.qty || !other.qty || Number(row.qty) === Number(other.qty)),
-    };
-  }).concat(b.filter((_, j) => !used.has(j)).map(row => ({ ...row, passAgreement: false })));
-}
+function detectHorizontalGridLines(canvas) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const { width, height } = canvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const x0 = Math.floor(width * 0.03);
+  const x1 = Math.floor(width * 0.97);
+  const span = Math.max(1, x1 - x0);
+  const scores = new Float32Array(height);
 
-// STRICT RULE:
-// 1) Exact SKU only. Never fuzzy-match a SKU.
-// 2) If exact SKU is absent, completely ignore SKU and compare item names only.
-// 3) UOM is taken from the delivery note only and is never used to overwrite/match Stocks UOM.
-function strictMatch(scan, master) {
-  const sku = normSku(scan.deliverySku);
-  if (sku) {
-    const exact = master.find(m => normSku(m.sku) === sku);
-    if (exact) {
-      const nameScore = similarity(scan.scannedItem, exact.item);
-      return {
-        stockSku: exact.sku, item: exact.item, confidence: Math.round(clamp(96 + nameScore * 4)),
-        matchType: "EXACT_SKU", reviewed: true, ambiguous: false, candidates: [], nameScore,
-      };
+  for (let y = 0; y < height; y++) {
+    let dark = 0;
+    const row = y * width * 4;
+    for (let x = x0; x < x1; x += 2) {
+      if (data[row + x * 4] < 105) dark++;
     }
+    scores[y] = dark / Math.ceil(span / 2);
   }
 
-  const ranked = master
+  // A real table rule normally spans a meaningful part of the page width.
+  const hot = [];
+  for (let y = 1; y < height - 1; y++) {
+    const local = (scores[y - 1] + scores[y] + scores[y + 1]) / 3;
+    if (local >= 0.24) hot.push(y);
+  }
+
+  const groups = [];
+  for (const y of hot) {
+    const last = groups[groups.length - 1];
+    if (!last || y - last[last.length - 1] > 3) groups.push([y]);
+    else last.push(y);
+  }
+
+  return groups.map(g => Math.round(g.reduce((a, b) => a + b, 0) / g.length));
+}
+
+function buildPhysicalRowBands(canvas) {
+  const lines = detectHorizontalGridLines(canvas);
+  const bands = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    const top = lines[i] + 2;
+    const bottom = lines[i + 1] - 2;
+    const h = bottom - top;
+    if (h >= ROW_MIN_HEIGHT && h <= ROW_MAX_HEIGHT) bands.push({ top, bottom, height: h });
+  }
+  return bands;
+}
+
+function cropBand(canvas, band, pad = 5) {
+  const top = Math.max(0, band.top - pad);
+  const bottom = Math.min(canvas.height, band.bottom + pad);
+  const out = document.createElement("canvas");
+  out.width = canvas.width;
+  out.height = Math.max(1, bottom - top);
+  out.getContext("2d").drawImage(canvas, 0, top, canvas.width, bottom - top, 0, 0, out.width, out.height);
+  return out;
+}
+
+function rankByItemName(scan, master) {
+  return master
     .map(m => ({ ...m, nameScore: similarity(scan.scannedItem, m.item) }))
-    .sort((x, y) => y.nameScore - x.nameScore);
-  const first = ranked[0]; const second = ranked[1];
+    .sort((a, b) => b.nameScore - a.nameScore);
+}
+
+// V3 RULES:
+// 1) ITEM NAME is ALWAYS the primary identity.
+// 2) SKU is confirmation only; it never chooses the product by itself.
+// 3) If printed SKU is missing/unreadable, final SKU is filled from Stocks.
+// 4) If printed SKU disagrees, keep printed SKU for audit but final stockSku is the item-name match.
+// 5) Qty + UOM always come from the delivery note.
+function itemFirstMatch(scan, master) {
+  const ranked = rankByItemName(scan, master);
+  const first = ranked[0];
+  const second = ranked[1];
   if (!first) return { stockSku: "", item: scan.scannedItem, confidence: 0, matchType: "UNMATCHED", reviewed: false, ambiguous: false, candidates: [] };
 
   const gap = first.nameScore - (second?.nameScore || 0);
   const ambiguous = first.nameScore >= NAME_ACCEPT && second && second.nameScore >= NAME_ACCEPT && gap < AMBIGUITY_GAP;
   const acceptable = first.nameScore >= NAME_ACCEPT && !ambiguous;
-  const confidence = Math.round(clamp(first.nameScore * 100));
+  const printedSku = normSku(scan.deliverySku);
+  const masterSku = normSku(first.sku);
+  const skuMissing = !printedSku;
+  const skuConfirmed = Boolean(printedSku && masterSku && printedSku === masterSku);
+  const skuMismatch = Boolean(printedSku && masterSku && printedSku !== masterSku);
+
+  let matchType = ambiguous ? "AMBIGUOUS_NAME" : acceptable ? "ITEM_NAME" : "REVIEW";
+  if (acceptable && skuConfirmed) matchType = "NAME+SKU_CONFIRMED";
+  if (acceptable && skuMissing) matchType = "NAME+SKU_FILLED";
+  if (acceptable && skuMismatch) matchType = "NAME+SKU_MISMATCH";
+
   return {
     stockSku: acceptable ? first.sku : "",
     item: acceptable ? first.item : scan.scannedItem,
-    confidence,
-    matchType: ambiguous ? "AMBIGUOUS_NAME" : acceptable ? "ITEM_NAME" : "REVIEW",
-    reviewed: acceptable && first.nameScore >= NAME_STRONG,
+    confidence: Math.round(clamp(first.nameScore * 100)),
+    matchType,
+    reviewed: acceptable && first.nameScore >= NAME_STRONG && !skuMismatch,
     ambiguous,
+    skuMissing,
+    skuConfirmed,
+    skuMismatch,
     nameScore: first.nameScore,
-    candidates: ranked.slice(0, 3).map(x => ({ sku: x.sku, item: x.item, score: Math.round(x.nameScore * 100) })),
+    candidates: ranked.slice(0, 4).map(x => ({ sku: x.sku, item: x.item, score: Math.round(x.nameScore * 100) })),
   };
+}
+
+function isLikelyProductRow(parsed, master) {
+  if (!parsed) return false;
+  const ranked = rankByItemName(parsed, master);
+  const best = ranked[0]?.nameScore || 0;
+  return best >= 0.64 || Boolean(parsed.deliverySku) || (Boolean(parsed.uom) && Number(parsed.qty) > 0);
+}
+
+async function recognizePhysicalRows(worker, contrastCanvas, thresholdCanvas, master, onProgress) {
+  const bands = buildPhysicalRowBands(thresholdCanvas);
+  if (bands.length < 3) {
+    throw new Error("Table grid could not be detected clearly. Keep the full delivery-note table visible, straight and sharp.");
+  }
+
+  const raw = [];
+  for (let i = 0; i < bands.length; i++) {
+    const band = bands[i];
+    const c1 = cropBand(contrastCanvas, band);
+    const c2 = cropBand(thresholdCanvas, band);
+    const first = await worker.recognize(c1);
+    const second = await worker.recognize(c2);
+    const a = parseRowText(first?.data?.text || "");
+    const b = parseRowText(second?.data?.text || "");
+
+    const scoreA = rankByItemName(a, master)[0]?.nameScore || 0;
+    const scoreB = rankByItemName(b, master)[0]?.nameScore || 0;
+    const primary = scoreB > scoreA ? b : a;
+    const other = primary === a ? b : a;
+    const combined = {
+      ...primary,
+      deliverySku: primary.deliverySku || other.deliverySku,
+      scannedItem: primary.scannedItem || other.scannedItem,
+      qty: primary.qty > 0 ? primary.qty : other.qty,
+      uom: primary.uom || other.uom,
+      passAgreement: similarity(a.scannedItem, b.scannedItem) >= 0.78,
+      physicalBand: band,
+      physicalIndex: i,
+    };
+    raw.push(combined);
+    onProgress?.(i + 1, bands.length);
+  }
+
+  const productFlags = raw.map(r => isLikelyProductRow(r, master));
+  const productIndexes = productFlags.map((v, i) => v ? i : -1).filter(i => i >= 0);
+  if (!productIndexes.length) throw new Error("Physical table rows were found, but no product rows could be identified.");
+
+  // Keep every physical band between first and last recognized product row.
+  // This is the key V3 protection: an unreadable middle row remains present for staff review.
+  const first = productIndexes[0];
+  const last = productIndexes[productIndexes.length - 1];
+  return raw.slice(first, last + 1).map((r, i) => ({ ...r, physicalRow: i + 1 }));
 }
 
 function createCleanPdf({ branch, transactionId, noteNo, deliveryDate, rows }) {
@@ -203,23 +295,22 @@ export default function DNVisionScanner({ branch, onBack }) {
     if (!file || !master.length || busy) return;
     setBusy(true); setMessage(null); setProgress(2); let worker;
     try {
-      setStatus("Building two cleaned document versions...");
+      setStatus("Cleaning document + detecting physical table rows...");
       const [contrast, threshold] = await Promise.all([imageToCanvas(file, "contrast"), imageToCanvas(file, "threshold")]);
+      setProgress(5);
       setStatus("Loading free OCR engine...");
-      worker = await createWorker("eng", 1, { logger: m => {
-        if (m.status === "recognizing text") setProgress(Math.round(8 + (m.progress || 0) * 42));
-      }});
-      setStatus("OCR pass 1 of 2 - contrast document...");
-      const first = await worker.recognize(contrast);
-      setProgress(52); setStatus("OCR pass 2 of 2 - threshold document...");
-      const second = await worker.recognize(threshold);
-      setProgress(92); setStatus("Comparing passes + matching branch Stocks...");
-      const merged = mergePasses(parseText(first?.data?.text || ""), parseText(second?.data?.text || ""));
-      const matched = merged.map((x, i) => ({ id: `${Date.now()}-${i}`, ...x, ...strictMatch(x, master) }));
-      if (!matched.length) throw new Error("No [SKU] item rows detected. Retake the full note straight, close and clear.");
+      worker = await createWorker("eng", 1, { logger: () => {} });
+      setProgress(10);
+      setStatus("Reading every physical row twice...");
+      const physicalRows = await recognizePhysicalRows(worker, contrast, threshold, master, (done, total) => {
+        setProgress(Math.round(10 + (done / Math.max(1, total)) * 82));
+        setStatus(`Reading physical row ${done} of ${total}...`);
+      });
+      setStatus("Item-name matching + SKU confirmation...");
+      const matched = physicalRows.map((x, i) => ({ id: `${Date.now()}-${i}`, ...x, ...itemFirstMatch(x, master) }));
       setRows(matched); setProgress(100);
       const uncertain = matched.filter(x => !x.stockSku || x.ambiguous || !(x.qty > 0) || !x.uom || !x.reviewed).length;
-      setMessage({ type: uncertain ? "warn" : "success", text: uncertain ? `${matched.length} rows found. ${uncertain} row(s) require staff review.` : `${matched.length} rows verified by dual OCR + branch master.` });
+      setMessage({ type: uncertain ? "warn" : "success", text: uncertain ? `${matched.length} PHYSICAL product rows preserved. ${uncertain} row(s) require staff review.` : `${matched.length} PHYSICAL product rows preserved and verified.` });
     } catch (e) { setMessage({ type: "error", text: e.message || "Scan failed." }); }
     finally { if (worker) await worker.terminate().catch(() => {}); setBusy(false); setStatus(""); }
   }
@@ -248,7 +339,7 @@ export default function DNVisionScanner({ branch, onBack }) {
   }
 
   return <div className="dnv-page">
-    <header className="dnv-head"><button onClick={onBack}><ArrowLeft size={18}/> BACK</button><div><span>BART • DELIVERY INTELLIGENCE V2</span><h1>Delivery Note Scanner</h1><p>{branch?.code} • {branch?.name}</p></div><div className="dnv-master"><ShieldCheck size={18}/><strong>{masterBusy ? "Loading..." : `${master.length} master items`}</strong><button onClick={() => loadMaster(true)} disabled={masterBusy}><RefreshCcw size={15}/></button></div></header>
+    <header className="dnv-head"><button onClick={onBack}><ArrowLeft size={18}/> BACK</button><div><span>BART • DELIVERY INTELLIGENCE V3</span><h1>Delivery Note Scanner</h1><p>{branch?.code} • {branch?.name}</p></div><div className="dnv-master"><ShieldCheck size={18}/><strong>{masterBusy ? "Loading..." : `${master.length} master items`}</strong><button onClick={() => loadMaster(true)} disabled={masterBusy}><RefreshCcw size={15}/></button></div></header>
     {message && <div className={`dnv-message ${message.type}`}>{message.type === "error" || message.type === "warn" ? <AlertTriangle size={18}/> : <CheckCircle2 size={18}/>}<span>{message.text}</span></div>}
 
     <section className="dnv-grid">
@@ -260,16 +351,16 @@ export default function DNVisionScanner({ branch, onBack }) {
         {busy && <div className="dnv-progress"><div style={{width:`${progress}%`}}/><span>{progress}%</span></div>}
       </div>
 
-      <div className="dnv-card intelligence"><div className="dnv-card-title"><FileImage/><div><span>STRICT MATCH ENGINE</span><h2>Exact SKU → Item Name</h2></div></div>
-        <div className="dnv-pipeline"><b>PHOTO</b><i>→</i><b>2 CLEAN PASSES</b><i>→</i><b>OCR×2</b><i>→</i><b>VERIFY</b></div>
-        <p><strong>SKU is never fuzzy-matched.</strong> Exact SKU wins. If SKU is not exact, it is ignored and the item name is compared against every Stocks item. UOM always stays exactly from the delivery note.</p>
+      <div className="dnv-card intelligence"><div className="dnv-card-title"><FileImage/><div><span>ITEM-FIRST MATCH ENGINE</span><h2>Item Name → SKU confirmation</h2></div></div>
+        <div className="dnv-pipeline"><b>PHOTO</b><i>→</i><b>PHYSICAL ROWS</b><i>→</i><b>OCR×2/ROW</b><i>→</i><b>ITEM MATCH</b></div>
+        <p><strong>Item Name is always first.</strong> SKU only confirms the item. Missing SKU is filled from Stocks; mismatched printed SKU is preserved for audit and flagged. Qty + UOM always stay from the delivery note. A physical row is never silently dropped.</p>
         <div className="dnv-stat"><span>Transaction</span><code>{transactionId}</code></div><div className="dnv-stat"><span>Rows detected</span><strong>{rows.length}</strong></div><div className="dnv-stat"><span>Needs review</span><strong className={invalid.length ? "bad":"good"}>{invalid.length}</strong></div>
         <button className="dnv-pdf" disabled={!rows.length} onClick={() => createCleanPdf({ branch, transactionId, noteNo, deliveryDate, rows })}><FileDown size={16}/> CREATE CLEAN PDF</button>
       </div>
     </section>
 
-    <section className="dnv-results"><div className="dnv-results-head"><div><span>STEP 02</span><h2>Verify every row</h2><p>Ambiguous or weak item-name matches must be selected by staff.</p></div><button onClick={addRow}><Plus size={16}/> ADD ROW</button></div>
-      {!rows.length ? <div className="dnv-empty"><ScanLine size={34}/><strong>No scanned rows yet</strong><span>Capture a delivery note and run Dual Scan + Verify.</span></div> : <div className="dnv-table-wrap"><table><thead><tr><th>#</th><th>Delivery SKU</th><th>Matched Stock Item</th><th>Qty</th><th>Delivery UOM</th><th>Match</th><th></th></tr></thead><tbody>{rows.map((r,i)=><tr key={r.id} className={!invalid.includes(r)?"ok":"review"}><td>{i+1}</td><td><input value={r.deliverySku} onChange={e=>update(r.id,"deliverySku",e.target.value)}/></td><td><select value={r.stockSku} onChange={e=>chooseMaster(r.id,e.target.value)}><option value="">Select / unmatched</option>{master.map(m=><option key={`${m.sku}-${m.item}`} value={m.sku}>{m.sku} • {m.item}</option>)}</select><small>{r.item || r.scannedItem}</small>{r.ambiguous && <em className="dnv-ambiguous">Ambiguous: {r.candidates?.map(c=>`${c.sku} ${c.score}%`).join(" • ")}</em>}</td><td><input className="qty" type="number" min="0" step="any" value={r.qty} onChange={e=>update(r.id,"qty",e.target.value)}/></td><td><input value={r.uom} onChange={e=>update(r.id,"uom",e.target.value.toUpperCase())}/></td><td><span className={`dnv-confidence ${r.confidence>=93?"high":r.confidence>=86?"mid":"low"}`}>{r.confidence}% • {r.matchType}</span>{!r.reviewed&&!r.ambiguous&&r.stockSku&&<button className="dnv-review" onClick={()=>update(r.id,"reviewed",true)}>MARK REVIEWED</button>}</td><td><button className="dnv-trash" onClick={()=>setRows(x=>x.filter(y=>y.id!==r.id))}><Trash2 size={16}/></button></td></tr>)}</tbody></table></div>}
+    <section className="dnv-results"><div className="dnv-results-head"><div><span>STEP 02</span><h2>Verify every row</h2><p>Every physical table row is preserved. Ambiguous, unreadable or SKU-mismatch rows require staff review.</p></div><button onClick={addRow}><Plus size={16}/> ADD ROW</button></div>
+      {!rows.length ? <div className="dnv-empty"><ScanLine size={34}/><strong>No scanned rows yet</strong><span>Capture a delivery note and run Dual Scan + Verify.</span></div> : <div className="dnv-table-wrap"><table><thead><tr><th>#</th><th>Delivery SKU</th><th>Matched Stock Item</th><th>Qty</th><th>Delivery UOM</th><th>Match</th><th></th></tr></thead><tbody>{rows.map((r,i)=><tr key={r.id} className={!invalid.includes(r)?"ok":"review"}><td>{i+1}</td><td><input value={r.deliverySku} onChange={e=>update(r.id,"deliverySku",e.target.value)}/></td><td><select value={r.stockSku} onChange={e=>chooseMaster(r.id,e.target.value)}><option value="">Select / unmatched</option>{master.map(m=><option key={`${m.sku}-${m.item}`} value={m.sku}>{m.sku} • {m.item}</option>)}</select><small>{r.item || r.scannedItem}</small>{r.skuMismatch && <em className="dnv-ambiguous">Printed SKU {r.deliverySku} differs from Stocks SKU {r.stockSku}</em>}{r.skuMissing && r.stockSku && <em className="dnv-filled">SKU filled from Stocks: {r.stockSku}</em>}{r.ambiguous && <em className="dnv-ambiguous">Ambiguous: {r.candidates?.map(c=>`${c.sku} ${c.score}%`).join(" • ")}</em>}</td><td><input className="qty" type="number" min="0" step="any" value={r.qty} onChange={e=>update(r.id,"qty",e.target.value)}/></td><td><input value={r.uom} onChange={e=>update(r.id,"uom",e.target.value.toUpperCase())}/></td><td><span className={`dnv-confidence ${r.confidence>=93?"high":r.confidence>=86?"mid":"low"}`}>{r.confidence}% • {r.matchType}</span>{!r.reviewed&&!r.ambiguous&&r.stockSku&&<button className="dnv-review" onClick={()=>update(r.id,"reviewed",true)}>MARK REVIEWED</button>}</td><td><button className="dnv-trash" onClick={()=>setRows(x=>x.filter(y=>y.id!==r.id))}><Trash2 size={16}/></button></td></tr>)}</tbody></table></div>}
     </section>
 
     <footer className="dnv-submitbar"><div><strong>{rows.length} items</strong><span>{invalid.length ? `${invalid.length} item(s) require correction/review.` : rows.length ? "All rows ready for submission." : "Scan a delivery note first."}</span></div><button onClick={submit} disabled={!rows.length || invalid.length>0 || submitting}>{submitting?<LoaderCircle className="dnv-spin"/>:<Send/>}{submitting?"SAVING...":"SUBMIT DELIVERY"}</button></footer>

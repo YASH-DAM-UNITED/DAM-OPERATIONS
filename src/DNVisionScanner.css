@@ -2,3 +2,6 @@
 
 /* V2 additions */
 .dnv-pdf{width:100%;margin-top:14px;border:1px solid rgba(99,102,241,.28);background:rgba(99,102,241,.09);color:inherit;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800;cursor:pointer}.dnv-pdf:disabled{opacity:.4;cursor:not-allowed}.dnv-ambiguous{display:block;margin-top:6px;color:#f59e0b;font-size:11px;font-style:normal;font-weight:800;line-height:1.35}
+
+/* V3 item-first / SKU audit status */
+.dnv-filled{display:block;margin-top:6px;color:#63e6be;font-size:11px;font-style:normal;font-weight:800;line-height:1.35}
