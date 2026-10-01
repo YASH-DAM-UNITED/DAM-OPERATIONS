@@ -6346,6 +6346,179 @@ function clearAdminCache() {
   return true;
 }
 
+
+
+/* ============================================================
+   BART DELIVERY NOTES - FREE VALIDATED SCANNER BACKEND
+   ------------------------------------------------------------
+   - Uses each branch's own SheetID from MASTER_SHEET_ID.
+   - Reads Stocks!A:C as the item master.
+   - Creates "Delivery Note" tab when missing.
+   - One complete delivery = one Google Sheet row.
+   - No D1 dependency and no paid OCR API.
+============================================================ */
+
+const DELIVERY_NOTE_TAB = "Delivery Note";
+const DELIVERY_NOTE_HEADERS = [
+  "Transaction ID",
+  "Timestamp",
+  "Branch Code",
+  "Branch Name",
+  "Delivery Note No",
+  "Delivery Date",
+  "Total Items",
+  "Items JSON",
+  "Submitted By",
+];
+
+function dnText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function dnSku(value) {
+  return dnText(value).replace(/\s+/g, "").toUpperCase();
+}
+
+async function dnGetSpreadsheetMeta(env, spreadsheetId) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`;
+  const response = await googleRequest(env, (token) => fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  }));
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || "Unable to inspect branch spreadsheet.");
+  return data;
+}
+
+async function dnCreateSheet(env, spreadsheetId, title) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
+  const response = await googleRequest(env, (token) => fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+  }));
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data?.error?.message || "Unable to create Delivery Note tab.";
+    if (!/already exists/i.test(message)) throw new Error(message);
+  }
+}
+
+async function dnEnsureDeliveryTab(env, spreadsheetId) {
+  const meta = await dnGetSpreadsheetMeta(env, spreadsheetId);
+  const exists = (meta.sheets || []).some(
+    (sheet) => dnText(sheet?.properties?.title).toLowerCase() === DELIVERY_NOTE_TAB.toLowerCase()
+  );
+  if (!exists) await dnCreateSheet(env, spreadsheetId, DELIVERY_NOTE_TAB);
+
+  const headerRows = await getSheetValues(env, spreadsheetId, `'${DELIVERY_NOTE_TAB}'!A1:I2`);
+  if (!headerRows.length || !headerRows[0]?.length) {
+    await batchWriteSheet(env, spreadsheetId, [{
+      range: `'${DELIVERY_NOTE_TAB}'!A1:I1`,
+      values: [DELIVERY_NOTE_HEADERS],
+    }]);
+  }
+}
+
+async function dnLoadMaster(env, branchCode, force = false) {
+  const branch = await getBartBranchGoogle(env, branchCode, force);
+  if (!branch?.sheet_id) throw new Error("Branch spreadsheet not found.");
+
+  const stock = await getBartStockSheetSmart(env, branch, force);
+  const map = new Map();
+  let mode = "";
+
+  for (const row of stock.rows || []) {
+    const a = dnText(row?.[0]);
+    const lower = a.toLowerCase();
+    if (lower.includes("daily item")) { mode = "daily"; continue; }
+    if (lower.includes("weekly item")) { mode = "weekly"; continue; }
+
+    const item = a;
+    const sku = dnSku(row?.[1]);
+    const uom = dnText(row?.[2]).toUpperCase();
+    if (!item || !sku || !uom) continue;
+    if (["SKU", "DATE-> UOM"].includes(sku)) continue;
+
+    const key = `${sku}|${item.toUpperCase()}|${uom}`;
+    if (!map.has(key)) map.set(key, { item, sku, uom, mode });
+  }
+
+  return {
+    branch: { code: branch.code, name: branch.name },
+    items: [...map.values()],
+    source: stock.source,
+  };
+}
+
+async function dnSubmit(env, body) {
+  const branchCode = dnSku(body?.branchCode);
+  const transactionId = dnText(body?.transactionId);
+  const noteNumber = dnText(body?.deliveryNoteNo);
+  const deliveryDate = dnText(body?.deliveryDate);
+  const submittedBy = dnText(body?.submittedBy || "BRANCH STAFF");
+  const items = Array.isArray(body?.items) ? body.items : [];
+
+  if (!branchCode) throw new Error("Branch code missing.");
+  if (!transactionId) throw new Error("Transaction ID missing.");
+  if (!items.length) throw new Error("No delivery items to submit.");
+
+  const branch = await getBartBranchGoogle(env, branchCode, false);
+  if (!branch?.sheet_id) throw new Error("Branch spreadsheet not found.");
+  await dnEnsureDeliveryTab(env, branch.sheet_id);
+
+  // Idempotency: a retry with the same transaction ID never creates a second row.
+  const existing = await getSheetValues(env, branch.sheet_id, `'${DELIVERY_NOTE_TAB}'!A:A`);
+  const duplicate = existing.some((row) => dnText(row?.[0]) === transactionId);
+  if (duplicate) {
+    return { success: true, duplicate: true, transactionId, message: "Delivery already recorded." };
+  }
+
+  const cleanItems = items.map((entry, index) => ({
+    row: index + 1,
+    deliverySku: dnText(entry?.deliverySku),
+    stockSku: dnSku(entry?.stockSku),
+    item: dnText(entry?.item),
+    qty: Number(entry?.qty) || 0,
+    uom: dnText(entry?.uom).toUpperCase(),
+    matchType: dnText(entry?.matchType),
+    confidence: Number(entry?.confidence) || 0,
+    reviewed: Boolean(entry?.reviewed),
+  }));
+
+  if (cleanItems.some((x) => !x.item || !x.uom || !(x.qty > 0))) {
+    throw new Error("Every item requires Item Name, positive Quantity and UOM before submit.");
+  }
+
+  await appendSheetRow(env, branch.sheet_id, `'${DELIVERY_NOTE_TAB}'!A:I`, [
+    transactionId,
+    formatJeddahTimestamp(),
+    branch.code,
+    branch.name,
+    noteNumber,
+    deliveryDate,
+    cleanItems.length,
+    JSON.stringify(cleanItems),
+    submittedBy,
+  ]);
+
+  return {
+    success: true,
+    duplicate: false,
+    transactionId,
+    totalItems: cleanItems.length,
+    message: "Delivery note recorded successfully.",
+  };
+}
+
+
 /* ============================================================
    WORKER
 ============================================================ */
@@ -6699,7 +6872,8 @@ if (
         url.pathname.startsWith("/api/staff/bart/stock-transfer/") ||
         url.pathname === "/api/staff/bart/pending-transfers" ||
         url.pathname === "/api/staff/bart/transfer/respond" ||
-        url.pathname.startsWith("/api/staff/bart/schedule/");
+        url.pathname.startsWith("/api/staff/bart/schedule/") ||
+        url.pathname.startsWith("/api/staff/bart/delivery-notes/");
 
       /*
         IMPORTANT:
@@ -7111,6 +7285,39 @@ if (
           stock:
             result.data,
         });
+      }
+
+
+
+
+      /* ======================================================
+         DELIVERY NOTES - MASTER ITEMS
+      ====================================================== */
+      if (
+        url.pathname === "/api/staff/bart/delivery-notes/master" &&
+        request.method === "GET"
+      ) {
+        const branch = String(url.searchParams.get("branch") || "").trim().toUpperCase();
+        const force = url.searchParams.get("refresh") === "1";
+        try {
+          return jsonResponse({ success: true, ...(await dnLoadMaster(env, branch, force)) });
+        } catch (error) {
+          return jsonResponse({ success: false, message: error?.message || "Unable to load delivery master." }, 400);
+        }
+      }
+
+      /* ======================================================
+         DELIVERY NOTES - SUBMIT ONE DELIVERY / ONE ROW
+      ====================================================== */
+      if (
+        url.pathname === "/api/staff/bart/delivery-notes/submit" &&
+        request.method === "POST"
+      ) {
+        try {
+          return jsonResponse(await dnSubmit(env, await request.json()));
+        } catch (error) {
+          return jsonResponse({ success: false, message: error?.message || "Unable to save delivery note." }, 400);
+        }
       }
 
 
