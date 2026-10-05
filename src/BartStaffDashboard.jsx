@@ -9,8 +9,8 @@ import {
 
 
 import {
-  motion,
   AnimatePresence,
+  motion,
 } from "framer-motion";
 
 import {
@@ -46,7 +46,7 @@ import {
 import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
 import BartStaffSchedule from "./BartStaffSchedule";
-import DNVisionScanner from "./DNVisionScanner.jsx";
+import BartDeliveryNotes from "./BartDeliveryNotes";
 
 
 /* ============================================================
@@ -111,7 +111,7 @@ const modules = [
     title: "Delivery Notes",
     subtitle: "SCAN & VERIFY",
     description:
-      "Scan delivery notes, verify detected details and submit confirmed receiving data.",
+      "Scan delivery notes with Google Vision, verify detected details and submit confirmed receiving data.",
   },
 ];
 
@@ -1668,7 +1668,7 @@ export default function BartStaffDashboard({
     "delivery-notes"
   ) {
     return (
-      <DNVisionScanner
+      <BartDeliveryNotes
         branch={branch}
         onBack={() =>
           returnToDashboard()
