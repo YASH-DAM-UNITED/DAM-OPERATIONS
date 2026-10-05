@@ -1,3 +1,4 @@
+import { PaddleOCRClient } from "@paddleocr/api-sdk";
 /* ============================================================
    DAM OPERATIONS
    BART STAFF BACKEND
@@ -6266,7 +6267,7 @@ function clearAdminCache() {
 
 
 /* ============================================================
-   BART DELIVERY NOTES — GOOGLE VISION OCR
+   BART DELIVERY NOTES — PADDLEOCR DOCUMENT AI
    Additive module. Does not alter Stock Record/View/Transfer,
    Staff Schedule, MOOMA, or existing login behavior.
 ============================================================ */
@@ -6432,16 +6433,96 @@ function dnBuildItems(annotation, master) {
   });
 }
 
-async function dnVisionScan(env, imageBase64) {
-  const key = String(env.VISION_API_KEY || '').trim();
-  if (!key) throw new Error('VISION_API_KEY is not configured in Cloudflare.');
-  const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(key)}`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ requests:[{ image:{content:imageBase64}, features:[{type:'DOCUMENT_TEXT_DETECTION'}] }] })
+async function dnCacheSourceImage(request, imageBase64) {
+  const id = crypto.randomUUID();
+  const sourceUrl = new URL(`/api/staff/bart/delivery-notes/source/${id}.jpg`, request.url).toString();
+  const bytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
+  const response = new Response(bytes, {
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=600',
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
   });
-  const data = await response.json();
-  if (!response.ok || data?.responses?.[0]?.error) throw new Error(data?.responses?.[0]?.error?.message || data?.error?.message || 'Google Vision OCR failed.');
-  return data.responses?.[0]?.fullTextAnnotation || { text:'', pages:[] };
+  await caches.default.put(new Request(sourceUrl, { method:'GET' }), response);
+  return sourceUrl;
+}
+
+async function dnPaddleSourceResponse(request) {
+  const cached = await caches.default.match(new Request(request.url, { method:'GET' }));
+  if (!cached) return new Response('Delivery-note image expired.', { status:404 });
+  return cached;
+}
+
+function dnPaddleText(result) {
+  const pages = Array.isArray(result?.pages) ? result.pages : [];
+  return pages.map(p => String(p?.markdownText || p?.markdown || p?.text || p?.prunedResult || '')).filter(Boolean).join('\n\n');
+}
+
+function dnMarkdownCells(line) {
+  const t = String(line || '').trim();
+  if (!t.includes('|')) return [];
+  return t.replace(/^\|/, '').replace(/\|$/, '').split('|').map(x => x.replace(/<br\s*\/?\s*>/gi, ' ').replace(/[*_`]/g, '').trim());
+}
+
+function dnBuildItemsFromPaddle(markdown, master) {
+  const lines = String(markdown || '').split(/\r?\n/);
+  const rows = [];
+  for (const line of lines) {
+    const cells = dnMarkdownCells(line);
+    if (cells.length < 2) continue;
+    if (cells.every(c => /^:?-{2,}:?$/.test(c) || !c)) continue;
+    const joined = cells.join(' ').replace(/\s+/g,' ').trim();
+    if (!joined || /\b(SKU|ITEM|DESCRIPTION|PRODUCT|ORDERED|DELIVERED|QTY|QUANTITY|UOM|UNIT)\b/i.test(joined) && !/\[[A-Z0-9._/-]{2,}\]/i.test(joined)) continue;
+
+    const { best, second, margin } = dnBestStock(joined, master);
+    const printedSku = dnExtractPrintedSku(joined) || (cells.find(c => /^[A-Z]\d{2,6}$/i.test(c)) || '').toUpperCase();
+    let qty = '', uom = '';
+    for (let i = cells.length - 1; i >= 0; i--) {
+      const m = cells[i].match(/^\s*(\d+(?:[.,]\d+)?)\s*([A-Za-z]{1,12})?\s*$/);
+      if (m && !qty) { qty = m[1].replace(',','.'); if (m[2]) uom = m[2].toUpperCase(); continue; }
+      if (qty && !uom && /^[A-Za-z]{1,12}$/.test(cells[i])) { uom = cells[i].toUpperCase(); break; }
+    }
+    if (!qty) {
+      const m = joined.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*(PCS|PC|KG|G|L|ML|BOX|BOXES|CTN|CARTON|BAG|PACK|PKT|BTL|BOTTLE|EA)\b/i);
+      if (m) { qty=m[1].replace(',','.'); uom=m[2].toUpperCase(); }
+    }
+    const strong = (best?.score || 0) >= 0.58 && margin >= 0.045;
+    const skuMismatch = strong && printedSku && best?.sku && printedSku !== String(best.sku).toUpperCase();
+    const looksPhysicalRow = Boolean(printedSku || qty || (best?.score || 0) >= 0.34);
+    if (!looksPhysicalRow) continue;
+    rows.push({
+      deliverySku: printedSku,
+      stockSku: strong ? String(best?.sku || '') : '',
+      item: strong ? String(best?.item || '') : joined,
+      qty, uom,
+      match: strong ? 'ITEM_NAME' : 'REVIEW',
+      score: Number((best?.score || 0).toFixed(4)),
+      status: strong && qty && uom && !skuMismatch ? 'CONFIRMED' : 'REVIEW',
+      reviewReason: !strong ? 'ITEM_NAME_AMBIGUOUS_OR_WEAK' : (!qty || !uom ? 'QTY_OR_UOM_REVIEW' : (skuMismatch ? 'SKU_MISMATCH' : '')),
+      skuMismatch,
+      ocrText: joined,
+      stockCandidate: best ? { sku:best.sku, item:best.item, score:Number(best.score.toFixed(4)) } : null,
+      secondCandidate: second ? { sku:second.sku, item:second.item, score:Number(second.score.toFixed(4)) } : null,
+    });
+  }
+  return rows.map((r,i)=>({ ...r, rowId:`R${String(i+1).padStart(2,'0')}` }));
+}
+
+async function dnPaddleScan(env, request, imageBase64) {
+  const token = String(env.PADDLEOCR_ACCESS_TOKEN || '').trim();
+  if (!token) throw new Error('PADDLEOCR_ACCESS_TOKEN is not configured in Cloudflare.');
+  const sourceUrl = await dnCacheSourceImage(request, imageBase64);
+  const client = new PaddleOCRClient({ token, requestTimeout:120000, pollTimeout:180000, fetch });
+  try {
+    return await client.parseDocument({
+      fileUrl: sourceUrl,
+      model: 'PaddleOCR-VL-1.6',
+      options: { useLayoutDetection:true, useChartRecognition:false, prettifyMarkdown:true },
+    });
+  } finally {
+    await caches.default.delete(new Request(sourceUrl, { method:'GET' }));
+  }
 }
 
 function dnMetaFromText(text) {
@@ -6545,8 +6626,12 @@ export default {
 
 
       /* ======================================================
-         BART DELIVERY NOTES — GOOGLE VISION
+         BART DELIVERY NOTES — PADDLEOCR DOCUMENT AI
       ====================================================== */
+
+      if (url.pathname.startsWith("/api/staff/bart/delivery-notes/source/") && request.method === "GET") {
+        return dnPaddleSourceResponse(request);
+      }
 
       if (url.pathname === "/api/staff/bart/delivery-notes/scan" && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
@@ -6559,9 +6644,10 @@ export default {
         const stock = await getBartStockSheetSmart(env, branch, false);
         const master = dnStockMaster(stock.rows);
         if (!master.length) return jsonResponse({success:false,message:'No items found in this branch Stocks tab.'},409);
-        const annotation = await dnVisionScan(env, imageBase64);
-        const items = dnBuildItems(annotation, master);
-        return jsonResponse({success:true,branch:{code:branch.code,name:branch.name},masterCount:master.length,items,meta:dnMetaFromText(annotation.text),ocrText:annotation.text || ''});
+        const paddleResult = await dnPaddleScan(env, request, imageBase64);
+        const parsedText = dnPaddleText(paddleResult);
+        const items = dnBuildItemsFromPaddle(parsedText, master);
+        return jsonResponse({success:true,engine:'PaddleOCR-VL-1.6',branch:{code:branch.code,name:branch.name},masterCount:master.length,items,meta:dnMetaFromText(parsedText),ocrText:parsedText});
       }
 
       if (url.pathname === "/api/staff/bart/delivery-notes/submit" && request.method === "POST") {
