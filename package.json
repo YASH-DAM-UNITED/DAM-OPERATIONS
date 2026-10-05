@@ -20,7 +20,8 @@
     "react-router-dom": "^7.18.2",
     "vite": "^7.3.6",
     "tesseract.js": "^6.0.1",
-    "xlsx-js-style": "^1.2.0"
+    "xlsx-js-style": "^1.2.0",
+    "@paddleocr/api-sdk": "^0.2.3"
   },
   "devDependencies": {
     "wrangler": "^4.125.0"
