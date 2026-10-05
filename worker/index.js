@@ -5917,76 +5917,50 @@ function getAdminGoogleAccounts(env) {
 }
 
 let adminGoogleAccountCounter = 0;
-
-function orderedAdminGoogleAccounts(env, preferredIndex = null) {
+function rotatedAdminGoogleAccounts(env) {
   const accounts = getAdminGoogleAccounts(env);
-  if (accounts.length <= 1) return accounts;
-
-  // Branch reads can explicitly prefer account 1 or 2 so a full Admin load
-  // is distributed evenly. Other Admin reads use round-robin automatically.
-  const start = Number.isInteger(preferredIndex)
-    ? Math.abs(preferredIndex) % accounts.length
-    : adminGoogleAccountCounter++ % accounts.length;
-
+  const start = adminGoogleAccountCounter++ % accounts.length;
   return [...accounts.slice(start), ...accounts.slice(0, start)];
 }
 
-async function adminGoogleRequest(env, factory, preferredIndex = null) {
-  const accounts = orderedAdminGoogleAccounts(env, preferredIndex);
+async function adminGoogleRequest(env, factory) {
+  const accounts = rotatedAdminGoogleAccounts(env);
   let lastError = null;
-
-  // Try the preferred account first. On quota/permission/temporary failure,
-  // automatically fail over to the other Admin service account.
   for (const account of accounts) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const token = await getGoogleAccessToken(account);
         const response = await factory(token, account);
-
         if (response.ok) return response;
-
         const retryable = [429, 500, 502, 503, 504].includes(response.status);
-        const switchAccount = response.status === 403;
-
-        if (!retryable && !switchAccount) return response;
-
-        lastError = new Error(
-          `${account.id} Google Sheets error ${response.status}`
-        );
-
-        // 403 usually means this account cannot read that sheet. Do not waste
-        // retries on the same account; immediately try the other Admin account.
-        if (switchAccount) break;
+        if (!retryable) {
+          if (response.status === 403) {
+            lastError = new Error(`${account.id} unavailable (403)`);
+            break;
+          }
+          return response;
+        }
+        lastError = new Error(`${account.id} temporary Google error ${response.status}`);
       } catch (error) {
         lastError = error;
       }
-
-      if (attempt < 2) {
-        await sleep(250 * Math.pow(2, attempt) + Math.floor(Math.random() * 180));
-      }
+      await sleep(250 * Math.pow(2, attempt) + Math.floor(Math.random() * 180));
     }
   }
-
   throw lastError || new Error("All ADMIN Google service accounts failed.");
 }
 
-async function adminGetSheetValues(env, spreadsheetId, range, preferredIndex = null) {
+async function adminGetSheetValues(env, spreadsheetId, range) {
   const url =
     `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}` +
     `/values/${encodeURIComponent(range)}`;
-
-  const response = await adminGoogleRequest(
-    env,
-    (token, account) => {
-      console.log("ADMIN GOOGLE READ:", account.id, range);
-      return fetch(url, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    },
-    preferredIndex
-  );
-
+  const response = await adminGoogleRequest(env, (token, account) => {
+    console.log("ADMIN GOOGLE READ:", account.id, range);
+    return fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data?.error?.message || "Admin Google Sheets read failed.");
@@ -6092,17 +6066,12 @@ async function adminReadBartMaster(env, force = false) {
   return result.value;
 }
 
-async function adminReadBranchStock(env, branch, force = false, preferredAccountIndex = null) {
+async function adminReadBranchStock(env, branch, force = false) {
   const result = await adminCached(
     `admin:stock:${branch.code}`,
     ADMIN_TTL.STOCK_SHEET,
     force,
-    () => adminGetSheetValues(
-      env,
-      branch.sheetId,
-      "Stocks!A:ZZ",
-      preferredAccountIndex
-    )
+    () => adminGetSheetValues(env, branch.sheetId, "Stocks!A:ZZ")
   );
   return { branch, rows: result.value, source: result.source };
 }
@@ -6123,49 +6092,16 @@ async function adminMapLimit(items, limit, mapper) {
 
 async function adminLoadAllStocks(env, force = false) {
   const branches = await adminReadBartMaster(env, force);
-  const accountCount = getAdminGoogleAccounts(env).length;
-
-  // Keep concurrency controlled. With two Admin accounts and limit 8,
-  // normal branch reads are split approximately 4 + 4 at a time.
-  // This loads the full branch network quickly without blasting Google with
-  // 31 uncontrolled simultaneous requests.
-  const concurrency = accountCount >= 2 ? 8 : 4;
-
-  const results = await adminMapLimit(branches, concurrency, async (branch, index) => {
+  const results = await adminMapLimit(branches, 6, async (branch) => {
     try {
-      const preferredAccountIndex = accountCount >= 2 ? index % accountCount : 0;
-      const stock = await adminReadBranchStock(
-        env,
-        branch,
-        force,
-        preferredAccountIndex
-      );
-      return {
-        ...stock,
-        ok: true,
-        preferredAdminAccount: preferredAccountIndex + 1,
-      };
+      const stock = await adminReadBranchStock(env, branch, force);
+      return { ...stock, ok: true };
     } catch (error) {
       console.error("ADMIN BRANCH LOAD FAILED", branch.code, error);
-      return {
-        branch,
-        rows: [],
-        source: "ERROR",
-        ok: false,
-        error: error.message,
-      };
+      return { branch, rows: [], source: "ERROR", ok: false, error: error.message };
     }
   });
-
-  return {
-    branches,
-    results,
-    adminPool: {
-      accountsConfigured: accountCount,
-      concurrency,
-      mode: accountCount >= 2 ? "DUAL_ACCOUNT_BALANCED" : "SINGLE_ACCOUNT",
-    },
-  };
+  return { branches, results };
 }
 
 function adminNumber(value) {
@@ -6222,27 +6158,10 @@ function adminProcessStock(stockResults, selectedDate, branchNames) {
   }
 
   const finalize = (map) => Array.from(map.values())
-    .map((item) => {
-      const total = branchNames.reduce(
-        (sum, name) => sum + adminNumber(item.branches[name]),
-        0
-      );
-
-      // Keep the canonical nested structure AND expose flat aliases used by
-      // the React Admin portal. This makes Item Name / SKU / UOM and every
-      // branch quantity available directly on each row without changing the
-      // existing Google-sheet parser or Staff/MOOMA APIs.
-      return {
-        ...item,
-        "Item Name": item.itemName,
-        SKU: item.sku,
-        UOM: item.uom,
-        Category: item.category,
-        ...item.branches,
-        total,
-        Total: total,
-      };
-    })
+    .map((item) => ({
+      ...item,
+      total: branchNames.reduce((sum, name) => sum + adminNumber(item.branches[name]), 0),
+    }))
     .sort((a, b) => a.itemName.localeCompare(b.itemName));
 
   return { daily: finalize(daily), weekly: finalize(weekly) };
@@ -6266,7 +6185,6 @@ async function adminInventory(env, selectedDate, force = false) {
       branchCount: loaded.branches.length,
       loadedBranchCount: loaded.results.filter((x) => x.ok).length,
       failedBranches,
-      adminPool: loaded.adminPool,
       ...processed,
     };
   });
@@ -6347,175 +6265,214 @@ function clearAdminCache() {
 }
 
 
-
 /* ============================================================
-   BART DELIVERY NOTES - FREE VALIDATED SCANNER BACKEND
-   ------------------------------------------------------------
-   - Uses each branch's own SheetID from MASTER_SHEET_ID.
-   - Reads Stocks!A:C as the item master.
-   - Creates "Delivery Note" tab when missing.
-   - One complete delivery = one Google Sheet row.
-   - No D1 dependency and no paid OCR API.
+   BART DELIVERY NOTES — GOOGLE VISION OCR
+   Additive module. Does not alter Stock Record/View/Transfer,
+   Staff Schedule, MOOMA, or existing login behavior.
 ============================================================ */
 
-const DELIVERY_NOTE_TAB = "Delivery Note";
-const DELIVERY_NOTE_HEADERS = [
-  "Transaction ID",
-  "Timestamp",
-  "Branch Code",
-  "Branch Name",
-  "Delivery Note No",
-  "Delivery Date",
-  "Total Items",
-  "Items JSON",
-  "Submitted By",
-];
-
-function dnText(value) {
-  return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, " ")
+function dnNormalize(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
-function dnSku(value) {
-  return dnText(value).replace(/\s+/g, "").toUpperCase();
+function dnLevenshtein(a, b) {
+  a = dnNormalize(a); b = dnNormalize(b);
+  if (!a) return b.length; if (!b) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let last = prev[0]; prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const old = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, last + (a[i - 1] === b[j - 1] ? 0 : 1));
+      last = old;
+    }
+  }
+  return prev[b.length];
 }
 
-async function dnGetSpreadsheetMeta(env, spreadsheetId) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`;
-  const response = await googleRequest(env, (token) => fetch(url, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  }));
+function dnSimilarity(a, b) {
+  const A = dnNormalize(a), B = dnNormalize(b);
+  if (!A || !B) return 0;
+  const lev = 1 - dnLevenshtein(A, B) / Math.max(A.length, B.length, 1);
+  const at = new Set(A.split(' ')), bt = new Set(B.split(' '));
+  let common = 0; for (const t of bt) if (at.has(t)) common++;
+  const token = common / Math.max(bt.size, 1);
+  const contains = A.includes(B) || B.includes(A) ? 1 : 0;
+  return Math.max(0, Math.min(1, lev * 0.45 + token * 0.45 + contains * 0.10));
+}
+
+function dnStockMaster(stockRows) {
+  const out = [], seen = new Set();
+  for (const row of stockRows || []) {
+    const item = String(row?.[0] || '').trim();
+    const sku = String(row?.[1] || '').trim();
+    const uom = String(row?.[2] || '').trim();
+    const marker = item.toUpperCase();
+    if (!item || marker === 'DAILY ITEM' || marker === 'WEEKLY ITEM' || marker === 'ITEM' || marker.includes('TOTAL')) continue;
+    const key = `${dnNormalize(item)}|${sku.toUpperCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push({ item, sku, stockUom: uom, norm: dnNormalize(item) });
+  }
+  return out;
+}
+
+function dnVertices(poly) {
+  const v = poly?.vertices || [];
+  const xs = v.map(p => Number(p.x || 0)), ys = v.map(p => Number(p.y || 0));
+  return { x0: Math.min(...xs, 0), x1: Math.max(...xs, 0), y0: Math.min(...ys, 0), y1: Math.max(...ys, 0) };
+}
+
+function dnVisionWords(annotation) {
+  const words = [];
+  for (const page of annotation?.pages || []) for (const block of page.blocks || []) for (const para of block.paragraphs || []) for (const word of para.words || []) {
+    const text = (word.symbols || []).map(s => s.text || '').join('');
+    if (!text.trim()) continue;
+    const b = dnVertices(word.boundingBox);
+    words.push({ text, ...b, cx:(b.x0+b.x1)/2, cy:(b.y0+b.y1)/2, h:Math.max(1,b.y1-b.y0) });
+  }
+  return words;
+}
+
+function dnClusterLines(words) {
+  const sorted = [...words].sort((a,b)=>a.cy-b.cy || a.x0-b.x0);
+  const heights = sorted.map(w=>w.h).sort((a,b)=>a-b);
+  const median = heights.length ? heights[Math.floor(heights.length/2)] : 14;
+  const tol = Math.max(7, median * 0.65);
+  const lines = [];
+  for (const w of sorted) {
+    let line = lines.find(l => Math.abs(l.cy - w.cy) <= tol);
+    if (!line) { line = { cy:w.cy, words:[] }; lines.push(line); }
+    line.words.push(w); line.cy = line.words.reduce((s,x)=>s+x.cy,0)/line.words.length;
+  }
+  return lines.sort((a,b)=>a.cy-b.cy).map((l,i)=>{
+    l.words.sort((a,b)=>a.x0-b.x0);
+    return { id:i+1, cy:l.cy, words:l.words, text:l.words.map(w=>w.text).join(' '), x0:Math.min(...l.words.map(w=>w.x0)), x1:Math.max(...l.words.map(w=>w.x1)) };
+  });
+}
+
+function dnBestStock(text, master) {
+  const cleaned = String(text || '').replace(/\[[^\]]*\]/g,' ');
+  let best = null, second = null;
+  for (const s of master) {
+    const score = dnSimilarity(cleaned, s.item);
+    const hit = { ...s, score };
+    if (!best || score > best.score) { second = best; best = hit; }
+    else if (!second || score > second.score) second = hit;
+  }
+  return { best, second, margin:(best?.score || 0)-(second?.score || 0) };
+}
+
+function dnExtractPrintedSku(text) {
+  const bracket = String(text || '').match(/\[\s*([A-Z0-9._/-]{2,})\s*\]/i);
+  return bracket ? bracket[1].toUpperCase() : '';
+}
+
+function dnExtractQtyUom(line, orderedX, deliveredX) {
+  let ws = line.words || [];
+  if (Number.isFinite(orderedX)) ws = ws.filter(w => w.cx >= orderedX - 40 && (!Number.isFinite(deliveredX) || w.cx < deliveredX - 20));
+  const text = ws.map(w=>w.text).join(' ').trim();
+  const m = text.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*([A-Za-z]{1,12})?/);
+  return { qty:m ? m[1].replace(',','.') : '', uom:m?.[2] ? m[2].toUpperCase() : '', orderedText:text };
+}
+
+function dnBuildItems(annotation, master) {
+  const words = dnVisionWords(annotation), lines = dnClusterLines(words);
+  const header = lines.find(l => /\bORDER(?:ED)?\b/i.test(l.text) && /\bDELIVER(?:ED)?\b/i.test(l.text));
+  const orderedWord = header?.words.find(w=>/ORDER/i.test(w.text));
+  const deliveredWord = header?.words.find(w=>/DELIVER/i.test(w.text));
+  const orderedX = orderedWord?.cx, deliveredX = deliveredWord?.cx;
+  const stopRe = /\b(TOTAL|SUBTOTAL|SIGNATURE|RECEIVED BY|DRIVER|VAT|TAX)\b/i;
+  const candidates = [];
+  for (const line of lines) {
+    if (header && line.cy <= header.cy + 5) continue;
+    if (stopRe.test(line.text)) continue;
+    const alpha = (line.text.match(/[A-Za-z]{2,}/g) || []).length;
+    const { best, second, margin } = dnBestStock(line.text, master);
+    const qu = dnExtractQtyUom(line, orderedX, deliveredX);
+    const looksRow = (best?.score >= 0.34) || (alpha >= 2 && Boolean(qu.qty));
+    if (!looksRow) continue;
+    candidates.push({ line, best, second, margin, qu });
+  }
+
+  // De-duplicate nearby OCR lines that map to the same stock item. Keep strongest.
+  const kept = [];
+  for (const c of candidates) {
+    const same = c.best && kept.find(k => k.best?.sku && k.best.sku === c.best.sku && Math.abs(k.line.cy-c.line.cy) < 28);
+    if (!same) kept.push(c);
+    else if ((c.best?.score||0) > (same.best?.score||0)) Object.assign(same,c);
+  }
+
+  return kept.map((c,i)=>{
+    const printedSku = dnExtractPrintedSku(c.line.text);
+    const strong = (c.best?.score || 0) >= 0.58 && c.margin >= 0.045;
+    const skuMismatch = strong && printedSku && c.best?.sku && printedSku.toUpperCase() !== String(c.best.sku).toUpperCase();
+    return {
+      rowId:`R${String(i+1).padStart(2,'0')}`,
+      deliverySku:printedSku,
+      stockSku:strong ? String(c.best?.sku || '') : '',
+      item:strong ? String(c.best?.item || '') : String(c.line.text || ''),
+      qty:c.qu.qty,
+      uom:c.qu.uom,
+      match:strong ? 'ITEM_NAME' : 'REVIEW',
+      score:Number((c.best?.score || 0).toFixed(4)),
+      status:strong && c.qu.qty && c.qu.uom && !skuMismatch ? 'CONFIRMED' : 'REVIEW',
+      reviewReason:!strong ? 'ITEM_NAME_AMBIGUOUS_OR_WEAK' : (!c.qu.qty || !c.qu.uom ? 'QTY_OR_UOM_REVIEW' : (skuMismatch ? 'SKU_MISMATCH' : '')),
+      skuMismatch,
+      ocrText:c.line.text,
+      stockCandidate:c.best ? { sku:c.best.sku, item:c.best.item, score:Number(c.best.score.toFixed(4)) } : null,
+      secondCandidate:c.second ? { sku:c.second.sku, item:c.second.item, score:Number(c.second.score.toFixed(4)) } : null,
+    };
+  });
+}
+
+async function dnVisionScan(env, imageBase64) {
+  const key = String(env.VISION_API_KEY || '').trim();
+  if (!key) throw new Error('VISION_API_KEY is not configured in Cloudflare.');
+  const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(key)}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ requests:[{ image:{content:imageBase64}, features:[{type:'DOCUMENT_TEXT_DETECTION'}] }] })
+  });
   const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message || "Unable to inspect branch spreadsheet.");
-  return data;
+  if (!response.ok || data?.responses?.[0]?.error) throw new Error(data?.responses?.[0]?.error?.message || data?.error?.message || 'Google Vision OCR failed.');
+  return data.responses?.[0]?.fullTextAnnotation || { text:'', pages:[] };
 }
 
-async function dnCreateSheet(env, spreadsheetId, title) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
-  const response = await googleRequest(env, (token) => fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
-  }));
-  const data = await response.json();
-  if (!response.ok) {
-    const message = data?.error?.message || "Unable to create Delivery Note tab.";
-    if (!/already exists/i.test(message)) throw new Error(message);
+function dnMetaFromText(text) {
+  const t = String(text || '');
+  const note = t.match(/(?:DELIVERY\s*(?:NOTE|NO|NUMBER)|DN\s*(?:NO)?)[\s:#-]*([A-Z0-9/-]{3,})/i);
+  const date = t.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/) || t.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
+  let iso='';
+  if (date) iso = date[1].length===4 ? `${date[1]}-${String(date[2]).padStart(2,'0')}-${String(date[3]).padStart(2,'0')}` : `${date[3]}-${String(date[2]).padStart(2,'0')}-${String(date[1]).padStart(2,'0')}`;
+  return { deliveryNoteNo:note?.[1] || '', deliveryDate:iso, supplier:'' };
+}
+
+async function dnEnsureDeliverySheet(env, spreadsheetId) {
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`;
+  const response = await googleRequest(env, token => fetch(metaUrl,{headers:{Authorization:`Bearer ${token}`}}));
+  const meta = await response.json();
+  if (!response.ok) throw new Error(meta?.error?.message || 'Could not inspect Delivery Note tab.');
+  const exists = (meta.sheets || []).some(s => s?.properties?.title === 'Delivery Note');
+  if (!exists) {
+    const addUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
+    const addRes = await googleRequest(env, token => fetch(addUrl,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests:[{addSheet:{properties:{title:'Delivery Note'}}}]})}));
+    const addData = await addRes.json(); if (!addRes.ok) throw new Error(addData?.error?.message || 'Could not create Delivery Note tab.');
   }
-}
-
-async function dnEnsureDeliveryTab(env, spreadsheetId) {
-  const meta = await dnGetSpreadsheetMeta(env, spreadsheetId);
-  const exists = (meta.sheets || []).some(
-    (sheet) => dnText(sheet?.properties?.title).toLowerCase() === DELIVERY_NOTE_TAB.toLowerCase()
-  );
-  if (!exists) await dnCreateSheet(env, spreadsheetId, DELIVERY_NOTE_TAB);
-
-  const headerRows = await getSheetValues(env, spreadsheetId, `'${DELIVERY_NOTE_TAB}'!A1:I2`);
-  if (!headerRows.length || !headerRows[0]?.length) {
-    await batchWriteSheet(env, spreadsheetId, [{
-      range: `'${DELIVERY_NOTE_TAB}'!A1:I1`,
-      values: [DELIVERY_NOTE_HEADERS],
-    }]);
+  let rows = [];
+  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!A1:I2"); } catch {}
+  if (!rows.length || String(rows[0]?.[0] || '').trim() !== 'Timestamp') {
+    await batchWriteSheet(env, spreadsheetId, [{ range:"'Delivery Note'!A1:I1", values:[["Timestamp","Transaction ID","Branch","Delivery Note No","Delivery Date","Supplier","Total Items","Items Data","Submitted By"]] }]);
   }
 }
 
-async function dnLoadMaster(env, branchCode, force = false) {
-  const branch = await getBartBranchGoogle(env, branchCode, force);
-  if (!branch?.sheet_id) throw new Error("Branch spreadsheet not found.");
-
-  const stock = await getBartStockSheetSmart(env, branch, force);
-  const map = new Map();
-  let mode = "";
-
-  for (const row of stock.rows || []) {
-    const a = dnText(row?.[0]);
-    const lower = a.toLowerCase();
-    if (lower.includes("daily item")) { mode = "daily"; continue; }
-    if (lower.includes("weekly item")) { mode = "weekly"; continue; }
-
-    const item = a;
-    const sku = dnSku(row?.[1]);
-    const uom = dnText(row?.[2]).toUpperCase();
-    if (!item || !sku || !uom) continue;
-    if (["SKU", "DATE-> UOM"].includes(sku)) continue;
-
-    const key = `${sku}|${item.toUpperCase()}|${uom}`;
-    if (!map.has(key)) map.set(key, { item, sku, uom, mode });
-  }
-
-  return {
-    branch: { code: branch.code, name: branch.name },
-    items: [...map.values()],
-    source: stock.source,
-  };
-}
-
-async function dnSubmit(env, body) {
-  const branchCode = dnSku(body?.branchCode);
-  const transactionId = dnText(body?.transactionId);
-  const noteNumber = dnText(body?.deliveryNoteNo);
-  const deliveryDate = dnText(body?.deliveryDate);
-  const submittedBy = dnText(body?.submittedBy || "BRANCH STAFF");
-  const items = Array.isArray(body?.items) ? body.items : [];
-
-  if (!branchCode) throw new Error("Branch code missing.");
-  if (!transactionId) throw new Error("Transaction ID missing.");
-  if (!items.length) throw new Error("No delivery items to submit.");
-
-  const branch = await getBartBranchGoogle(env, branchCode, false);
-  if (!branch?.sheet_id) throw new Error("Branch spreadsheet not found.");
-  await dnEnsureDeliveryTab(env, branch.sheet_id);
-
-  // Idempotency: a retry with the same transaction ID never creates a second row.
-  const existing = await getSheetValues(env, branch.sheet_id, `'${DELIVERY_NOTE_TAB}'!A:A`);
-  const duplicate = existing.some((row) => dnText(row?.[0]) === transactionId);
-  if (duplicate) {
-    return { success: true, duplicate: true, transactionId, message: "Delivery already recorded." };
-  }
-
-  const cleanItems = items.map((entry, index) => ({
-    row: index + 1,
-    deliverySku: dnText(entry?.deliverySku),
-    stockSku: dnSku(entry?.stockSku),
-    item: dnText(entry?.item),
-    qty: Number(entry?.qty) || 0,
-    uom: dnText(entry?.uom).toUpperCase(),
-    matchType: dnText(entry?.matchType),
-    confidence: Number(entry?.confidence) || 0,
-    reviewed: Boolean(entry?.reviewed),
-  }));
-
-  if (cleanItems.some((x) => !x.item || !x.uom || !(x.qty > 0))) {
-    throw new Error("Every item requires Item Name, positive Quantity and UOM before submit.");
-  }
-
-  await appendSheetRow(env, branch.sheet_id, `'${DELIVERY_NOTE_TAB}'!A:I`, [
-    transactionId,
-    formatJeddahTimestamp(),
-    branch.code,
-    branch.name,
-    noteNumber,
-    deliveryDate,
-    cleanItems.length,
-    JSON.stringify(cleanItems),
-    submittedBy,
-  ]);
-
-  return {
-    success: true,
-    duplicate: false,
-    transactionId,
-    totalItems: cleanItems.length,
-    message: "Delivery note recorded successfully.",
-  };
+function dnTransactionId(branchCode) {
+  return `DN-${String(branchCode||'BART').toUpperCase()}-${Date.now()}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
 }
 
 
@@ -6535,305 +6492,7 @@ export default {
         request.url
       );
 
-/* ============================================================
-   DNVISION MODEL PROXY
-   ------------------------------------------------------------
-   Browser:
-   /api/dnvision-model/<file>
-
-   Cloudflare:
-   Hugging Face SmolVLM model repository
-============================================================ */
-
-if (
-  url.pathname.startsWith(
-    "/api/dnvision-model/"
-  )
-) {
-
-  if (
-    request.method !== "GET" &&
-    request.method !== "HEAD"
-  ) {
-    return new Response(
-      "Method Not Allowed",
-      {
-        status: 405,
-        headers: corsHeaders(),
-      }
-    );
-  }
-
-
-  const MODEL_ID =
-    "HuggingFaceTB/SmolVLM-256M-Instruct";
-
-
-  const filePath =
-    url.pathname
-      .slice(
-        "/api/dnvision-model/".length
-      )
-      .replace(
-        /^\/+/,
-        ""
-      );
-
-
-  if (!filePath) {
-    return jsonResponse(
-      {
-        success: false,
-        message:
-          "DNVision model file path missing.",
-      },
-      400
-    );
-  }
-
-
-  /*
-    Basic path protection.
-  */
-
-  let decodedPath = "";
-
-  try {
-    decodedPath =
-      decodeURIComponent(
-        filePath
-      );
-  } catch {
-    return jsonResponse(
-      {
-        success: false,
-        message:
-          "Invalid DNVision model path.",
-      },
-      400
-    );
-  }
-
-
-  if (
-    decodedPath.includes("..") ||
-    decodedPath.includes("\\")
-  ) {
-    return jsonResponse(
-      {
-        success: false,
-        message:
-          "Invalid DNVision model path.",
-      },
-      400
-    );
-  }
-
-
-  const huggingFaceURL =
-    new URL(
-      `https://huggingface.co/${MODEL_ID}/resolve/main/${filePath}`
-    );
-
-
-  /*
-    Preserve query parameters if Transformers.js
-    adds any.
-  */
-
-  for (
-    const [
-      key,
-      value,
-    ] of url.searchParams
-  ) {
-    huggingFaceURL.searchParams.append(
-      key,
-      value
-    );
-  }
-
-
-  console.log(
-    "DNVISION MODEL PROXY:",
-    filePath
-  );
-
-
-  try {
-
-    /*
-      Forward Range because large ONNX files
-      may use partial/range requests.
-    */
-
-    const upstreamHeaders =
-      new Headers();
-
-
-    const range =
-      request.headers.get(
-        "Range"
-      );
-
-
-    if (range) {
-      upstreamHeaders.set(
-        "Range",
-        range
-      );
-    }
-
-
-    const upstream =
-      await fetch(
-        huggingFaceURL.toString(),
-        {
-          method:
-            request.method,
-
-          headers:
-            upstreamHeaders,
-
-          redirect:
-            "follow",
-        }
-      );
-
-
-    /*
-      Return useful upstream headers.
-    */
-
-    const responseHeaders =
-      new Headers();
-
-
-    const copyHeaders = [
-      "Content-Type",
-      "Content-Length",
-      "Content-Range",
-      "Accept-Ranges",
-      "ETag",
-      "Last-Modified",
-    ];
-
-
-    for (
-      const headerName
-      of copyHeaders
-    ) {
-
-      const value =
-        upstream.headers.get(
-          headerName
-        );
-
-
-      if (value) {
-        responseHeaders.set(
-          headerName,
-          value
-        );
-      }
-    }
-
-
-    /*
-      Browser access.
-    */
-
-    responseHeaders.set(
-      "Access-Control-Allow-Origin",
-      "*"
-    );
-
-
-    responseHeaders.set(
-      "Access-Control-Expose-Headers",
-      "Content-Length, Content-Range, Accept-Ranges, ETag"
-    );
-
-
-    /*
-      Cache model files aggressively.
-
-      These files belong to a fixed model
-      repository/revision and don't need to
-      be downloaded from Hugging Face on
-      every request.
-    */
-
-    responseHeaders.set(
-      "Cache-Control",
-      "public, max-age=86400"
-    );
-
-
-    if (!upstream.ok) {
-
-      console.error(
-        "DNVision upstream failed:",
-        upstream.status,
-        filePath
-      );
-
-
-      return new Response(
-        upstream.body,
-        {
-          status:
-            upstream.status,
-
-          statusText:
-            upstream.statusText,
-
-          headers:
-            responseHeaders,
-        }
-      );
-    }
-
-
-    return new Response(
-      request.method === "HEAD"
-        ? null
-        : upstream.body,
-      {
-        status:
-          upstream.status,
-
-        statusText:
-          upstream.statusText,
-
-        headers:
-          responseHeaders,
-      }
-    );
-
-  } catch (error) {
-
-    console.error(
-      "DNVision model proxy error:",
-      error
-    );
-
-
-    return jsonResponse(
-      {
-        success: false,
-
-        message:
-          "DNVision model proxy failed.",
-
-        error:
-          error?.message ||
-          String(error),
-      },
-      502
-    );
-  }
-}
+    // 👇 PASTE IT HERE
 
     if (url.pathname.startsWith("/api/mooma/")) {
       return handleMoomaRequest(request, env);
@@ -6867,13 +6526,13 @@ if (
 
       const googleOnlyBartPath =
         url.pathname.startsWith("/api/admin/bart/") ||
+        url.pathname.startsWith("/api/staff/bart/delivery-notes/") ||
         url.pathname === "/api/staff/bart/stock-view" ||
         url.pathname.startsWith("/api/staff/bart/stock-record/") ||
         url.pathname.startsWith("/api/staff/bart/stock-transfer/") ||
         url.pathname === "/api/staff/bart/pending-transfers" ||
         url.pathname === "/api/staff/bart/transfer/respond" ||
-        url.pathname.startsWith("/api/staff/bart/schedule/") ||
-        url.pathname.startsWith("/api/staff/bart/delivery-notes/");
+        url.pathname.startsWith("/api/staff/bart/schedule/");
 
       /*
         IMPORTANT:
@@ -6884,6 +6543,42 @@ if (
         await ensureDatabase(env);
       }
 
+
+      /* ======================================================
+         BART DELIVERY NOTES — GOOGLE VISION
+      ====================================================== */
+
+      if (url.pathname === "/api/staff/bart/delivery-notes/scan" && request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const branchCode = String(body.branch || '').trim().toUpperCase();
+        const imageBase64 = String(body.imageBase64 || '').replace(/^data:image\/[^;]+;base64,/, '');
+        if (!branchCode || !imageBase64) return jsonResponse({success:false,message:'Branch and image are required.'},400);
+        if (imageBase64.length > 14_000_000) return jsonResponse({success:false,message:'Image payload is too large.'},413);
+        const branch = await getBartBranchGoogle(env, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const stock = await getBartStockSheetSmart(env, branch, false);
+        const master = dnStockMaster(stock.rows);
+        if (!master.length) return jsonResponse({success:false,message:'No items found in this branch Stocks tab.'},409);
+        const annotation = await dnVisionScan(env, imageBase64);
+        const items = dnBuildItems(annotation, master);
+        return jsonResponse({success:true,branch:{code:branch.code,name:branch.name},masterCount:master.length,items,meta:dnMetaFromText(annotation.text),ocrText:annotation.text || ''});
+      }
+
+      if (url.pathname === "/api/staff/bart/delivery-notes/submit" && request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const branchCode = String(body.branch || '').trim().toUpperCase();
+        const branch = await getBartBranchGoogle(env, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const items = Array.isArray(body.items) ? body.items : [];
+        if (!items.length) return jsonResponse({success:false,message:'No delivery items supplied.'},400);
+        const invalid = items.find(x => !String(x.item||'').trim() || !String(x.qty??'').trim() || !String(x.uom||'').trim());
+        if (invalid) return jsonResponse({success:false,message:'Every item needs Item, Qty and UOM before submission.'},400);
+        await dnEnsureDeliverySheet(env, branch.sheet_id);
+        const transactionId = dnTransactionId(branchCode);
+        const safeItems = items.map(x => ({deliverySku:String(x.deliverySku||''),stockSku:String(x.stockSku||''),item:String(x.item||''),qty:String(x.qty??''),uom:String(x.uom||''),match:String(x.match||'MANUAL'),score:Number(x.score||0),skuMismatch:Boolean(x.skuMismatch)}));
+        await appendSheetRow(env, branch.sheet_id, "'Delivery Note'!A:I", [formatJeddahTimestamp(),transactionId,branchCode,String(body.deliveryNoteNo||''),String(body.deliveryDate||''),String(body.supplier||''),safeItems.length,JSON.stringify(safeItems),String(body.submittedBy||'')]);
+        return jsonResponse({success:true,transactionId,totalItems:safeItems.length});
+      }
 
       /* ======================================================
          BART ADMIN — GOOGLE ONLY / DEDICATED ADMIN ACCOUNT
@@ -7285,39 +6980,6 @@ if (
           stock:
             result.data,
         });
-      }
-
-
-
-
-      /* ======================================================
-         DELIVERY NOTES - MASTER ITEMS
-      ====================================================== */
-      if (
-        url.pathname === "/api/staff/bart/delivery-notes/master" &&
-        request.method === "GET"
-      ) {
-        const branch = String(url.searchParams.get("branch") || "").trim().toUpperCase();
-        const force = url.searchParams.get("refresh") === "1";
-        try {
-          return jsonResponse({ success: true, ...(await dnLoadMaster(env, branch, force)) });
-        } catch (error) {
-          return jsonResponse({ success: false, message: error?.message || "Unable to load delivery master." }, 400);
-        }
-      }
-
-      /* ======================================================
-         DELIVERY NOTES - SUBMIT ONE DELIVERY / ONE ROW
-      ====================================================== */
-      if (
-        url.pathname === "/api/staff/bart/delivery-notes/submit" &&
-        request.method === "POST"
-      ) {
-        try {
-          return jsonResponse(await dnSubmit(env, await request.json()));
-        } catch (error) {
-          return jsonResponse({ success: false, message: error?.message || "Unable to save delivery note." }, 400);
-        }
       }
 
 
