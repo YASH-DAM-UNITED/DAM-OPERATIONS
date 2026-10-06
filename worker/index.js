@@ -6658,6 +6658,38 @@ async function dnFormatAppendedRow(env, spreadsheetId, sheetId, rowNumber, itemC
   await googleRequest(env, token => fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests})}));
 }
 
+function dnSaudiDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const get = (type) => parts.find(p => p.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+async function dnGetScanUsage(env, spreadsheetId) {
+  await dnEnsureDeliverySheet(env, spreadsheetId);
+  const today = dnSaudiDate();
+  let rows = [];
+  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!M1:N2"); } catch {}
+  const savedDate = String(rows?.[1]?.[0] || '').trim();
+  const savedCount = Number(rows?.[1]?.[1] || 0);
+  const used = savedDate === today && Number.isFinite(savedCount) ? Math.max(0, savedCount) : 0;
+  return { date: today, used, remaining: Math.max(0, 3 - used), limit: 3 };
+}
+
+async function dnConsumeScan(env, spreadsheetId) {
+  const usage = await dnGetScanUsage(env, spreadsheetId);
+  if (usage.used >= usage.limit) return { ...usage, allowed: false };
+  const next = usage.used + 1;
+  await batchWriteSheet(env, spreadsheetId, [
+    { range: "'Delivery Note'!M1:N2", values: [
+      ['Daily Scan Date', 'Daily Scan Count'],
+      [usage.date, next]
+    ] }
+  ]);
+  return { date: usage.date, used: next, remaining: Math.max(0, usage.limit - next), limit: usage.limit, allowed: true };
+}
+
 function dnTransactionId(branchCode) {
   return `DN-${String(branchCode||'BART').toUpperCase()}-${Date.now()}-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
 }
@@ -6735,6 +6767,15 @@ export default {
          BART DELIVERY NOTES — AZURE AI VISION
       ====================================================== */
 
+      if (url.pathname === "/api/staff/bart/delivery-notes/scan-status" && request.method === "GET") {
+        const branchCode = String(url.searchParams.get('branch') || '').trim().toUpperCase();
+        if (!branchCode) return jsonResponse({success:false,message:'Branch is required.'},400);
+        const branch = await getBartBranchGoogle(env, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const usage = await dnGetScanUsage(env, branch.sheet_id);
+        return jsonResponse({success:true,...usage});
+      }
+
       if (url.pathname === "/api/staff/bart/delivery-notes/scan" && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
         const branchCode = String(body.branch || '').trim().toUpperCase();
@@ -6746,10 +6787,24 @@ export default {
         const stock = await getBartStockSheetSmart(env, branch, false);
         const master = dnStockMaster(stock.rows);
         if (!master.length) return jsonResponse({success:false,message:'No items found in this branch Stocks tab.'},409);
+
+        // Daily OCR allowance is stored in the SAME Delivery Note tab (M:N).
+        // This is server-side, so refresh/device changes cannot reset the limit.
+        const scanUsage = await dnConsumeScan(env, branch.sheet_id);
+        if (!scanUsage.allowed) {
+          return jsonResponse({
+            success:false,
+            code:'DAILY_SCAN_LIMIT',
+            message:'Daily scan limit reached. You have used all 3 Delivery Note scans for today. Contact the IT Team for more queries.',
+            scanUsage
+          },429);
+        }
+
         const annotation = await dnVisionScan(env, imageBase64);
         const items = dnBuildItems(annotation, master);
         return jsonResponse({
           success: true,
+          scanUsage,
           branch: { code: branch.code, name: branch.name },
           masterCount: master.length,
           items,
