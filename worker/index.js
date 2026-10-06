@@ -6324,9 +6324,24 @@ function dnStockMaster(stockRows) {
 }
 
 function dnVertices(poly) {
-  const v = poly?.vertices || [];
-  const xs = v.map(p => Number(p.x || 0)), ys = v.map(p => Number(p.y || 0));
-  return { x0: Math.min(...xs, 0), x1: Math.max(...xs, 0), y0: Math.min(...ys, 0), y1: Math.max(...ys, 0) };
+  const v = Array.isArray(poly?.vertices) ? poly.vertices : [];
+  const xs = v.map((p) => Number(p?.x)).filter(Number.isFinite);
+  const ys = v.map((p) => Number(p?.y)).filter(Number.isFinite);
+
+  // IMPORTANT:
+  // Do not include a literal 0 in Math.min(). Azure coordinates are positive.
+  // Doing Math.min(...xs, 0) forced every word's x0/y0 to zero, destroying
+  // the real word centres and causing the table-row reconstruction to collapse.
+  if (!xs.length || !ys.length) {
+    return { x0: 0, x1: 0, y0: 0, y1: 0 };
+  }
+
+  return {
+    x0: Math.min(...xs),
+    x1: Math.max(...xs),
+    y0: Math.min(...ys),
+    y1: Math.max(...ys),
+  };
 }
 
 function dnVisionWords(annotation) {
@@ -6341,20 +6356,60 @@ function dnVisionWords(annotation) {
 }
 
 function dnClusterLines(words) {
-  const sorted = [...words].sort((a,b)=>a.cy-b.cy || a.x0-b.x0);
-  const heights = sorted.map(w=>w.h).sort((a,b)=>a-b);
-  const median = heights.length ? heights[Math.floor(heights.length/2)] : 14;
-  const tol = Math.max(7, median * 0.65);
+  const sorted = [...words]
+    .filter((w) => Number.isFinite(w.cy) && Number.isFinite(w.x0))
+    .sort((a, b) => a.cy - b.cy || a.x0 - b.x0);
+
+  const heights = sorted
+    .map((w) => Number(w.h || 0))
+    .filter((h) => h > 0)
+    .sort((a, b) => a - b);
+
+  const median = heights.length
+    ? heights[Math.floor(heights.length / 2)]
+    : 12;
+
+  // Delivery-note rows are compact. Keep the tolerance conservative so two
+  // neighbouring physical table rows are never merged into one OCR line.
+  const tol = Math.max(3, Math.min(12, median * 0.55));
   const lines = [];
+
   for (const w of sorted) {
-    let line = lines.find(l => Math.abs(l.cy - w.cy) <= tol);
-    if (!line) { line = { cy:w.cy, words:[] }; lines.push(line); }
-    line.words.push(w); line.cy = line.words.reduce((s,x)=>s+x.cy,0)/line.words.length;
+    let bestLine = null;
+    let bestDistance = Infinity;
+
+    for (const line of lines) {
+      const distance = Math.abs(line.cy - w.cy);
+      if (distance <= tol && distance < bestDistance) {
+        bestLine = line;
+        bestDistance = distance;
+      }
+    }
+
+    if (!bestLine) {
+      bestLine = { cy: w.cy, words: [] };
+      lines.push(bestLine);
+    }
+
+    bestLine.words.push(w);
+    bestLine.cy =
+      bestLine.words.reduce((sum, item) => sum + item.cy, 0) /
+      bestLine.words.length;
   }
-  return lines.sort((a,b)=>a.cy-b.cy).map((l,i)=>{
-    l.words.sort((a,b)=>a.x0-b.x0);
-    return { id:i+1, cy:l.cy, words:l.words, text:l.words.map(w=>w.text).join(' '), x0:Math.min(...l.words.map(w=>w.x0)), x1:Math.max(...l.words.map(w=>w.x1)) };
-  });
+
+  return lines
+    .sort((a, b) => a.cy - b.cy)
+    .map((line, index) => {
+      line.words.sort((a, b) => a.x0 - b.x0);
+      return {
+        id: index + 1,
+        cy: line.cy,
+        words: line.words,
+        text: line.words.map((w) => w.text).join(" ").trim(),
+        x0: Math.min(...line.words.map((w) => w.x0)),
+        x1: Math.max(...line.words.map((w) => w.x1)),
+      };
+    });
 }
 
 function dnBestStock(text, master) {
@@ -6623,7 +6678,19 @@ export default {
         if (!master.length) return jsonResponse({success:false,message:'No items found in this branch Stocks tab.'},409);
         const annotation = await dnVisionScan(env, imageBase64);
         const items = dnBuildItems(annotation, master);
-        return jsonResponse({success:true,branch:{code:branch.code,name:branch.name},masterCount:master.length,items,meta:dnMetaFromText(annotation.text),ocrText:annotation.text || ''});
+        return jsonResponse({
+          success: true,
+          branch: { code: branch.code, name: branch.name },
+          masterCount: master.length,
+          items,
+          meta: dnMetaFromText(annotation.text),
+          ocrText: annotation.text || '',
+          ocrDiagnostics: {
+            wordCount: dnVisionWords(annotation).length,
+            reconstructedLineCount: dnClusterLines(dnVisionWords(annotation)).length,
+            detectedItemCount: items.length,
+          },
+        });
       }
 
       if (url.pathname === "/api/staff/bart/delivery-notes/submit" && request.method === "POST") {
