@@ -58,7 +58,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     setBusy(true); setError(""); setMessage("Preparing image…");
     try {
       const imageBase64 = await imageToJpegBase64(file);
-      setMessage("Google Vision is reading the delivery note…");
+      setMessage("Azure AI Vision is reading the delivery note…");
       const data = await api("/api/staff/bart/delivery-notes/scan", {
         method: "POST",
         body: JSON.stringify({ branch: branchCode, imageBase64 }),
@@ -96,8 +96,8 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   return <div className="dnv-shell">
     <header className="dnv-head">
       <button className="dnv-back" onClick={onBack}><ArrowLeft size={18}/> Back</button>
-      <div><span>05 / DELIVERY NOTES</span><h1>Google Vision Receiving</h1><p>{branchCode} · {branch?.name || branch?.BranchName || "BART Branch"}</p></div>
-      <div className="dnv-badge"><FileScan size={18}/> DOCUMENT OCR</div>
+      <div><span>05 / DELIVERY NOTES</span><h1>Azure AI Vision Receiving</h1><p>{branchCode} · {branch?.name || branch?.BranchName || "BART Branch"}</p></div>
+      <div className="dnv-badge"><FileScan size={18}/> AZURE OCR</div>
     </header>
 
     <section className="dnv-grid">
@@ -107,7 +107,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
         <input ref={inputRef} hidden type="file" accept="image/*" capture="environment" onChange={chooseFile}/>
         <button className="dnv-primary" onClick={() => inputRef.current?.click()}><Camera size={18}/> {file ? "Choose another image" : "Take / choose photo"}</button>
         {preview && <img className="dnv-preview" src={preview} alt="Delivery note preview"/>}
-        <button className="dnv-scan" disabled={!file || busy} onClick={scan}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan with Google Vision</button>
+        <button className="dnv-scan" disabled={!file || busy} onClick={scan}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan with Azure AI Vision</button>
       </div>
 
       <div className="dnv-card">

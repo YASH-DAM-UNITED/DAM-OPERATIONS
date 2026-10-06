@@ -111,7 +111,7 @@ const modules = [
     title: "Delivery Notes",
     subtitle: "SCAN & VERIFY",
     description:
-      "Scan delivery notes with Google Vision, verify detected details and submit confirmed receiving data.",
+      "Scan delivery notes with Azure AI Vision, verify detected details and submit confirmed receiving data.",
   },
 ];
 
