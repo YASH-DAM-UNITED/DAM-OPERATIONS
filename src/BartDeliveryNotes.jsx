@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Camera, CheckCircle2, FilePlus2, FileScan, Loader2, RefreshCcw, Save, Trash2, TriangleAlert } from "lucide-react";
 import "./BartDeliveryNotes.css";
 
@@ -33,13 +33,25 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(null);
+  const [scanUsage, setScanUsage] = useState({ used: 0, remaining: 3, limit: 3, loading: true });
   const [rows, setRows] = useState([]);
   const [note, setNote] = useState({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
 
   const branchCode = String(branch?.code || branch?.BranchCode || branch?.branchCode || "").trim().toUpperCase();
   const unresolved = useMemo(() => rows.filter(r => r.status !== "CONFIRMED").length, [rows]);
+  const scanLimitReached = !scanUsage.loading && scanUsage.remaining <= 0;
+
+  useEffect(() => {
+    let active = true;
+    if (!branchCode) return undefined;
+    api(`/api/staff/bart/delivery-notes/scan-status?branch=${encodeURIComponent(branchCode)}`)
+      .then(data => { if (active) setScanUsage({ used: data.used || 0, remaining: data.remaining ?? 3, limit: data.limit || 3, loading: false }); })
+      .catch(e => { if (active) { setScanUsage(s => ({ ...s, loading: false })); setError(e.message); } });
+    return () => { active = false; };
+  }, [branchCode]);
 
   function chooseFile(e) {
+    if (scanLimitReached) { setError("Daily scan limit reached. Contact the IT Team for more queries."); return; }
     const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
     setError(""); setMessage("");
     if (!f.type.startsWith("image/")) return setError("Please choose a delivery-note image.");
@@ -50,10 +62,12 @@ export default function BartDeliveryNotes({ branch, onBack }) {
 
   async function scanPage() {
     if (!pendingFile || !branchCode) return;
+    if (scanLimitReached) return setError("Daily scan limit reached. You have used all 3 Delivery Note scans for today. Contact the IT Team for more queries.");
     setBusy(true); setError(""); setMessage(`Scanning page ${pages.length + 1} with Azure AI Vision…`);
     try {
       const imageBase64 = await imageToJpegBase64(pendingFile);
       const data = await api("/api/staff/bart/delivery-notes/scan", { method: "POST", body: JSON.stringify({ branch: branchCode, imageBase64 }) });
+      if (data.scanUsage) setScanUsage({ ...data.scanUsage, loading: false });
       const pageNo = pages.length + 1;
       const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}` }));
       setRows(old => [...old, ...appended]);
@@ -130,11 +144,16 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   return <div className="dnv-shell">
     <header className="dnv-head"><button className="dnv-back" onClick={onBack}><ArrowLeft size={18}/> Back</button><div><span>05 / DELIVERY NOTES</span><h1>Azure AI Vision Receiving</h1><p>{branchCode} · {branch?.name || branch?.BranchName || "BART Branch"}</p></div><div className="dnv-badge"><FileScan size={18}/> AZURE OCR</div></header>
 
+    <div style={{ margin: "14px 0 18px", padding: "14px 18px", borderRadius: 14, background: scanLimitReached ? "#fff1f2" : "#f0fdf4", border: `1px solid ${scanLimitReached ? "#fecdd3" : "#bbf7d0"}` }}>
+      <b>{scanUsage.loading ? "Checking today's scan allowance…" : `Daily Delivery Note scans: ${scanUsage.used} / ${scanUsage.limit} used · ${scanUsage.remaining} remaining`}</b>
+      <div style={{ marginTop: 5, fontSize: 14 }}>{scanLimitReached ? "Daily scan limit reached. Contact the IT Team for more queries." : "You have a maximum of 3 Delivery Note OCR scans available per day. Each page/rescan uses one scan."}</div>
+    </div>
+
     <section className="dnv-grid">
       <div className="dnv-card"><h2>1. Scan delivery-note pages</h2><p>Scan Page 1 first. If the delivery note has another page, add it before submitting. All pages stay in ONE transaction.</p>
         <input ref={inputRef} hidden type="file" accept="image/*" capture="environment" onChange={chooseFile}/>
-        <button className="dnv-primary" onClick={() => inputRef.current?.click()}><Camera size={18}/> {pages.length ? "+ Scan Another Page (Optional)" : "Take / choose Page 1"}</button>
-        {pendingPreview && <><img className="dnv-preview" src={pendingPreview} alt="Pending delivery note page"/><button className="dnv-scan" disabled={busy} onClick={scanPage}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan & Add Page {pages.length + 1}</button></>}
+        <button className="dnv-primary" disabled={scanUsage.loading || scanLimitReached} onClick={() => inputRef.current?.click()}><Camera size={18}/> {pages.length ? "+ Scan Another Page (Optional)" : "Take / choose Page 1"}</button>
+        {pendingPreview && <><img className="dnv-preview" src={pendingPreview} alt="Pending delivery note page"/><button className="dnv-scan" disabled={busy || scanUsage.loading || scanLimitReached} onClick={scanPage}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan & Add Page {pages.length + 1}</button></>}
         {!!pages.length && <div className="dnv-pages"><div className="dnv-pages-head"><FilePlus2 size={17}/><b>{pages.length} page(s) scanned · {rows.length} items</b></div>{pages.map(p=><div className="dnv-page" key={p.pageNo}><span>Page {p.pageNo} · {p.itemCount} items</span><button onClick={()=>removePage(p.pageNo)} title="Remove this page"><Trash2 size={15}/> Remove</button></div>)}</div>}
       </div>
 
@@ -144,7 +163,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     {(message || error) && <div className={`dnv-msg ${error ? "bad" : "ok"}`}>{error ? <TriangleAlert size={18}/> : <CheckCircle2 size={18}/>} {error || message}</div>}
 
     {rows.length > 0 && <section className="dnv-table-card"><div className="dnv-title"><div><h2>3. Verify & confirm</h2><p>English Stocks item name is standard. The small line underneath keeps the full Azure OCR text for verification. ORDERED and DELIVERED preserve the complete printed quantity/UOM text.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
-      <div className="dnv-table-wrap"><table><thead><tr><th>#</th><th>Page</th><th>SKU</th><th>Item</th><th>ORDERED</th><th>DELIVERED</th><th>Match</th><th>Status</th></tr></thead><tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}><td>{i+1}</td><td>P{r.pageNo || 1}</td><td className="dnv-sku"><input value={r.sku || r.stockSku || ""} onChange={e=>updateRow(i,"sku",e.target.value)}/></td><td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>OCR: {r.ocrText}</small></td><td className="dnv-quantity"><textarea rows="2" value={r.ordered || ""} title={r.ordered || ""} onChange={e= rows={2} style={{ overflow: "hidden", resize: "vertical", whiteSpace: "pre-wrap" }} ref={autoGrowDeliveryField} onInput={(e) => autoGrowDeliveryField(e.currentTarget)}>updateRow(i,"ordered",e.target.value)}/></td><td className="dnv-quantity"><textarea rows="2" value={r.delivered || ""} title={r.delivered || ""} onChange={e= rows={2} style={{ overflow: "hidden", resize: "vertical", whiteSpace: "pre-wrap" }} ref={autoGrowDeliveryField} onInput={(e) => autoGrowDeliveryField(e.currentTarget)}>updateRow(i,"delivered",e.target.value)}/></td><td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td><td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td></tr>)}</tbody></table></div>
+      <div className="dnv-table-wrap"><table><thead><tr><th>#</th><th>Page</th><th>SKU</th><th>Item</th><th>ORDERED</th><th>DELIVERED</th><th>Match</th><th>Status</th></tr></thead><tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}><td>{i+1}</td><td>P{r.pageNo || 1}</td><td className="dnv-sku"><input value={r.sku || r.stockSku || ""} onChange={e=>updateRow(i,"sku",e.target.value)}/></td><td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>OCR: {r.ocrText}</small></td><td className="dnv-quantity"><textarea rows={2} value={r.ordered || ""} title={r.ordered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"ordered",e.target.value)} style={{ overflow: "hidden", resize: "vertical", whiteSpace: "pre-wrap" }}/></td><td className="dnv-quantity"><textarea rows={2} value={r.delivered || ""} title={r.delivered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"delivered",e.target.value)} style={{ overflow: "hidden", resize: "vertical", whiteSpace: "pre-wrap" }}/></td><td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td><td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td></tr>)}</tbody></table></div>
     </section>}
   </div>;
 }
