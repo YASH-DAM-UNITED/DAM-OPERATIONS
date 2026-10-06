@@ -6266,7 +6266,7 @@ function clearAdminCache() {
 
 
 /* ============================================================
-   BART DELIVERY NOTES — GOOGLE VISION OCR
+   BART DELIVERY NOTES — AZURE AI VISION OCR
    Additive module. Does not alter Stock Record/View/Transfer,
    Staff Schedule, MOOMA, or existing login behavior.
 ============================================================ */
@@ -6433,15 +6433,77 @@ function dnBuildItems(annotation, master) {
 }
 
 async function dnVisionScan(env, imageBase64) {
-  const key = String(env.VISION_API_KEY || '').trim();
-  if (!key) throw new Error('VISION_API_KEY is not configured in Cloudflare.');
-  const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(key)}`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ requests:[{ image:{content:imageBase64}, features:[{type:'DOCUMENT_TEXT_DETECTION'}] }] })
+  const key = String(env.AZURE_VISION_KEY || '').trim();
+  const endpoint = String(env.AZURE_VISION_ENDPOINT || 'https://dam-operations-rg.cognitiveservices.azure.com/').trim().replace(/\/+$/, '');
+  if (!key) throw new Error('AZURE_VISION_KEY is not configured in Cloudflare.');
+  if (!endpoint) throw new Error('AZURE_VISION_ENDPOINT is not configured in Cloudflare.');
+
+  let binary;
+  try {
+    const clean = String(imageBase64 || '').replace(/^data:image\/[^;]+;base64,/, '');
+    const bytes = Uint8Array.from(atob(clean), c => c.charCodeAt(0));
+    binary = bytes.buffer;
+  } catch {
+    throw new Error('Could not decode delivery-note image.');
+  }
+
+  // One POST analyzes one single-page delivery-note image. Azure bills the
+  // analyzed image/page as the OCR transaction; result polling only retrieves it.
+  const analyzeUrl = `${endpoint}/vision/v3.2/read/analyze?readingOrder=natural`;
+  const submit = await fetch(analyzeUrl, {
+    method: 'POST',
+    headers: {
+      'Ocp-Apim-Subscription-Key': key,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: binary,
   });
-  const data = await response.json();
-  if (!response.ok || data?.responses?.[0]?.error) throw new Error(data?.responses?.[0]?.error?.message || data?.error?.message || 'Google Vision OCR failed.');
-  return data.responses?.[0]?.fullTextAnnotation || { text:'', pages:[] };
+
+  if (!submit.ok) {
+    const detail = await submit.text().catch(() => '');
+    let message = detail;
+    try { message = JSON.parse(detail)?.error?.message || detail; } catch {}
+    throw new Error(message || `Azure Vision OCR request failed (${submit.status}).`);
+  }
+
+  const operationLocation = submit.headers.get('Operation-Location') || submit.headers.get('operation-location');
+  if (!operationLocation) throw new Error('Azure Vision did not return an OCR operation location.');
+
+  let result = null;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+    const poll = await fetch(operationLocation, {
+      headers: { 'Ocp-Apim-Subscription-Key': key },
+    });
+    const data = await poll.json().catch(() => ({}));
+    if (!poll.ok) throw new Error(data?.error?.message || `Azure OCR result request failed (${poll.status}).`);
+    const status = String(data?.status || '').toLowerCase();
+    if (status === 'succeeded') { result = data; break; }
+    if (status === 'failed') throw new Error(data?.error?.message || 'Azure Vision could not read this delivery note.');
+  }
+  if (!result) throw new Error('Azure Vision OCR timed out. Please scan again.');
+
+  // Convert Azure Read coordinates into the annotation shape already consumed
+  // by DAM's proven row reconstruction and Stocks matching logic.
+  const readResults = result?.analyzeResult?.readResults || [];
+  const pages = readResults.map(page => ({
+    blocks: [{
+      paragraphs: (page.lines || []).map(line => ({
+        words: (line.words || []).map(word => {
+          const b = Array.isArray(word.boundingBox) ? word.boundingBox : [];
+          const vertices = [];
+          for (let i = 0; i + 1 < b.length; i += 2) vertices.push({ x: Number(b[i] || 0), y: Number(b[i + 1] || 0) });
+          return {
+            symbols: Array.from(String(word.text || '')).map(ch => ({ text: ch })),
+            boundingBox: { vertices },
+            confidence: Number(word.confidence || 0),
+          };
+        }),
+      })),
+    }],
+  }));
+  const text = readResults.flatMap(page => (page.lines || []).map(line => String(line.text || ''))).join('\n');
+  return { text, pages, azureResult: result };
 }
 
 function dnMetaFromText(text) {
@@ -6545,7 +6607,7 @@ export default {
 
 
       /* ======================================================
-         BART DELIVERY NOTES — GOOGLE VISION
+         BART DELIVERY NOTES — AZURE AI VISION
       ====================================================== */
 
       if (url.pathname === "/api/staff/bart/delivery-notes/scan" && request.method === "POST") {
