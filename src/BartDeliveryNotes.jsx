@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Camera, CheckCircle2, FilePlus2, FileScan, Loader2, RefreshCcw, Save, Trash2, TriangleAlert } from "lucide-react";
 import "./BartDeliveryNotes.css";
 
@@ -26,13 +26,26 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(null);
+  const [scanUsage, setScanUsage] = useState({ used: 0, remaining: 3, limit: 3, loading: true });
   const [rows, setRows] = useState([]);
   const [note, setNote] = useState({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
 
   const branchCode = String(branch?.code || branch?.BranchCode || branch?.branchCode || "").trim().toUpperCase();
   const unresolved = useMemo(() => rows.filter(r => r.status !== "CONFIRMED").length, [rows]);
+  const scanLimitReached = !scanUsage.loading && scanUsage.remaining <= 0;
+
+  useEffect(() => {
+    let active = true;
+    if (!branchCode) return undefined;
+    api(`/api/staff/bart/delivery-notes/scan-status?branch=${encodeURIComponent(branchCode)}`)
+      .then(data => { if (active) setScanUsage({ used: data.used || 0, remaining: data.remaining ?? 3, limit: data.limit || 3, loading: false }); })
+      .catch(e => { if (active) { setScanUsage(s => ({ ...s, loading: false })); setError(e.message); } });
+    return () => { active = false; };
+  }, [branchCode]);
 
   function chooseFile(e) {
+    if (scanLimitReached) { setError("Daily scan limit reached. Contact the IT Team for more queries."); return; }
     const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
     setError(""); setMessage("");
     if (!f.type.startsWith("image/")) return setError("Please choose a delivery-note image.");
@@ -43,10 +56,12 @@ export default function BartDeliveryNotes({ branch, onBack }) {
 
   async function scanPage() {
     if (!pendingFile || !branchCode) return;
+    if (scanLimitReached) return setError("Daily scan limit reached. You have used all 3 Delivery Note scans for today. Contact the IT Team for more queries.");
     setBusy(true); setError(""); setMessage(`Scanning page ${pages.length + 1} with Azure AI Vision…`);
     try {
       const imageBase64 = await imageToJpegBase64(pendingFile);
       const data = await api("/api/staff/bart/delivery-notes/scan", { method: "POST", body: JSON.stringify({ branch: branchCode, imageBase64 }) });
+      if (data.scanUsage) setScanUsage({ ...data.scanUsage, loading: false });
       const pageNo = pages.length + 1;
       const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}` }));
       setRows(old => [...old, ...appended]);
@@ -81,19 +96,58 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     setBusy(true); setError(""); setMessage("Saving ONE delivery-note transaction to the branch Google Sheet…");
     try {
       const data = await api("/api/staff/bart/delivery-notes/submit", { method: "POST", body: JSON.stringify({ branch: branchCode, ...note, pageCount: pages.length, ocrPages: pages.map(p => p.ocrText), items: rows }) });
-      setMessage(`Saved successfully as ONE transaction. ${data.pageCount} page(s), ${data.totalItems} item(s). Transaction: ${data.transactionId}`);
+
+      // Clear the transaction only after the backend confirms a successful save.
+      pages.forEach((page) => {
+        if (page?.preview?.startsWith?.("blob:")) URL.revokeObjectURL(page.preview);
+      });
+      if (pendingPreview?.startsWith?.("blob:")) URL.revokeObjectURL(pendingPreview);
+
+      setSubmitted({
+        deliveryNoteNo: note.deliveryNoteNo,
+        transactionId: data.transactionId || "",
+      });
+      setPendingFile(null);
+      setPendingPreview("");
+      setPages([]);
+      setRows([]);
+      setNote({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
+      setMessage("");
+      setError("");
+
+      window.setTimeout(() => onBack?.(), 3000);
     } catch (e) { setError(e.message); setMessage(""); }
     finally { setBusy(false); }
+  }
+
+  if (submitted) {
+    return <div className="dnv-shell">
+      <div style={{ minHeight: "68vh", display: "grid", placeItems: "center", padding: "28px 16px" }}>
+        <div style={{ width: "min(560px, 100%)", textAlign: "center", padding: "44px 24px", borderRadius: 24, background: "#fff", boxShadow: "0 18px 60px rgba(0,0,0,.10)" }}>
+          <div style={{ width: 112, height: 112, margin: "0 auto 22px", borderRadius: "50%", display: "grid", placeItems: "center", background: "#16a34a", color: "#fff", fontSize: 72, fontWeight: 900 }}>✓</div>
+          <h1 style={{ margin: "0 0 10px", fontSize: "clamp(28px, 5vw, 42px)", color: "#15803d" }}>Delivery Note Submitted</h1>
+          <p>Saved successfully as one transaction.</p>
+          {submitted.deliveryNoteNo && <p><b>Delivery Note:</b> {submitted.deliveryNoteNo}</p>}
+          {submitted.transactionId && <p><b>Transaction:</b> {submitted.transactionId}</p>}
+          <p style={{ marginTop: 18, opacity: .68 }}>Returning to Staff Dashboard…</p>
+        </div>
+      </div>
+    </div>;
   }
 
   return <div className="dnv-shell">
     <header className="dnv-head"><button className="dnv-back" onClick={onBack}><ArrowLeft size={18}/> Back</button><div><span>05 / DELIVERY NOTES</span><h1>Azure AI Vision Receiving</h1><p>{branchCode} · {branch?.name || branch?.BranchName || "BART Branch"}</p></div><div className="dnv-badge"><FileScan size={18}/> AZURE OCR</div></header>
 
+    <div style={{ margin: "14px 0 18px", padding: "14px 18px", borderRadius: 14, background: scanLimitReached ? "#fff1f2" : "#f0fdf4", border: `1px solid ${scanLimitReached ? "#fecdd3" : "#bbf7d0"}` }}>
+      <b>{scanUsage.loading ? "Checking today's scan allowance…" : `Daily Delivery Note scans: ${scanUsage.used} / ${scanUsage.limit} used · ${scanUsage.remaining} remaining`}</b>
+      <div style={{ marginTop: 5, fontSize: 14 }}>{scanLimitReached ? "Daily scan limit reached. Contact the IT Team for more queries." : "You have a maximum of 3 Delivery Note OCR scans available per day. Each page/rescan uses one scan."}</div>
+    </div>
+
     <section className="dnv-grid">
       <div className="dnv-card"><h2>1. Scan delivery-note pages</h2><p>Scan Page 1 first. If the delivery note has another page, add it before submitting. All pages stay in ONE transaction.</p>
         <input ref={inputRef} hidden type="file" accept="image/*" capture="environment" onChange={chooseFile}/>
-        <button className="dnv-primary" onClick={() => inputRef.current?.click()}><Camera size={18}/> {pages.length ? "+ Scan Another Page (Optional)" : "Take / choose Page 1"}</button>
-        {pendingPreview && <><img className="dnv-preview" src={pendingPreview} alt="Pending delivery note page"/><button className="dnv-scan" disabled={busy} onClick={scanPage}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan & Add Page {pages.length + 1}</button></>}
+        <button className="dnv-primary" disabled={scanUsage.loading || scanLimitReached} onClick={() => inputRef.current?.click()}><Camera size={18}/> {pages.length ? "+ Scan Another Page (Optional)" : "Take / choose Page 1"}</button>
+        {pendingPreview && <><img className="dnv-preview" src={pendingPreview} alt="Pending delivery note page"/><button className="dnv-scan" disabled={busy || scanUsage.loading || scanLimitReached} onClick={scanPage}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan & Add Page {pages.length + 1}</button></>}
         {!!pages.length && <div className="dnv-pages"><div className="dnv-pages-head"><FilePlus2 size={17}/><b>{pages.length} page(s) scanned · {rows.length} items</b></div>{pages.map(p=><div className="dnv-page" key={p.pageNo}><span>Page {p.pageNo} · {p.itemCount} items</span><button onClick={()=>removePage(p.pageNo)} title="Remove this page"><Trash2 size={15}/> Remove</button></div>)}</div>}
       </div>
 
