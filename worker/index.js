@@ -6429,60 +6429,82 @@ function dnExtractPrintedSku(text) {
   return bracket ? bracket[1].toUpperCase() : '';
 }
 
-function dnExtractQtyUom(line, orderedX, deliveredX) {
-  let ws = line.words || [];
-  if (Number.isFinite(orderedX)) ws = ws.filter(w => w.cx >= orderedX - 40 && (!Number.isFinite(deliveredX) || w.cx < deliveredX - 20));
-  const text = ws.map(w=>w.text).join(' ').trim();
-  const m = text.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*([A-Za-z]{1,12})?/);
-  return { qty:m ? m[1].replace(',','.') : '', uom:m?.[2] ? m[2].toUpperCase() : '', orderedText:text };
+function dnExtractColumnText(line, startX, endX = null) {
+  const words = (line?.words || []).filter((w) => {
+    if (Number.isFinite(startX) && w.cx < startX - 12) return false;
+    if (Number.isFinite(endX) && w.cx >= endX - 12) return false;
+    return true;
+  });
+  return words.map((w) => w.text).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function dnBuildItems(annotation, master) {
   const words = dnVisionWords(annotation), lines = dnClusterLines(words);
   const header = lines.find(l => /\bORDER(?:ED)?\b/i.test(l.text) && /\bDELIVER(?:ED)?\b/i.test(l.text));
-  const orderedWord = header?.words.find(w=>/ORDER/i.test(w.text));
-  const deliveredWord = header?.words.find(w=>/DELIVER/i.test(w.text));
+  const orderedWord = header?.words.find(w => /ORDER/i.test(w.text));
+  const deliveredWord = header?.words.find(w => /DELIVER/i.test(w.text));
   const orderedX = orderedWord?.cx, deliveredX = deliveredWord?.cx;
   const stopRe = /\b(TOTAL|SUBTOTAL|SIGNATURE|RECEIVED BY|DRIVER|VAT|TAX)\b/i;
   const candidates = [];
+
   for (const line of lines) {
     if (header && line.cy <= header.cy + 5) continue;
     if (stopRe.test(line.text)) continue;
-    const alpha = (line.text.match(/[A-Za-z]{2,}/g) || []).length;
-    const { best, second, margin } = dnBestStock(line.text, master);
-    const qu = dnExtractQtyUom(line, orderedX, deliveredX);
-    const looksRow = (best?.score >= 0.34) || (alpha >= 2 && Boolean(qu.qty));
+
+    // The PRODUCT area is everything before ORDERED. Match Stocks only from
+    // that English product text; quantity columns never influence item matching.
+    const productWords = Number.isFinite(orderedX)
+      ? (line.words || []).filter(w => w.cx < orderedX - 12)
+      : (line.words || []);
+    const productText = productWords.map(w => w.text).join(' ').replace(/\s+/g,' ').trim();
+    const orderedText = Number.isFinite(orderedX)
+      ? dnExtractColumnText(line, orderedX, deliveredX)
+      : '';
+    const deliveredText = Number.isFinite(deliveredX)
+      ? dnExtractColumnText(line, deliveredX, null)
+      : '';
+
+    const alpha = (productText.match(/[A-Za-z]{2,}/g) || []).length;
+    const { best, second, margin } = dnBestStock(productText || line.text, master);
+    const hasQtyText = /\d/.test(orderedText) || /\d/.test(deliveredText);
+    const looksRow = (best?.score >= 0.34) || (alpha >= 2 && hasQtyText);
     if (!looksRow) continue;
-    candidates.push({ line, best, second, margin, qu });
+    candidates.push({ line, productText, orderedText, deliveredText, best, second, margin });
   }
 
-  // De-duplicate nearby OCR lines that map to the same stock item. Keep strongest.
+  // De-duplicate only accidental OCR duplicates on the same physical row.
   const kept = [];
   for (const c of candidates) {
-    const same = c.best && kept.find(k => k.best?.sku && k.best.sku === c.best.sku && Math.abs(k.line.cy-c.line.cy) < 28);
+    const same = c.best && kept.find(k =>
+      k.best?.sku && k.best.sku === c.best.sku && Math.abs(k.line.cy - c.line.cy) < 16
+    );
     if (!same) kept.push(c);
-    else if ((c.best?.score||0) > (same.best?.score||0)) Object.assign(same,c);
+    else if ((c.best?.score || 0) > (same.best?.score || 0)) Object.assign(same, c);
   }
 
-  return kept.map((c,i)=>{
-    const printedSku = dnExtractPrintedSku(c.line.text);
+  return kept.map((c, i) => {
+    const printedSku = dnExtractPrintedSku(c.productText || c.line.text);
     const strong = (c.best?.score || 0) >= 0.58 && c.margin >= 0.045;
-    const skuMismatch = strong && printedSku && c.best?.sku && printedSku.toUpperCase() !== String(c.best.sku).toUpperCase();
+    const skuMismatch = strong && printedSku && c.best?.sku &&
+      printedSku.toUpperCase() !== String(c.best.sku).toUpperCase();
+
     return {
-      rowId:`R${String(i+1).padStart(2,'0')}`,
-      deliverySku:printedSku,
-      stockSku:strong ? String(c.best?.sku || '') : '',
-      item:strong ? String(c.best?.item || '') : String(c.line.text || ''),
-      qty:c.qu.qty,
-      uom:c.qu.uom,
-      match:strong ? 'ITEM_NAME' : 'REVIEW',
-      score:Number((c.best?.score || 0).toFixed(4)),
-      status:strong && c.qu.qty && c.qu.uom && !skuMismatch ? 'CONFIRMED' : 'REVIEW',
-      reviewReason:!strong ? 'ITEM_NAME_AMBIGUOUS_OR_WEAK' : (!c.qu.qty || !c.qu.uom ? 'QTY_OR_UOM_REVIEW' : (skuMismatch ? 'SKU_MISMATCH' : '')),
+      rowId: `R${String(i + 1).padStart(2, '0')}`,
+      sku: strong ? String(c.best?.sku || '') : printedSku,
+      stockSku: strong ? String(c.best?.sku || '') : '',
+      deliverySku: printedSku,
+      item: strong ? String(c.best?.item || '') : String(c.productText || c.line.text || ''),
+      ordered: c.orderedText,
+      delivered: c.deliveredText,
+      match: strong ? 'ITEM_NAME' : 'REVIEW',
+      score: Number((c.best?.score || 0).toFixed(4)),
+      status: strong && c.orderedText && c.deliveredText ? 'CONFIRMED' : 'REVIEW',
+      reviewReason: !strong ? 'ITEM_NAME_AMBIGUOUS_OR_WEAK' :
+        (!c.orderedText || !c.deliveredText ? 'ORDERED_OR_DELIVERED_REVIEW' : ''),
       skuMismatch,
-      ocrText:c.line.text,
-      stockCandidate:c.best ? { sku:c.best.sku, item:c.best.item, score:Number(c.best.score.toFixed(4)) } : null,
-      secondCandidate:c.second ? { sku:c.second.sku, item:c.second.item, score:Number(c.second.score.toFixed(4)) } : null,
+      ocrText: c.line.text,
+      stockCandidate: c.best ? { sku:c.best.sku, item:c.best.item, score:Number(c.best.score.toFixed(4)) } : null,
+      secondCandidate: c.second ? { sku:c.second.sku, item:c.second.item, score:Number(c.second.score.toFixed(4)) } : null,
     };
   });
 }
@@ -6571,21 +6593,69 @@ function dnMetaFromText(text) {
 }
 
 async function dnEnsureDeliverySheet(env, spreadsheetId) {
-  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`;
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties`;
   const response = await googleRequest(env, token => fetch(metaUrl,{headers:{Authorization:`Bearer ${token}`}}));
   const meta = await response.json();
   if (!response.ok) throw new Error(meta?.error?.message || 'Could not inspect Delivery Note tab.');
-  const exists = (meta.sheets || []).some(s => s?.properties?.title === 'Delivery Note');
-  if (!exists) {
+
+  let sheet = (meta.sheets || []).find(s => s?.properties?.title === 'Delivery Note');
+  if (!sheet) {
     const addUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
-    const addRes = await googleRequest(env, token => fetch(addUrl,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests:[{addSheet:{properties:{title:'Delivery Note'}}}]})}));
-    const addData = await addRes.json(); if (!addRes.ok) throw new Error(addData?.error?.message || 'Could not create Delivery Note tab.');
+    const addRes = await googleRequest(env, token => fetch(addUrl,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({requests:[{addSheet:{properties:{title:'Delivery Note',gridProperties:{frozenRowCount:1}}}}]})
+    }));
+    const addData = await addRes.json();
+    if (!addRes.ok) throw new Error(addData?.error?.message || 'Could not create Delivery Note tab.');
+    sheet = addData?.replies?.[0]?.addSheet;
   }
+
+  const sheetId = Number(sheet?.properties?.sheetId ?? sheet?.sheetId);
+  const headers = ["Timestamp","Transaction ID","Branch","Delivery Note No","Delivery Date","Supplier","Pages","Total Items","Items Data","Submitted By","OCR Raw"];
   let rows = [];
-  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!A1:I2"); } catch {}
+  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!A1:K2"); } catch {}
   if (!rows.length || String(rows[0]?.[0] || '').trim() !== 'Timestamp') {
-    await batchWriteSheet(env, spreadsheetId, [{ range:"'Delivery Note'!A1:I1", values:[["Timestamp","Transaction ID","Branch","Delivery Note No","Delivery Date","Supplier","Total Items","Items Data","Submitted By"]] }]);
+    await batchWriteSheet(env, spreadsheetId, [{ range:"'Delivery Note'!A1:K1", values:[headers] }]);
   }
+
+  if (Number.isFinite(sheetId)) {
+    const formatUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
+    const widths = [155,210,120,180,125,180,70,90,620,150,360];
+    const requests = [
+      { updateSheetProperties:{ properties:{sheetId,gridProperties:{frozenRowCount:1}}, fields:'gridProperties.frozenRowCount' } },
+      { repeatCell:{ range:{sheetId,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:11}, cell:{userEnteredFormat:{textFormat:{bold:true},wrapStrategy:'WRAP',verticalAlignment:'MIDDLE'}}, fields:'userEnteredFormat(textFormat,wrapStrategy,verticalAlignment)' } },
+      { repeatCell:{ range:{sheetId,startRowIndex:1,startColumnIndex:0,endColumnIndex:11}, cell:{userEnteredFormat:{wrapStrategy:'WRAP',verticalAlignment:'TOP'}}, fields:'userEnteredFormat(wrapStrategy,verticalAlignment)' } },
+    ];
+    widths.forEach((pixelSize, i) => requests.push({updateDimensionProperties:{range:{sheetId,dimension:'COLUMNS',startIndex:i,endIndex:i+1},properties:{pixelSize},fields:'pixelSize'}}));
+    await googleRequest(env, token => fetch(formatUrl,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests})}));
+  }
+  return { sheetId };
+}
+
+async function dnDuplicateExists(env, spreadsheetId, deliveryNoteNo) {
+  const target = dnNormalize(deliveryNoteNo);
+  if (!target) return false;
+  let rows = [];
+  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!D2:D"); } catch { return false; }
+  return rows.some(row => dnNormalize(row?.[0]) === target);
+}
+
+function dnItemsCell(items) {
+  return items.map((x, i) =>
+    `${i + 1}. ${String(x.sku || x.stockSku || '').trim()} | ${String(x.item || '').trim()} | ORDERED: ${String(x.ordered || '').trim()} | DELIVERED: ${String(x.delivered || '').trim()}`
+  ).join('\n');
+}
+
+async function dnFormatAppendedRow(env, spreadsheetId, sheetId, rowNumber, itemCount) {
+  if (!Number.isFinite(sheetId) || !rowNumber) return;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
+  const pixelSize = Math.max(42, Math.min(420, 26 + Number(itemCount || 1) * 22));
+  const requests = [
+    { updateDimensionProperties:{range:{sheetId,dimension:'ROWS',startIndex:rowNumber-1,endIndex:rowNumber},properties:{pixelSize},fields:'pixelSize'} },
+    { repeatCell:{range:{sheetId,startRowIndex:rowNumber-1,endRowIndex:rowNumber,startColumnIndex:0,endColumnIndex:11},cell:{userEnteredFormat:{wrapStrategy:'WRAP',verticalAlignment:'TOP'}},fields:'userEnteredFormat(wrapStrategy,verticalAlignment)'} },
+  ];
+  await googleRequest(env, token => fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests})}));
 }
 
 function dnTransactionId(branchCode) {
@@ -6698,15 +6768,51 @@ export default {
         const branchCode = String(body.branch || '').trim().toUpperCase();
         const branch = await getBartBranchGoogle(env, branchCode);
         if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+
         const items = Array.isArray(body.items) ? body.items : [];
         if (!items.length) return jsonResponse({success:false,message:'No delivery items supplied.'},400);
-        const invalid = items.find(x => !String(x.item||'').trim() || !String(x.qty??'').trim() || !String(x.uom||'').trim());
-        if (invalid) return jsonResponse({success:false,message:'Every item needs Item, Qty and UOM before submission.'},400);
-        await dnEnsureDeliverySheet(env, branch.sheet_id);
+        const invalid = items.find(x =>
+          !String(x.item || '').trim() ||
+          !String(x.sku || x.stockSku || '').trim() ||
+          !String(x.ordered || '').trim() ||
+          !String(x.delivered || '').trim() ||
+          String(x.status || '').toUpperCase() !== 'CONFIRMED'
+        );
+        if (invalid) return jsonResponse({success:false,message:'Every item must be reviewed and have SKU, Item, Ordered and Delivered before submission.'},400);
+
+        const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
+        if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
+
+        const { sheetId } = await dnEnsureDeliverySheet(env, branch.sheet_id);
+        if (await dnDuplicateExists(env, branch.sheet_id, deliveryNoteNo)) {
+          return jsonResponse({success:false,message:`Delivery Note ${deliveryNoteNo} was already submitted for this branch.`},409);
+        }
+
         const transactionId = dnTransactionId(branchCode);
-        const safeItems = items.map(x => ({deliverySku:String(x.deliverySku||''),stockSku:String(x.stockSku||''),item:String(x.item||''),qty:String(x.qty??''),uom:String(x.uom||''),match:String(x.match||'MANUAL'),score:Number(x.score||0),skuMismatch:Boolean(x.skuMismatch)}));
-        await appendSheetRow(env, branch.sheet_id, "'Delivery Note'!A:I", [formatJeddahTimestamp(),transactionId,branchCode,String(body.deliveryNoteNo||''),String(body.deliveryDate||''),String(body.supplier||''),safeItems.length,JSON.stringify(safeItems),String(body.submittedBy||'')]);
-        return jsonResponse({success:true,transactionId,totalItems:safeItems.length});
+        const safeItems = items.map(x => ({
+          sku:String(x.sku || x.stockSku || ''),
+          item:String(x.item || ''),
+          ordered:String(x.ordered || ''),
+          delivered:String(x.delivered || ''),
+          match:String(x.match || 'MANUAL'),
+          score:Number(x.score || 0),
+          ocrText:String(x.ocrText || '')
+        }));
+        const pageCount = Math.max(1, Number(body.pageCount || 1));
+        const itemsData = dnItemsCell(safeItems);
+        const ocrRaw = Array.isArray(body.ocrPages) ? body.ocrPages.map((t,i)=>`PAGE ${i+1}\n${String(t||'')}`).join('\n\n') : '';
+
+        const appendResult = await appendSheetRow(env, branch.sheet_id, "'Delivery Note'!A:K", [
+          formatJeddahTimestamp(), transactionId, `${branch.code} - ${branch.name}`, deliveryNoteNo,
+          String(body.deliveryDate || ''), String(body.supplier || ''), pageCount, safeItems.length,
+          itemsData, String(body.submittedBy || ''), ocrRaw
+        ]);
+        const updatedRange = String(appendResult?.updates?.updatedRange || '');
+        const rowMatch = updatedRange.match(/![A-Z]+(\d+):/i) || updatedRange.match(/![A-Z]+(\d+)/i);
+        const rowNumber = rowMatch ? Number(rowMatch[1]) : null;
+        await dnFormatAppendedRow(env, branch.sheet_id, sheetId, rowNumber, safeItems.length);
+
+        return jsonResponse({success:true,transactionId,totalItems:safeItems.length,pageCount});
       }
 
       /* ======================================================
