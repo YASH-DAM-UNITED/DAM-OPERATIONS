@@ -35,6 +35,9 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   const [submitted, setSubmitted] = useState(null);
   const [scanUsage, setScanUsage] = useState({ used: 0, remaining: 3, limit: 3, loading: true });
   const [rows, setRows] = useState([]);
+  const [documentType, setDocumentType] = useState("DELIVERY_NOTE");
+  const [stockItems, setStockItems] = useState([]);
+  const skuMap = useMemo(() => new Map(stockItems.map(x => [String(x.sku || "").trim().toUpperCase(), x.item])), [stockItems]);
   const [note, setNote] = useState({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
 
   const branchCode = String(branch?.code || branch?.BranchCode || branch?.branchCode || "").trim().toUpperCase();
@@ -49,6 +52,24 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       .catch(e => { if (active) { setScanUsage(s => ({ ...s, loading: false })); setError(e.message); } });
     return () => { active = false; };
   }, [branchCode]);
+
+  useEffect(() => {
+    let active = true;
+    if (!branchCode) return undefined;
+    api(`/api/staff/bart/delivery-notes/stock-master?branch=${encodeURIComponent(branchCode)}`)
+      .then(data => { if (active) setStockItems(data.items || []); })
+      .catch(e => { if (active) setError(`Stocks lookup unavailable: ${e.message}`); });
+    return () => { active = false; };
+  }, [branchCode]);
+
+  function addManualRow() {
+    setRows(old => [...old, {
+      rowId:`MANUAL-${Date.now()}`, pageNo: pages.length || 1,
+      sku:"", item:"", ordered:"", delivered:"",
+      detailedQty:"", expireDate:"", quantity:"",
+      match:"MANUAL", status:"REVIEW", ocrText:"Manually added row"
+    }]);
+  }
 
   function chooseFile(e) {
     if (scanLimitReached) { setError("Daily scan limit reached. Contact the IT Team for more queries."); return; }
@@ -68,6 +89,12 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       const imageBase64 = await imageToJpegBase64(pendingFile);
       const data = await api("/api/staff/bart/delivery-notes/scan", { method: "POST", body: JSON.stringify({ branch: branchCode, imageBase64 }) });
       if (data.scanUsage) setScanUsage({ ...data.scanUsage, loading: false });
+      const nextType = data.documentType || "DELIVERY_NOTE";
+      if (pages.length && nextType !== documentType) {
+        setError("Different document types cannot be combined in one transaction. Remove the page or start a new delivery note.");
+        return;
+      }
+      setDocumentType(nextType);
       const pageNo = pages.length + 1;
       const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}` }));
       setRows(old => [...old, ...appended]);
@@ -82,8 +109,24 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   function updateRow(index, field, value) {
     setRows(old => old.map((r, i) => {
       if (i !== index) return r;
-      const next = { ...r, [field]: value, reviewReason: "MANUAL_REVIEW", match: r.match === "ITEM_NAME" ? "ITEM_NAME" : "MANUAL" };
-      next.status = String(next.item || "").trim() && String(next.sku || next.stockSku || "").trim() && String(next.ordered || "").trim() && String(next.delivered || "").trim() ? "CONFIRMED" : "REVIEW";
+      const next = { ...r, [field]: value, reviewReason: "MANUAL_REVIEW", match: "MANUAL" };
+      if (field === "sku") {
+        const exactName = skuMap.get(String(value || "").trim().toUpperCase());
+        if (exactName) {
+          next.sku = String(value).trim().toUpperCase();
+          next.stockSku = next.sku;
+          next.item = exactName;
+          next.match = "SKU_EXACT";
+        } else {
+          next.stockSku = "";
+          next.item = "";
+          next.match = "SKU_NOT_FOUND";
+        }
+      }
+      const fieldsOk = documentType === "STOCK_DOCUMENT"
+        ? String(next.quantity || "").trim()
+        : String(next.ordered || "").trim() && String(next.delivered || "").trim();
+      next.status = String(next.item || "").trim() && String(next.sku || "").trim() && fieldsOk ? "CONFIRMED" : "REVIEW";
       return next;
     }));
   }
@@ -101,7 +144,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     if (unresolved) return setError(`${unresolved} row(s) still need review. Confirm/edit them first.`);
     setBusy(true); setError(""); setMessage("Saving ONE delivery-note transaction to the branch Google Sheet…");
     try {
-      const data = await api("/api/staff/bart/delivery-notes/submit", { method: "POST", body: JSON.stringify({ branch: branchCode, ...note, pageCount: pages.length, ocrPages: pages.map(p => p.ocrText), items: rows }) });
+      const data = await api("/api/staff/bart/delivery-notes/submit", { method: "POST", body: JSON.stringify({ branch: branchCode, ...note, documentType, pageCount: pages.length, ocrPages: pages.map(p => p.ocrText), items: rows }) });
 
       // Clear the transaction only after the backend confirms a successful save.
       pages.forEach((page) => {
@@ -117,6 +160,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       setPendingPreview("");
       setPages([]);
       setRows([]);
+      setDocumentType("DELIVERY_NOTE");
       setNote({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
       setMessage("");
       setError("");
@@ -163,7 +207,29 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     {(message || error) && <div className={`dnv-msg ${error ? "bad" : "ok"}`}>{error ? <TriangleAlert size={18}/> : <CheckCircle2 size={18}/>} {error || message}</div>}
 
     {rows.length > 0 && <section className="dnv-table-card"><div className="dnv-title"><div><h2>3. Verify & confirm</h2><p>English Stocks item name is standard. The small line underneath keeps the full Azure OCR text for verification. ORDERED and DELIVERED preserve the complete printed quantity/UOM text.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
-      <div className="dnv-table-wrap"><table><thead><tr><th>#</th><th>Page</th><th>SKU</th><th>Item</th><th>ORDERED</th><th>DELIVERED</th><th>Match</th><th>Status</th></tr></thead><tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}><td>{i+1}</td><td>P{r.pageNo || 1}</td><td className="dnv-sku"><input value={r.sku || r.stockSku || ""} onChange={e=>updateRow(i,"sku",e.target.value)}/></td><td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>OCR: {r.ocrText}</small></td><td className="dnv-quantity"><textarea rows={2} value={r.ordered || ""} title={r.ordered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"ordered",e.target.value)} style={{ overflow: "hidden", resize: "vertical", whiteSpace: "pre-wrap" }}/></td><td className="dnv-quantity"><textarea rows={2} value={r.delivered || ""} title={r.delivered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"delivered",e.target.value)} style={{ overflow: "hidden", resize: "vertical", whiteSpace: "pre-wrap" }}/></td><td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td><td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td></tr>)}</tbody></table></div>
+      <div style={{display:"flex",gap:12,alignItems:"center",margin:"12px 0"}}>
+        <b>Detected format: {documentType === "STOCK_DOCUMENT" ? "BART Stock Document" : "Delivery Note"}</b>
+        <button type="button" className="dnv-primary" onClick={addManualRow}>+ Add Item Manually</button>
+      </div>
+      <div className="dnv-table-wrap"><table>
+        <thead><tr><th>#</th><th>Page</th><th>SKU</th><th>English Item</th>
+        {documentType === "STOCK_DOCUMENT" ? <><th>Detailed Qty (Shelf#)</th><th>Expire Date</th><th>Quantity</th></> : <><th>ORDERED</th><th>DELIVERED</th></>}
+        <th>Match</th><th>Status</th></tr></thead>
+        <tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}>
+          <td>{i+1}</td><td>P{r.pageNo || 1}</td>
+          <td className="dnv-sku"><input value={r.sku || ""} onChange={e=>updateRow(i,"sku",e.target.value)} title="Exact SKU lookup from branch Stocks"/></td>
+          <td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>OCR: {r.ocrText}</small></td>
+          {documentType === "STOCK_DOCUMENT" ? <>
+            <td className="dnv-quantity"><textarea rows={2} value={r.detailedQty || ""} onChange={e=>updateRow(i,"detailedQty",e.target.value)}/></td>
+            <td className="dnv-quantity"><textarea rows={2} value={r.expireDate || ""} onChange={e=>updateRow(i,"expireDate",e.target.value)}/></td>
+            <td className="dnv-quantity"><textarea rows={2} value={r.quantity || ""} onChange={e=>updateRow(i,"quantity",e.target.value)}/></td>
+          </> : <>
+            <td className="dnv-quantity"><textarea rows={2} value={r.ordered || ""} title={r.ordered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"ordered",e.target.value)} style={{overflow:"hidden",resize:"vertical",whiteSpace:"pre-wrap"}}/></td>
+            <td className="dnv-quantity"><textarea rows={2} value={r.delivered || ""} title={r.delivered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"delivered",e.target.value)} style={{overflow:"hidden",resize:"vertical",whiteSpace:"pre-wrap"}}/></td>
+          </>}
+          <td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td>
+          <td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td>
+        </tr>)}</tbody></table></div>
     </section>}
   </div>;
 }
