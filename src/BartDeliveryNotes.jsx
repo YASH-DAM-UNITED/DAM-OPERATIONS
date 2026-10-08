@@ -265,6 +265,13 @@ export default function BartDeliveryNotes({ branch, onBack }) {
           </>}
           <td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td>
           <td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td>
+          <td><button type="button" onClick={() => deleteRow(i)} disabled={busy} title="Delete this item" style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 8, padding: "9px 12px", fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>🗑 Delete</button></td>
+          
+
+
+
+
+          
         </tr>)}</tbody></table></div>
     </section>}
   </div>;
