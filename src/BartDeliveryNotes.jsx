@@ -250,7 +250,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       <div className="dnv-table-wrap"><table>
         <thead><tr><th>#</th><th>Page</th><th>SKU</th><th>English Item</th>
         {documentType === "STOCK_DOCUMENT" ? <><th>Detailed Qty (Shelf#)</th><th>Expire Date</th><th>Quantity</th></> : <><th>ORDERED</th><th>DELIVERED</th></>}
-        <th>Match</th><th>Status</th></tr></thead>
+        <th>Match</th><th>Status</th><th>Action</th></tr></thead>
         <tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}>
           <td>{i+1}</td><td>P{r.pageNo || 1}</td>
           <td className="dnv-sku"><input value={r.sku || ""} onChange={e=>updateRow(i,"sku",e.target.value)} title="Exact SKU lookup from branch Stocks"/></td>
