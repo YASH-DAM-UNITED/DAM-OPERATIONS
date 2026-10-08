@@ -6526,64 +6526,89 @@ function dnBuildItems(annotation, master, imageGrid = null) {
 // Landscape stock form: SKU-only OCR. Match against the branch's actual Stocks SKUs.
 // Do not attempt to read handwriting, dates or quantities from this layout.
 
-// V7: column-sequence fallback for Azure Read output that groups PRODUCT,
-// ORDERED and DELIVERED as separate text blocks. Never invent missing values.
-function dnColumnSequenceFallback(annotation, master, rows) {
+// V8: preserve every SKU anchor, including multiple SKUs inside one OCR line.
+// Azure may output PRODUCT first, then both quantity columns in alternating order.
+// Never guess a missing quantity or treat document footer text as an item.
+function dnV8Extract(annotation, master, coordinateRows) {
   const text=String(annotation?.text||'');
   const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-  const productStart=lines.findIndex(x=>/^PRODUCT\s*$/i.test(x));
-  const orderedStart=lines.findIndex(x=>/^ORDERED\s*$/i.test(x));
-  const deliveredStart=lines.findIndex(x=>/^DELIVERED\s*$/i.test(x));
-  if(productStart<0||orderedStart<0||deliveredStart<0||orderedStart>=deliveredStart) return rows;
-  const productLines=lines.slice(productStart+1,orderedStart);
-  const skuRx=/\[?\s*([A-Z]{1,5}\d{2,6})\s*\]?/i;
-  const skus=[];
-  for(const line of productLines) {
-    const m=line.match(skuRx);
-    if(m && !skus.includes(m[1].toUpperCase())) skus.push(m[1].toUpperCase());
-  }
-  if(skus.length<2) return rows;
-  // Quantity cells are recognized by leading numeric quantity. Wrapped UOM
-  // fragments are appended to the preceding quantity, not counted as new rows.
-  const qtyRx=/^[$€£]?\s*\d+(?:[.,]\d+)?(?:\s|$)/;
-  function quantities(list) {
-    const found=[];
-    for(const raw of list) {
-      const line=raw.replace(/[\u0600-\u06ff]+/g,' ').trim();
-      if(qtyRx.test(line)) found.push(line);
-      else if(found.length && /^(?:liters?|kgs?|pcs?|packets?|cartons?|gm|ml|bottles?|boxes?|\d+\s*(?:liters?|kgs?|pcs?|gm|ml))$/i.test(line)) found[found.length-1]+=' '+line;
+  const start=lines.findIndex(x=>/^PRODUCT\s*$/i.test(x));
+  const orderedHeader=lines.findIndex(x=>/^ORDERED\s*$/i.test(x));
+  const deliveredHeader=lines.findIndex(x=>/^DELIVERED\s*$/i.test(x));
+  const known=new Map(master.filter(m=>m.sku).map(m=>[String(m.sku).trim().toUpperCase(),m]));
+  const skuPattern=/\[?\s*([A-Z]{1,5}\s*[-.]?\s*\d{2,6})\s*\]?/gi;
+  const stripArabic=x=>String(x||'').replace(/[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+/g,' ').replace(/\s+/g,' ').trim();
+  const stop=orderedHeader>start?orderedHeader:lines.length;
+  const productLines=start>=0?lines.slice(start+1,stop):lines;
+  const entries=[];
+  for(let i=0;i<productLines.length;i++) {
+    const line=stripArabic(productLines[i]);
+    const matches=[...line.matchAll(skuPattern)];
+    for(let j=0;j<matches.length;j++) {
+      const match=matches[j];
+      const sku=match[1].replace(/[^A-Z0-9]/gi,'').toUpperCase();
+      // Restrict SKU anchors to actual branch master SKUs or well-formed bracketed SKUs.
+      if(!known.has(sku) && !match[0].includes('[') && !match[0].includes(']')) continue;
+      const endAt=j+1<matches.length?matches[j+1].index:line.length;
+      const raw=line.slice(match.index+match[0].length,endAt).replace(/^\s*[-\]]\s*/,'').trim();
+      if(!entries.some(e=>e.sku===sku)) entries.push({sku,raw});
     }
-    return found;
   }
-  const ordered=quantities(lines.slice(orderedStart+1,deliveredStart));
-  const delivered=quantities(lines.slice(deliveredStart+1));
-  // Some Azure output interleaves ordered/delivered values under BOTH headings.
-  // In that case avoid assigning the wrong column; mark for staff review.
-  const orderedEnough=ordered.length===skus.length;
-  const deliveredEnough=delivered.length===skus.length;
-  if(!orderedEnough&&!deliveredEnough) {
-    // Alternating values in the combined quantity section (e.g. 320,320,45,45).
-    const combined=quantities(lines.slice(orderedStart+1));
-    if(combined.length===skus.length*2) {
-      for(let i=0;i<skus.length;i++) {
-        const r=rows.find(x=>x.sku===skus[i]);
-        if(!r) continue;
-        r.ordered=combined[i*2];r.delivered=combined[i*2+1];
-        r.reviewReason='COLUMN_SEQUENCE_REVIEW';r.status='REVIEW';
-        r.extractionMethod='COLUMN_SEQUENCE_ALTERNATING';
-      }
+  if(!entries.length) return coordinateRows;
+  // The OCR may emit a separate PRODUCT line for each item, while some lines
+  // contain several SKUs. Never collapse them into a single product row.
+  const quantityPattern=/^[\$€£]?\s*\d+(?:[.,]\d+)?(?:\s|$)/;
+  const uomContinuation=/^(?:liters?|kgs?|pcs?|pieces?|packets?|packs?|cartons?|gm|grams?|ml|bottles?|boxes?|gallons?|\d+\s*(?:liters?|kgs?|pcs?|gm|ml))$/i;
+  function quantities(src) {
+    const values=[];
+    for(const raw of src) {
+      const line=stripArabic(raw);
+      if(quantityPattern.test(line)) values.push(line);
+      else if(values.length && uomContinuation.test(line)) values[values.length-1]+=' '+line;
     }
-    return rows;
+    return values;
   }
-  for(let i=0;i<skus.length;i++) {
-    const r=rows.find(x=>x.sku===skus[i]);
-    if(!r) continue;
-    if(orderedEnough && !r.ordered) r.ordered=ordered[i];
-    if(deliveredEnough && !r.delivered) r.delivered=delivered[i];
-    if((orderedEnough||deliveredEnough) && (!r.ordered||!r.delivered)) r.reviewReason='CHECK_MISSING_QUANTITY';
-    r.extractionMethod='COLUMN_SEQUENCE_FALLBACK';
+  const afterHeaders=deliveredHeader>=0?lines.slice(deliveredHeader+1):[];
+  const beforeDelivered=orderedHeader>=0&&deliveredHeader>orderedHeader?lines.slice(orderedHeader+1,deliveredHeader):[];
+  const left=quantities(beforeDelivered);
+  const right=quantities(afterHeaders);
+  const n=entries.length;
+  let ordered=[],delivered=[],mode='NO_QUANTITY_ALIGNMENT';
+  if(left.length===n&&right.length===n) {ordered=left;delivered=right;mode='SEPARATE_COLUMN_LISTS';}
+  else {
+    // Azure Read often outputs the column HEADERS together, then OCR cells
+    // as ORDERED,DELIVERED,ORDERED,DELIVERED... in reading order.
+    const combined=quantities(lines.slice(Math.max(orderedHeader,deliveredHeader)+1));
+    if(combined.length===2*n) {
+      ordered=combined.filter((_,i)=>i%2===0);
+      delivered=combined.filter((_,i)=>i%2===1);
+      mode='ALTERNATING_QUANTITY_CELLS';
+    } else if(left.length===n) {ordered=left;mode='ORDERED_LIST_ONLY';}
+    else if(right.length===n) {delivered=right;mode='DELIVERED_LIST_ONLY';}
   }
-  return rows;
+  // Do not reuse a quantity from a different SKU just to fill a blank.
+  // Coordinate-based rows can contribute independently when both values exist.
+  const original=new Map(coordinateRows.filter(r=>r.sku).map(r=>[r.sku,r]));
+  const result=entries.map((entry,i)=>{
+    const old=original.get(entry.sku);
+    const exact=known.get(entry.sku);
+    const row={...(old||{}),rowId:`R${String(i+1).padStart(2,'0')}`,sku:entry.sku,
+      deliverySku:entry.sku,stockSku:exact?.sku||'',
+      item:exact?.item||old?.item||entry.raw,
+      ordered:ordered[i]||old?.ordered||'',delivered:delivered[i]||old?.delivered||'',
+      match:exact?'SKU_EXACT':old?.match||'REVIEW',score:exact?1:old?.score||0,
+      status:'REVIEW',extractionMethod:mode,
+      ocrText:old?.ocrText||entry.raw,
+      reviewReason:!ordered[i]||!delivered[i]?'VERIFY_QUANTITY_ALIGNMENT':'VERIFY_OCR_QUANTITY'};
+    if(/[\$€£]/.test(row.ordered+' '+row.delivered)) row.reviewReason='SUSPICIOUS_QUANTITY_SYMBOL';
+    return row;
+  });
+  result.detection={method:'V8_SKU_ANCHORED_'+mode,detectedRules:coordinateRows.detection?.detectedRules||0,
+    physicalRows:result.length,wordCount:coordinateRows.detection?.wordCount||0,
+    skuCount:entries.length,quantityPairs:Math.min(ordered.length,delivered.length),
+    missingQuantities:result.filter(r=>!r.ordered||!r.delivered).length,
+    unmatchedCoordinateRows:coordinateRows.filter(r=>!r.sku).length};
+  return result;
 }
 
 // Verified feedback is kept in a separate tab in the SAME branch spreadsheet.
@@ -7042,7 +7067,7 @@ export default {
         const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
           allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
         const documentType = stockLayout ? "STOCK_DOCUMENT" : "DELIVERY_NOTE";
-        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnColumnSequenceFallback(annotation, master, dnBuildItems(annotation, master, body.imageGrid));
+        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnV8Extract(annotation, master, dnBuildItems(annotation, master, body.imageGrid));
         const learned = await dnLearningSuggestions(env, branch.sheet_id).catch(()=>[]);
         dnApplyLearningSuggestions(items, learned, documentType);
         return jsonResponse({
