@@ -62,42 +62,11 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     return () => { active = false; };
   }, [branchCode]);
 
-
-  
   function deleteRow(index) {
-    const row = rows[index];
-    const confirmed = window.confirm(
-      `Delete row ${index + 1}${row?.item ? ` - ${row.item}` : ""}?`
-      );
-    if (!confirmed) return;
+    if (busy || !window.confirm("Delete this item row?")) return;
     setRows(old => old.filter((_, i) => i !== index));
-    setMessage(`Row ${index + 1} deleted.`);
-    setError("");
-    }
+  }
 
-
-    
-  
-
-  
-    
-  
-
-  
-
-  
-  
-
-
-
-
-
-
-
-
-
-
-  
   function addManualRow() {
     setRows(old => [...old, {
       rowId:`MANUAL-${Date.now()}`, pageNo: pages.length || 1,
@@ -242,7 +211,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
 
     {(message || error) && <div className={`dnv-msg ${error ? "bad" : "ok"}`}>{error ? <TriangleAlert size={18}/> : <CheckCircle2 size={18}/>} {error || message}</div>}
 
-    {rows.length > 0 && <section className="dnv-table-card"><div className="dnv-title"><div><h2>3. Verify & confirm</h2><p>English Stocks item name is standard. The small line underneath keeps the full Azure OCR text for verification. ORDERED and DELIVERED preserve the complete printed quantity/UOM text.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
+    {rows.length > 0 && <section className="dnv-table-card"><div className="dnv-title"><div><h2>3. Verify & confirm</h2><p>English item names come from the branch Stocks master. Landscape stock forms extract SKUs only; enter Detailed Quantity, Expire Date and Quantity manually. Portrait delivery notes retain ORDERED and DELIVERED extraction.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
       <div style={{display:"flex",gap:12,alignItems:"center",margin:"12px 0"}}>
         <b>Detected format: {documentType === "STOCK_DOCUMENT" ? "BART Stock Document" : "Delivery Note"}</b>
         <button type="button" className="dnv-primary" onClick={addManualRow}>+ Add Item Manually</button>
@@ -265,13 +234,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
           </>}
           <td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td>
           <td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td>
-          <td><button type="button" onClick={() => deleteRow(i)} disabled={busy} title="Delete this item" style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 8, padding: "9px 12px", fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>🗑 Delete</button></td>
-          
-
-
-
-
-          
+          <td><button type="button" disabled={busy} onClick={() => deleteRow(i)} title="Delete this item" style={{background:"#fee2e2",color:"#b91c1c",border:"1px solid #fecaca",borderRadius:8,padding:"9px 12px",fontWeight:700}}>🗑 Delete</button></td>
         </tr>)}</tbody></table></div>
     </section>}
   </div>;

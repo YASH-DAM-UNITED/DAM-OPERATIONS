@@ -6511,44 +6511,38 @@ function dnBuildItems(annotation, master) {
   });
 }
 
+// Landscape stock form: SKU-only OCR. Match against the branch's actual Stocks SKUs.
+// Do not attempt to read handwriting, dates or quantities from this layout.
 function dnBuildStockDocumentItems(annotation, master) {
-  const lines = dnClusterLines(dnVisionWords(annotation));
-  const header = lines.find(l => /SKU/i.test(l.text) && /(?:SHELF|QUANTITY)/i.test(l.text));
-  if (!header) return [];
-  const columns = {};
-  for (const w of header.words) {
-    const t = w.text.toUpperCase().replace(/[^A-Z#]/g,"");
-    if (t === "SKU" && !Number.isFinite(columns.sku)) columns.sku = w.cx;
-    if (t.includes("SHELF")) columns.shelf = w.cx;
-    if (t.includes("EXPIRE")) columns.expire = w.cx;
-    if (t.includes("QUANTITY")) columns.quantity = w.cx;
-  }
-  // Printed SKU is the reliable row anchor; do not confuse stock-location IDs with SKUs.
-  const items = [];
-  for (const line of lines.filter(l => l.cy > header.cy + 5)) {
-    const skuMatch = line.text.match(/(?:^|\\s)([A-Z]{1,3}\\d{2,4})(?=\\s|$)/i);
-    if (!skuMatch) continue;
-    const sku = skuMatch[1].toUpperCase();
-    const known = master.find(x => x.sku.toUpperCase() === sku);
-    const ws = line.words || [];
-    const bounds = [columns.shelf,columns.expire,columns.quantity].filter(Number.isFinite);
-    const nameEnd = bounds.length ? Math.min(...bounds) : Infinity;
-    const itemRaw = ws.filter(w => w.cx < nameEnd && w.cx > (columns.sku || -Infinity) + 10).map(w=>w.text).join(" ");
-    const between = (a,b) => ws.filter(w => w.cx >= a && w.cx < b).map(w=>w.text).join(" ").trim();
-    const detailedQty = Number.isFinite(columns.shelf) ? between(columns.shelf - 15, (columns.expire || columns.quantity || Infinity)-15) : "";
-    const expireDate = Number.isFinite(columns.expire) ? between(columns.expire-15, (columns.quantity || Infinity)-15) : "";
-    const quantity = Number.isFinite(columns.quantity) ? between(columns.quantity-15,Infinity) : "";
-    items.push({
-      rowId:`R${String(items.length+1).padStart(2,"0")}`, sku,
-      stockSku:known?.sku || "", item:known?.item || itemRaw.replace(sku,"").trim(),
-      detailedQty, expireDate, quantity,
-      ordered:detailedQty, delivered:quantity,
-      match:known ? "SKU_EXACT" : "REVIEW", score:known ? 1 : 0,
-      status:"REVIEW", reviewReason:"VERIFY_STOCK_DOCUMENT_FIELDS",
-      ocrText:line.text
+  const words = dnVisionWords(annotation);
+  const lines = dnClusterLines(words);
+  const known = new Map(master.filter(x => x.sku).map(x => [String(x.sku).trim().toUpperCase(), x]));
+  const detected = [];
+  const seen = new Set();
+  const add = (raw, source) => {
+    const token = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const match = known.get(token);
+    if (!match || seen.has(token)) return;
+    seen.add(token);
+    detected.push({
+      rowId: `R${String(detected.length + 1).padStart(2, '0')}`,
+      sku: match.sku, stockSku: match.sku, item: match.item,
+      detailedQty: '', expireDate: '', quantity: '', ordered: '', delivered: '',
+      match: 'SKU_EXACT', score: 1, status: 'REVIEW',
+      reviewReason: 'ENTER_STOCK_DOCUMENT_QUANTITY', ocrText: source || token
     });
+  };
+  // Azure can return a sideways form with words in a different reading order.
+  // Search both individual OCR words and reconstructed lines; don't rely on
+  // finding the SHELF# header or accurately reconstructing table rows.
+  for (const line of lines) {
+    for (const w of line.words) add(w.text, line.text);
+    for (const token of line.text.match(/[A-Z]{1,4}\s*[-.]?\s*\d{2,5}/gi) || []) add(token, line.text);
   }
-  return items;
+  // Fallback: Azure's full text sometimes has better word ordering than boxes.
+  const rawText = String(annotation?.text || '');
+  for (const token of rawText.match(/[A-Z]{1,4}\s*[-.]?\s*\d{2,5}/gi) || []) add(token, token);
+  return detected;
 }
 
 async function dnVisionScan(env, imageBase64) {
