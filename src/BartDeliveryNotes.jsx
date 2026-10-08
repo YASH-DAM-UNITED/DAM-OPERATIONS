@@ -62,6 +62,42 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     return () => { active = false; };
   }, [branchCode]);
 
+
+  
+  function deleteRow(index) {
+    const row = rows[index];
+    const confirmed = window.confirm(
+      `Delete row ${index + 1}${row?.item ? ` - ${row.item}` : ""}?`
+      );
+    if (!confirmed) return;
+    setRows(old => old.filter((_, i) => i !== index));
+    setMessage(`Row ${index + 1} deleted.`);
+    setError("");
+    }
+
+
+    
+  
+
+  
+    
+  
+
+  
+
+  
+  
+
+
+
+
+
+
+
+
+
+
+  
   function addManualRow() {
     setRows(old => [...old, {
       rowId:`MANUAL-${Date.now()}`, pageNo: pages.length || 1,
