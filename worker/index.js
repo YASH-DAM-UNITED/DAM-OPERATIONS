@@ -6438,77 +6438,90 @@ function dnExtractColumnText(line, startX, endX = null) {
   return words.map((w) => w.text).join(' ').replace(/\s+/g, ' ').trim();
 }
 
+// Reconstruct physical item rows using Azure word bounding boxes. A SKU anchor
+// determines the product row; every word is then allocated by its Y position
+// and the X boundary of its printed table column (NOT OCR reading order).
 function dnBuildItems(annotation, master) {
-  const words = dnVisionWords(annotation), lines = dnClusterLines(words);
-  const header = lines.find(l => /\bORDER(?:ED)?\b/i.test(l.text) && /\bDELIVER(?:ED)?\b/i.test(l.text));
-  const orderedWord = header?.words.find(w => /ORDER/i.test(w.text));
-  const deliveredWord = header?.words.find(w => /DELIVER/i.test(w.text));
-  const orderedX = orderedWord?.cx, deliveredX = deliveredWord?.cx;
-  const stopRe = /\b(TOTAL|SUBTOTAL|SIGNATURE|RECEIVED BY|DRIVER|VAT|TAX)\b/i;
-  const candidates = [];
-
+  const words = dnVisionWords(annotation);
+  const lines = dnClusterLines(words);
+  const header = lines.find(l => /ORDER(?:ED)?/i.test(l.text) && /DELIVER(?:ED)?/i.test(l.text));
+  const orderWord = header?.words.find(w => /ORDER/i.test(w.text));
+  const deliverWord = header?.words.find(w => /DELIVER/i.test(w.text));
+  const allX = words.map(w => w.cx).sort((a,b) => a-b);
+  const width = allX.length ? allX[allX.length-1] - allX[0] : 1000;
+  const left = allX[0] || 0;
+  const orderX = orderWord?.cx ?? left + width * .68;
+  const deliverX = deliverWord?.cx ?? left + width * .86;
+  // Column headings are centered inside their cells. Their midpoint is the divider.
+  // PRODUCT | ORDERED is usually well left of the ORDERED heading.
+  const divider1 = left + (orderX-left)*.82;
+  const divider2 = (orderX + deliverX) / 2;
+  const headerY = header?.cy ?? -Infinity;
+  const skuRx = /\[\s*([A-Z]{1,5}\s*[-.]?\s*\d{2,6})\s*\]/i;
+  let anchors = [];
   for (const line of lines) {
-    if (header && line.cy <= header.cy + 5) continue;
-    if (stopRe.test(line.text)) continue;
-
-    // The PRODUCT area is everything before ORDERED. Match Stocks only from
-    // that English product text; quantity columns never influence item matching.
-    const productWords = Number.isFinite(orderedX)
-      ? (line.words || []).filter(w => w.cx < orderedX - 12)
-      : (line.words || []);
-    const productText = productWords.map(w => w.text).join(' ').replace(/\s+/g,' ').trim();
-    const orderedText = Number.isFinite(orderedX)
-      ? dnExtractColumnText(line, orderedX, deliveredX)
-      : '';
-    const deliveredText = Number.isFinite(deliveredX)
-      ? dnExtractColumnText(line, deliveredX, null)
-      : '';
-
-    const alpha = (productText.match(/[A-Za-z]{2,}/g) || []).length;
-    const { best, second, margin } = dnBestStock(productText || line.text, master);
-    const hasQtyText = /\d/.test(orderedText) || /\d/.test(deliveredText);
-    const looksRow = (best?.score >= 0.34) || (alpha >= 2 && hasQtyText);
-    if (!looksRow) continue;
-    candidates.push({ line, productText, orderedText, deliveredText, best, second, margin });
+    if (line.cy <= headerY + 4) continue;
+    const productWords = line.words.filter(w => w.cx < divider1);
+    const productText = productWords.map(w=>w.text).join(' ');
+    const hit = skuRx.exec(productText);
+    if (hit) anchors.push({ y:line.cy, sku:hit[1].replace(/[^a-z0-9]/gi,'').toUpperCase(), line });
   }
-
-  // De-duplicate only accidental OCR duplicates on the same physical row.
-  const kept = [];
-  for (const c of candidates) {
-    const same = c.best && kept.find(k =>
-      k.best?.sku && k.best.sku === c.best.sku && Math.abs(k.line.cy - c.line.cy) < 16
-    );
-    if (!same) kept.push(c);
-    else if ((c.best?.score || 0) > (same.best?.score || 0)) Object.assign(same, c);
+  // Azure sometimes splits [CODE] over several words or misreads brackets.
+  // Match clear SKU tokens against the Stocks master rather than discard the row.
+  if (!anchors.length) {
+    const known = new Set(master.map(m=>String(m.sku||'').toUpperCase()));
+    for (const line of lines) {
+      if (line.cy <= headerY + 4) continue;
+      const productText=line.words.filter(w=>w.cx<divider1).map(w=>w.text).join(' ');
+      const sku = (productText.match(/\b[A-Z]{1,5}\d{2,6}\b/i)||[])[0]?.toUpperCase();
+      if (sku && known.has(sku)) anchors.push({y:line.cy,sku,line});
+    }
   }
-
-  return kept.map((c, i) => {
-    const printedSku = dnExtractPrintedSku(c.productText || c.line.text);
-    const exact = printedSku ? master.find(x => String(x.sku).trim().toUpperCase() === printedSku) : null;
-    const strong = !!exact || ((c.best?.score || 0) >= 0.58 && c.margin >= 0.045);
-    const matched = exact || c.best;
-    const skuMismatch = strong && printedSku && c.best?.sku &&
-      printedSku.toUpperCase() !== String(c.best.sku).toUpperCase();
-
-    return {
-      rowId: `R${String(i + 1).padStart(2, '0')}`,
-      sku: strong ? String(matched?.sku || '') : printedSku,
-      stockSku: strong ? String(matched?.sku || '') : '',
-      deliverySku: printedSku,
-      item: strong ? String(matched?.item || '') : String(c.productText || c.line.text || ''),
-      ordered: c.orderedText,
-      delivered: c.deliveredText,
-      match: exact ? 'SKU_EXACT' : strong ? 'ITEM_NAME' : 'REVIEW',
-      score: Number((c.best?.score || 0).toFixed(4)),
-      status: strong && c.orderedText && c.deliveredText ? 'CONFIRMED' : 'REVIEW',
-      reviewReason: !strong ? 'ITEM_NAME_AMBIGUOUS_OR_WEAK' :
-        (!c.orderedText || !c.deliveredText ? 'ORDERED_OR_DELIVERED_REVIEW' : ''),
-      skuMismatch,
-      ocrText: c.line.text,
-      stockCandidate: c.best ? { sku:c.best.sku, item:c.best.item, score:Number(c.best.score.toFixed(4)) } : null,
-      secondCandidate: c.second ? { sku:c.second.sku, item:c.second.item, score:Number(c.second.score.toFixed(4)) } : null,
+  anchors.sort((a,b)=>a.y-b.y);
+  anchors=anchors.filter((a,i)=>!i || Math.abs(a.y-anchors[i-1].y)>8);
+  const sanitize = t => String(t||'').replace(/[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+/g,' ').replace(/\s+/g,' ').trim();
+  const out=[];
+  for (let i=0;i<anchors.length;i++) {
+    const a=anchors[i];
+    const top=i===0 ? Math.max(headerY+5,a.y-(anchors[i+1]?.y-a.y||35)*.45) : (anchors[i-1].y+a.y)/2;
+    const bottom=i===anchors.length-1 ? a.y + Math.max(22,i>0 ? a.y-anchors[i-1].y : 40)*.55 : (a.y+anchors[i+1].y)/2;
+    const physical=words.filter(w=>w.cy>=top && w.cy<bottom);
+    const column = (xmin,xmax) => {
+      const subset=physical.filter(w=>w.cx>=xmin && w.cx<xmax);
+      const groups=dnClusterLines(subset);
+      return sanitize(groups.map(l=>l.text).join(' '));
     };
-  });
+    const rawProduct=column(-Infinity,divider1);
+    const ordered=column(divider1,divider2);
+    const delivered=column(divider2,Infinity);
+    const exact=master.find(m=>String(m.sku||'').toUpperCase()===a.sku);
+    const fallback=dnBestStock(rawProduct,master);
+    const matched=exact || ((fallback.best?.score||0)>.72 ? fallback.best:null);
+    const crossedOut=/[-—_]{4,}/.test(a.line.text);
+    out.push({rowId:`R${String(i+1).padStart(2,'0')}`, sku:a.sku,
+      deliverySku:a.sku,stockSku:matched?.sku||'',item:matched?.item||sanitize(rawProduct.replace(skuRx,'')),
+      ordered, delivered, match:exact?'SKU_EXACT':matched?'ITEM_NAME':'REVIEW',
+      score:exact?1:Number((fallback.best?.score||0).toFixed(4)),
+      status:'REVIEW', reviewReason:crossedOut?'POSSIBLY_CROSSED_OUT':(!ordered||!delivered?'CHECK_MISSING_QUANTITY':'VERIFY_OCR'),
+      ocrText:sanitize(physical.map(x=>x.text).join(' ')), crossedOut,
+    });
+  }
+  // Preserve the old name-based fallback for images where Azure missed every SKU.
+  // These rows stay REVIEW; don't present guessed values as confirmed.
+  if (!out.length) {
+    const fallback=[];
+    for(const l of lines.filter(l=>l.cy>headerY+4)) {
+      const prod=l.words.filter(w=>w.cx<divider1).map(w=>w.text).join(' ');
+      const guess=dnBestStock(prod,master);
+      if((guess.best?.score||0)<.65) continue;
+      fallback.push({rowId:`R${fallback.length+1}`,sku:guess.best.sku,stockSku:guess.best.sku,item:guess.best.item,
+        ordered:sanitize(l.words.filter(w=>w.cx>=divider1&&w.cx<divider2).map(w=>w.text).join(' ')),
+        delivered:sanitize(l.words.filter(w=>w.cx>=divider2).map(w=>w.text).join(' ')),
+        match:'ITEM_NAME',status:'REVIEW',reviewReason:'SKU_NOT_READ_VERIFY',ocrText:sanitize(l.text)});
+    }
+    return fallback;
+  }
+  return out;
 }
 
 // Landscape stock form: SKU-only OCR. Match against the branch's actual Stocks SKUs.
