@@ -6525,6 +6525,106 @@ function dnBuildItems(annotation, master, imageGrid = null) {
 
 // Landscape stock form: SKU-only OCR. Match against the branch's actual Stocks SKUs.
 // Do not attempt to read handwriting, dates or quantities from this layout.
+
+// V7: column-sequence fallback for Azure Read output that groups PRODUCT,
+// ORDERED and DELIVERED as separate text blocks. Never invent missing values.
+function dnColumnSequenceFallback(annotation, master, rows) {
+  const text=String(annotation?.text||'');
+  const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const productStart=lines.findIndex(x=>/^PRODUCT\s*$/i.test(x));
+  const orderedStart=lines.findIndex(x=>/^ORDERED\s*$/i.test(x));
+  const deliveredStart=lines.findIndex(x=>/^DELIVERED\s*$/i.test(x));
+  if(productStart<0||orderedStart<0||deliveredStart<0||orderedStart>=deliveredStart) return rows;
+  const productLines=lines.slice(productStart+1,orderedStart);
+  const skuRx=/\[?\s*([A-Z]{1,5}\d{2,6})\s*\]?/i;
+  const skus=[];
+  for(const line of productLines) {
+    const m=line.match(skuRx);
+    if(m && !skus.includes(m[1].toUpperCase())) skus.push(m[1].toUpperCase());
+  }
+  if(skus.length<2) return rows;
+  // Quantity cells are recognized by leading numeric quantity. Wrapped UOM
+  // fragments are appended to the preceding quantity, not counted as new rows.
+  const qtyRx=/^[$€£]?\s*\d+(?:[.,]\d+)?(?:\s|$)/;
+  function quantities(list) {
+    const found=[];
+    for(const raw of list) {
+      const line=raw.replace(/[\u0600-\u06ff]+/g,' ').trim();
+      if(qtyRx.test(line)) found.push(line);
+      else if(found.length && /^(?:liters?|kgs?|pcs?|packets?|cartons?|gm|ml|bottles?|boxes?|\d+\s*(?:liters?|kgs?|pcs?|gm|ml))$/i.test(line)) found[found.length-1]+=' '+line;
+    }
+    return found;
+  }
+  const ordered=quantities(lines.slice(orderedStart+1,deliveredStart));
+  const delivered=quantities(lines.slice(deliveredStart+1));
+  // Some Azure output interleaves ordered/delivered values under BOTH headings.
+  // In that case avoid assigning the wrong column; mark for staff review.
+  const orderedEnough=ordered.length===skus.length;
+  const deliveredEnough=delivered.length===skus.length;
+  if(!orderedEnough&&!deliveredEnough) {
+    // Alternating values in the combined quantity section (e.g. 320,320,45,45).
+    const combined=quantities(lines.slice(orderedStart+1));
+    if(combined.length===skus.length*2) {
+      for(let i=0;i<skus.length;i++) {
+        const r=rows.find(x=>x.sku===skus[i]);
+        if(!r) continue;
+        r.ordered=combined[i*2];r.delivered=combined[i*2+1];
+        r.reviewReason='COLUMN_SEQUENCE_REVIEW';r.status='REVIEW';
+        r.extractionMethod='COLUMN_SEQUENCE_ALTERNATING';
+      }
+    }
+    return rows;
+  }
+  for(let i=0;i<skus.length;i++) {
+    const r=rows.find(x=>x.sku===skus[i]);
+    if(!r) continue;
+    if(orderedEnough && !r.ordered) r.ordered=ordered[i];
+    if(deliveredEnough && !r.delivered) r.delivered=delivered[i];
+    if((orderedEnough||deliveredEnough) && (!r.ordered||!r.delivered)) r.reviewReason='CHECK_MISSING_QUANTITY';
+    r.extractionMethod='COLUMN_SEQUENCE_FALLBACK';
+  }
+  return rows;
+}
+
+// Verified feedback is kept in a separate tab in the SAME branch spreadsheet.
+// Suggestions require repeated confirmations; this does NOT train Azure itself.
+async function dnEnsureLearningSheet(env, spreadsheetId) {
+  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`;
+  const res=await googleRequest(env,token=>fetch(url,{headers:{Authorization:`Bearer ${token}`}}));
+  if(!res.ok) throw new Error('Could not inspect OCR learning tab');
+  const data=await res.json();
+  if(!(data.sheets||[]).some(x=>x.properties?.title==='OCR Learning')) {
+    const add=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
+    const created=await googleRequest(env,token=>fetch(add,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests:[{addSheet:{properties:{title:'OCR Learning',gridProperties:{frozenRowCount:1}}}}]})}));
+    if(!created.ok) throw new Error('Could not create OCR learning tab');
+  }
+  await batchWriteSheet(env,spreadsheetId,[{range:"'OCR Learning'!A1:H1",values:[["Timestamp","Transaction ID","Branch","Document Type","SKU","Field","Original OCR","Staff Confirmed"]]}]);
+}
+async function dnLearningSuggestions(env, spreadsheetId) {
+  let data=[];
+  try {data=await getSheetValues(env,spreadsheetId,"'OCR Learning'!D2:H2000");}catch{return []}
+  const counts=new Map();
+  for(const r of data) {
+    const [type,sku,field,before,after]=r.map(v=>String(v||'').trim());
+    if(!['ordered','delivered','sku','quantity'].includes(field)||!before||!after||before===after) continue;
+    const key=JSON.stringify([type,sku,field,before,after]);counts.set(key,(counts.get(key)||0)+1);
+  }
+  return [...counts].filter(([,n])=>n>=2).slice(-100).map(([key,n])=>{const [documentType,sku,field,before,after]=JSON.parse(key);return {documentType,sku,field,before,after,confirmations:n}});
+}
+function dnApplyLearningSuggestions(items, suggestions, documentType) {
+  for(const r of items) {
+    r.learningSuggestions=[];
+    for(const rule of suggestions) {
+      if(rule.documentType!==documentType||rule.sku!==r.sku||!['ordered','delivered','quantity'].includes(rule.field))continue;
+      if(String(r[rule.field]||'').trim()===rule.before) {
+        r.learningSuggestions.push({field:rule.field,original:rule.before,suggested:rule.after,confirmations:rule.confirmations});
+        r.status='REVIEW';r.reviewReason='LEARNED_SUGGESTION_VERIFY';
+      }
+    }
+  }
+  return items;
+}
+
 function dnBuildStockDocumentItems(annotation, master) {
   const words = dnVisionWords(annotation);
   const lines = dnClusterLines(words);
@@ -6942,7 +7042,9 @@ export default {
         const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
           allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
         const documentType = stockLayout ? "STOCK_DOCUMENT" : "DELIVERY_NOTE";
-        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnBuildItems(annotation, master, body.imageGrid);
+        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnColumnSequenceFallback(annotation, master, dnBuildItems(annotation, master, body.imageGrid));
+        const learned = await dnLearningSuggestions(env, branch.sheet_id).catch(()=>[]);
+        dnApplyLearningSuggestions(items, learned, documentType);
         return jsonResponse({
           success: true,
           scanUsage,
@@ -7023,7 +7125,25 @@ export default {
         const rowNumber = rowMatch ? Number(rowMatch[1]) : null;
         await dnFormatAppendedRow(env, branch.sheet_id, sheetId, rowNumber, safeItems.length);
 
-        return jsonResponse({success:true,transactionId,totalItems:safeItems.length,pageCount});
+        // Store only corrections from confirmed, successfully submitted documents.
+        // Never fail a successful delivery-note submission due to learning storage.
+        let learnedCount=0;
+        try {
+          const feedback=Array.isArray(body.feedback)?body.feedback.slice(0,150):[];
+          const allowed=new Set(['sku','ordered','delivered','quantity','item','detailedQty','expireDate']);
+          const valid=feedback.filter(f=>allowed.has(f.field)&&String(f.before||'').trim()&&String(f.after||'').trim()&&String(f.before).trim()!==String(f.after).trim());
+          if(valid.length) {
+            await dnEnsureLearningSheet(env, branch.sheet_id);
+            for(const f of valid) {
+              await appendSheetRow(env,branch.sheet_id,"'OCR Learning'!A:H",[
+                formatJeddahTimestamp(),transactionId,branch.code,String(body.documentType||'DELIVERY_NOTE'),
+                String(f.sku||'').slice(0,30),String(f.field),String(f.before).slice(0,250),String(f.after).slice(0,250)
+              ]);
+              learnedCount++;
+            }
+          }
+        }catch(err){console.error('OCR feedback save failed',String(err));}
+        return jsonResponse({success:true,transactionId,totalItems:safeItems.length,pageCount,learnedCount});
       }
 
       /* ======================================================

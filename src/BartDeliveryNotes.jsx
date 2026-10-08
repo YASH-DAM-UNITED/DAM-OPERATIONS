@@ -159,7 +159,9 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       }
       setDocumentType(nextType);
       const pageNo = pages.length + 1;
-      const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}` }));
+      const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}`,
+        originalFields:{sku:r.sku||'',item:r.item||'',ordered:r.ordered||'',delivered:r.delivered||'',quantity:r.quantity||'',detailedQty:r.detailedQty||'',expireDate:r.expireDate||''}
+      }));
       setRows(old => [...old, ...appended]);
       setPreviewApproved(true);
       setPreviewPage(pages.length);
@@ -242,7 +244,13 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     if (unresolved) return setError(`${unresolved} row(s) still need review. Confirm/edit them first.`);
     setBusy(true); setError(""); setMessage("Saving ONE delivery-note transaction to the branch Google Sheet…");
     try {
-      const data = await api("/api/staff/bart/delivery-notes/submit", { method: "POST", body: JSON.stringify({ branch: branchCode, ...note, documentType, pageCount: pages.length, ocrPages: pages.map(p => p.ocrText), items: rows }) });
+      const feedback = rows.flatMap(r => {
+        if (!r.originalFields || r.status !== 'CONFIRMED') return [];
+        return ['sku','item','ordered','delivered','quantity','detailedQty','expireDate'].filter(field =>
+          String(r.originalFields[field]||'').trim() && String(r.originalFields[field]||'').trim() !== String(r[field]||'').trim()
+        ).map(field => ({sku:r.sku,field,before:r.originalFields[field],after:r[field]}));
+      });
+      const data = await api("/api/staff/bart/delivery-notes/submit", { method: "POST", body: JSON.stringify({ branch: branchCode, ...note, documentType, pageCount: pages.length, ocrPages: pages.map(p => p.ocrText), items: rows, feedback }) });
 
       // Clear the transaction only after the backend confirms a successful save.
       pages.forEach((page) => {
@@ -326,7 +334,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
         <tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}>
           <td>{i+1}</td><td>P{r.pageNo || 1}</td>
           <td className="dnv-sku"><input value={r.sku || ""} onChange={e=>updateRow(i,"sku",e.target.value)} title="Exact SKU lookup from branch Stocks"/></td>
-          <td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>{r.crossedOut ? "⚠ Possible crossed-out item — verify / delete. " : ""}OCR: {r.ocrText}</small></td>
+          <td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>{r.crossedOut ? "⚠ Possible crossed-out item — verify / delete. " : ""}OCR: {r.ocrText}{(r.learningSuggestions||[]).map((tip,k)=><span key={k} style={{display:'block',color:'#b45309',fontWeight:700}}>⚠ Previously corrected {tip.field}: {tip.original} → {tip.suggested} ({tip.confirmations} verified examples). Check before accepting.</span>)}</small></td>
           {documentType === "STOCK_DOCUMENT" ? <>
             <td className="dnv-quantity"><textarea rows={2} value={r.detailedQty || ""} onChange={e=>updateRow(i,"detailedQty",e.target.value)}/></td>
             <td className="dnv-quantity"><textarea rows={2} value={r.expireDate || ""} onChange={e=>updateRow(i,"expireDate",e.target.value)}/></td>
