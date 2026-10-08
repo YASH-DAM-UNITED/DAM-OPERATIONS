@@ -18,6 +18,46 @@ async function imageToJpegBase64(file, maxSide = 2200, quality = 0.88) {
   return canvas.toDataURL("image/jpeg", quality).split(",")[1];
 }
 
+// Detect long printed horizontal table rules on the resized upload image.
+// This is local image processing; it does NOT spend an additional OCR scan.
+async function detectDocumentGrid(imageBase64) {
+  const picture = new Image();
+  picture.src = `data:image/jpeg;base64,${imageBase64}`;
+  await picture.decode();
+  const width = picture.naturalWidth, height = picture.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(picture, 0, 0);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const dark = (x,y) => {
+    const k=(y*width+x)*4;
+    return (data[k]*.299+data[k+1]*.587+data[k+2]*.114)<145;
+  };
+  // A table rule crosses all three columns; text never spans these large widths.
+  // Check neighbouring scanlines to tolerate shallow photo skew and tiny breaks.
+  const step=Math.max(1,Math.round(width/360));
+  const scores=[];
+  for(let y=Math.floor(height*.13);y<height*.96;y++) {
+    let hits=0,total=0;
+    for(let x=Math.floor(width*.06);x<width*.95;x+=step) {
+      total++;
+      if(dark(x,y) || (y>0&&dark(x,y-1)) || (y+1<height&&dark(x,y+1))) hits++;
+    }
+    scores[y]=hits/Math.max(1,total);
+  }
+  const candidates=[];
+  for(let y=Math.floor(height*.13);y<height*.96;y++) {
+    if((scores[y]||0)<.47) continue;
+    if(candidates.length && y-candidates[candidates.length-1].y<=Math.max(3,Math.round(height*.005))) {
+      if(scores[y]>candidates[candidates.length-1].score) candidates[candidates.length-1]={y,score:scores[y]};
+    } else candidates.push({y,score:scores[y]});
+  }
+  // Avoid mistaking underlines, headers or page folds for valid table boundaries.
+  const rules=candidates.filter(x=>x.score>.47).map(x=>x.y);
+  return {width,height,horizontalRules:rules,method:"DARK_PIXEL_HORIZONTAL_RULES"};
+}
+
 function autoGrowDeliveryField(el) {
   if (!el) return;
   el.style.height = "auto";
@@ -109,7 +149,8 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     setBusy(true); setError(""); setMessage(`Scanning page ${pages.length + 1} with Azure AI Vision…`);
     try {
       const imageBase64 = await imageToJpegBase64(pendingFile);
-      const data = await api("/api/staff/bart/delivery-notes/scan", { method: "POST", body: JSON.stringify({ branch: branchCode, imageBase64 }) });
+      const imageGrid = await detectDocumentGrid(imageBase64).catch(() => null);
+      const data = await api("/api/staff/bart/delivery-notes/scan", { method: "POST", body: JSON.stringify({ branch: branchCode, imageBase64, imageGrid }) });
       if (data.scanUsage) setScanUsage({ ...data.scanUsage, loading: false });
       const nextType = data.documentType || "DELIVERY_NOTE";
       if (pages.length && nextType !== documentType) {
@@ -122,7 +163,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       setRows(old => [...old, ...appended]);
       setPreviewApproved(true);
       setPreviewPage(pages.length);
-      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", originalOcrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length }]);
+      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", originalOcrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length, detection: data.detection || null }]);
       setPendingFile(null); setPendingPreview("");
       setNote(n => ({ ...n, deliveryNoteNo: n.deliveryNoteNo || data.meta?.deliveryNoteNo || "", deliveryDate: n.deliveryDate || data.meta?.deliveryDate || "", supplier: n.supplier || data.meta?.supplier || "" }));
       setMessage(`Page ${pageNo} added: ${appended.length} item(s). ${pageNo} page(s) scanned · ${rows.length + appended.length} total item(s).`);
@@ -265,11 +306,11 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     {(message || error) && <div className={`dnv-msg ${error ? "bad" : "ok"}`}>{error ? <TriangleAlert size={18}/> : <CheckCircle2 size={18}/>} {error || message}</div>}
 
     {pages.length > 0 && <section className="dnv-table-card" style={{marginTop:20,background:"#fff",border:"1px solid #e2e8f0"}}>
-      <div className="dnv-title"><div><h2>Detected Delivery Note — Original Document Review</h2><p>Each printed product row is reconstructed as one editable row. Compare ORDERED and DELIVERED with the photographed paper. Arabic text is excluded from item cells.</p></div></div>
+      <div className="dnv-title"><div><h2>Detected Delivery Note — Original Document Review</h2><p>Every recognized English letter, number, and symbol is kept in the OCR transcript. Table separators are used where detectable; verify each ORDERED and DELIVERED cell against the photo.</p></div></div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"12px 0"}}>
         {pages.map((p,i)=><button key={p.pageNo} type="button" onClick={()=>setPreviewPage(i)} style={{padding:"9px 14px",borderRadius:8,border:"1px solid #cbd5e1",background:previewPage===i?"#dbeafe":"#fff",cursor:"pointer"}}>View Original Page {p.pageNo}</button>)}
       </div>
-      {pages[previewPage] && <details><summary style={{cursor:"pointer",fontWeight:700}}>Compare with original photographed page {pages[previewPage].pageNo}</summary><img src={pages[previewPage].preview} alt={`Original document page ${pages[previewPage].pageNo}`} style={{display:"block",width:"100%",maxWidth:700,maxHeight:850,objectFit:"contain",margin:"12px auto",borderRadius:10}}/></details>}
+      {pages[previewPage] && <><div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:13,color:"#475569",padding:"10px 0"}}><b>OCR words: {pages[previewPage].detection?.wordCount ?? "?"}</b><b>Physical rows: {pages[previewPage].detection?.physicalRows ?? "?"}</b><b>Table rules: {pages[previewPage].detection?.detectedRules ?? "?"}</b><b>Method: {pages[previewPage].detection?.method ?? "OCR"}</b></div><details open><summary style={{cursor:"pointer",fontWeight:700}}>Original photographed page {pages[previewPage].pageNo}</summary><img src={pages[previewPage].preview} alt={`Original document page ${pages[previewPage].pageNo}`} style={{display:"block",width:"100%",maxWidth:700,maxHeight:850,objectFit:"contain",margin:"12px auto",borderRadius:10}}/></details><details><summary style={{cursor:"pointer",fontWeight:700}}>Full OCR transcription (all detected lines)</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",background:"#f8fafc",padding:16,borderRadius:10,maxHeight:360,overflow:"auto"}}>{pages[previewPage].ocrText}</pre></details></>}
       <p style={{marginTop:12,fontSize:13,color:"#64748b"}}>Rows marked REVIEW require your verification. Crossed-out rows stay visible until you delete them. Editing a quantity directly in the table changes the value that will be submitted.</p>
     </section>}
 

@@ -6438,89 +6438,88 @@ function dnExtractColumnText(line, startX, endX = null) {
   return words.map((w) => w.text).join(' ').replace(/\s+/g, ' ').trim();
 }
 
-// Reconstruct physical item rows using Azure word bounding boxes. A SKU anchor
-// determines the product row; every word is then allocated by its Y position
-// and the X boundary of its printed table column (NOT OCR reading order).
-function dnBuildItems(annotation, master) {
+// Build the delivery-note grid from visible ruled row boundaries and OCR boxes.
+// The photo is NEVER reduced to just SKU lines; unmatched content remains visible.
+function dnBuildItems(annotation, master, imageGrid = null) {
   const words = dnVisionWords(annotation);
   const lines = dnClusterLines(words);
-  const header = lines.find(l => /ORDER(?:ED)?/i.test(l.text) && /DELIVER(?:ED)?/i.test(l.text));
-  const orderWord = header?.words.find(w => /ORDER/i.test(w.text));
-  const deliverWord = header?.words.find(w => /DELIVER/i.test(w.text));
-  const allX = words.map(w => w.cx).sort((a,b) => a-b);
-  const width = allX.length ? allX[allX.length-1] - allX[0] : 1000;
-  const left = allX[0] || 0;
-  const orderX = orderWord?.cx ?? left + width * .68;
-  const deliverX = deliverWord?.cx ?? left + width * .86;
-  // Column headings are centered inside their cells. Their midpoint is the divider.
-  // PRODUCT | ORDERED is usually well left of the ORDERED heading.
-  const divider1 = left + (orderX-left)*.82;
-  const divider2 = (orderX + deliverX) / 2;
-  const headerY = header?.cy ?? -Infinity;
+  const clean = text => String(text || '').replace(/[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+/g,' ').replace(/\s+/g,' ').trim();
+  const page = annotation?.azureResult?.analyzeResult?.readResults?.[0] || {};
+  const pageW = Number(page.width) || Math.max(1,...words.map(w=>w.x1));
+  const pageH = Number(page.height) || Math.max(1,...words.map(w=>w.y1));
+  // An ORDERED and DELIVERED heading establishes the grid's vertical columns.
+  // Use header left edges instead of arbitrary percentages whenever possible.
+  const heading = lines.find(l => /ORDER(?:ED)?/i.test(l.text) && /DELIVER(?:ED)?/i.test(l.text));
+  const orderWord = heading?.words.find(w=>/ORDER/i.test(w.text));
+  const deliverWord = heading?.words.find(w=>/DELIVER/i.test(w.text));
+  const d1 = orderWord ? orderWord.x0 - Math.max(16, orderWord.h*3) : pageW*.585;
+  const d2 = deliverWord ? (orderWord?.x1 || pageW*.68) + ((deliverWord.x0-(orderWord?.x1||pageW*.68))*.5) : pageW*.775;
+  const divider1 = Math.max(pageW*.43,Math.min(pageW*.70,d1));
+  const divider2 = Math.max(divider1+pageW*.08,Math.min(pageW*.89,d2));
+  const headerY = heading?.cy ?? pageH*.30;
   const skuRx = /\[\s*([A-Z]{1,5}\s*[-.]?\s*\d{2,6})\s*\]/i;
-  let anchors = [];
-  for (const line of lines) {
-    if (line.cy <= headerY + 4) continue;
-    const productWords = line.words.filter(w => w.cx < divider1);
-    const productText = productWords.map(w=>w.text).join(' ');
-    const hit = skuRx.exec(productText);
-    if (hit) anchors.push({ y:line.cy, sku:hit[1].replace(/[^a-z0-9]/gi,'').toUpperCase(), line });
-  }
-  // Azure sometimes splits [CODE] over several words or misreads brackets.
-  // Match clear SKU tokens against the Stocks master rather than discard the row.
-  if (!anchors.length) {
-    const known = new Set(master.map(m=>String(m.sku||'').toUpperCase()));
-    for (const line of lines) {
-      if (line.cy <= headerY + 4) continue;
-      const productText=line.words.filter(w=>w.cx<divider1).map(w=>w.text).join(' ');
-      const sku = (productText.match(/\b[A-Z]{1,5}\d{2,6}\b/i)||[])[0]?.toUpperCase();
-      if (sku && known.has(sku)) anchors.push({y:line.cy,sku,line});
-    }
+  const known = new Map(master.filter(m=>m.sku).map(m=>[String(m.sku).trim().toUpperCase(),m]));
+  const anchors=[];
+  for(const line of lines) {
+    if(line.cy<=headerY+3) continue;
+    const part=clean(line.words.filter(w=>w.cx<divider1).map(w=>w.text).join(' '));
+    const explicit=skuRx.exec(part);
+    const anyToken=part.match(/\b[A-Z]{1,5}[-.]?\d{2,6}\b/i);
+    const sku=explicit?.[1]?.replace(/[^A-Z0-9]/gi,'').toUpperCase() || (anyToken && known.has(anyToken[0].toUpperCase())?anyToken[0].toUpperCase():'');
+    if(sku && (!anchors.length || Math.abs(line.cy-anchors[anchors.length-1].y)>Math.max(4,line.words[0]?.h*.45||5))) anchors.push({y:line.cy,sku});
   }
   anchors.sort((a,b)=>a.y-b.y);
-  anchors=anchors.filter((a,i)=>!i || Math.abs(a.y-anchors[i-1].y)>8);
-  const sanitize = t => String(t||'').replace(/[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+/g,' ').replace(/\s+/g,' ').trim();
+  // Client-side grayscale line detector returns the actual horizontal strokes.
+  // Rescale to Azure page coordinates; reject spurious near-duplicate strokes.
+  const inputH=Number(imageGrid?.height);
+  const rawRules=Array.isArray(imageGrid?.horizontalRules) && inputH>0
+    ? imageGrid.horizontalRules.map(y=>Number(y)*pageH/inputH).filter(y=>Number.isFinite(y)&&y>headerY+4&&y<pageH*.98).sort((a,b)=>a-b)
+    : [];
+  const rules=rawRules.filter((y,i)=>!i || y-rawRules[i-1]>Math.max(3,pageH*.004));
+  const gapMedian = (()=>{ const ds=anchors.slice(1).map((a,i)=>a.y-anchors[i].y).filter(x=>x>5).sort((a,b)=>a-b); return ds[Math.floor(ds.length/2)]||pageH*.028; })();
+  const validRules=rules.filter((y,i)=>!i||y-rules[i-1]>=Math.max(7,gapMedian*.38));
+  const usableRules=anchors.length>=2 && validRules.length>=Math.max(3,Math.floor(anchors.length*.5)) && validRules.length<=anchors.length*2+4;
   const out=[];
-  for (let i=0;i<anchors.length;i++) {
-    const a=anchors[i];
-    const top=i===0 ? Math.max(headerY+5,a.y-(anchors[i+1]?.y-a.y||35)*.45) : (anchors[i-1].y+a.y)/2;
-    const bottom=i===anchors.length-1 ? a.y + Math.max(22,i>0 ? a.y-anchors[i-1].y : 40)*.55 : (a.y+anchors[i+1].y)/2;
-    const physical=words.filter(w=>w.cy>=top && w.cy<bottom);
-    const column = (xmin,xmax) => {
-      const subset=physical.filter(w=>w.cx>=xmin && w.cx<xmax);
-      const groups=dnClusterLines(subset);
-      return sanitize(groups.map(l=>l.text).join(' '));
-    };
-    const rawProduct=column(-Infinity,divider1);
-    const ordered=column(divider1,divider2);
-    const delivered=column(divider2,Infinity);
-    const exact=master.find(m=>String(m.sku||'').toUpperCase()===a.sku);
-    const fallback=dnBestStock(rawProduct,master);
-    const matched=exact || ((fallback.best?.score||0)>.72 ? fallback.best:null);
-    const crossedOut=/[-—_]{4,}/.test(a.line.text);
-    out.push({rowId:`R${String(i+1).padStart(2,'0')}`, sku:a.sku,
-      deliverySku:a.sku,stockSku:matched?.sku||'',item:matched?.item||sanitize(rawProduct.replace(skuRx,'')),
-      ordered, delivered, match:exact?'SKU_EXACT':matched?'ITEM_NAME':'REVIEW',
-      score:exact?1:Number((fallback.best?.score||0).toFixed(4)),
-      status:'REVIEW', reviewReason:crossedOut?'POSSIBLY_CROSSED_OUT':(!ordered||!delivered?'CHECK_MISSING_QUANTITY':'VERIFY_OCR'),
-      ocrText:sanitize(physical.map(x=>x.text).join(' ')), crossedOut,
-    });
-  }
-  // Preserve the old name-based fallback for images where Azure missed every SKU.
-  // These rows stay REVIEW; don't present guessed values as confirmed.
-  if (!out.length) {
-    const fallback=[];
-    for(const l of lines.filter(l=>l.cy>headerY+4)) {
-      const prod=l.words.filter(w=>w.cx<divider1).map(w=>w.text).join(' ');
-      const guess=dnBestStock(prod,master);
-      if((guess.best?.score||0)<.65) continue;
-      fallback.push({rowId:`R${fallback.length+1}`,sku:guess.best.sku,stockSku:guess.best.sku,item:guess.best.item,
-        ordered:sanitize(l.words.filter(w=>w.cx>=divider1&&w.cx<divider2).map(w=>w.text).join(' ')),
-        delivered:sanitize(l.words.filter(w=>w.cx>=divider2).map(w=>w.text).join(' ')),
-        match:'ITEM_NAME',status:'REVIEW',reviewReason:'SKU_NOT_READ_VERIFY',ocrText:sanitize(l.text)});
+  const bands=[];
+  if(usableRules) {
+    const cuts=[headerY+4,...validRules,pageH*.985].sort((a,b)=>a-b);
+    for(let j=0;j<cuts.length-1;j++) {
+      const top=cuts[j]+1,bottom=cuts[j+1]-1;
+      if(bottom-top<Math.max(7,gapMedian*.38)) continue;
+      // Count a row even if the SKU itself is unreadable. Staff can fix it.
+      const group=words.filter(w=>w.cy>=top&&w.cy<bottom);
+      const inside=anchors.filter(a=>a.y>=top&&a.y<bottom);
+      if((group.some(w=>w.cx<divider1) || inside.length) && top>headerY) bands.push({top,bottom,sku:inside[0]?.sku||''});
     }
-    return fallback;
   }
+  // OCR-derived boundaries: anchor positions are reliable when ruling is too faint.
+  if(!bands.length) for(let i=0;i<anchors.length;i++) {
+    const a=anchors[i];
+    const top=i===0?Math.max(headerY+4,a.y-gapMedian*.49):(anchors[i-1].y+a.y)/2;
+    const bottom=i===anchors.length-1?a.y+gapMedian*.53:(a.y+anchors[i+1].y)/2;
+    bands.push({top,bottom,sku:a.sku});
+  }
+  for(const band of bands) {
+    const within=words.filter(w=>w.cy>=band.top&&w.cy<band.bottom);
+    const cell=(start,end)=>clean(dnClusterLines(within.filter(w=>w.cx>=start&&w.cx<end)).map(l=>l.text).join(' '));
+    const product=cell(-Infinity,divider1);
+    const ordered=cell(divider1,divider2);
+    const delivered=cell(divider2,Infinity);
+    const sku=band.sku || skuRx.exec(product)?.[1]?.replace(/[^A-Z0-9]/gi,'').toUpperCase() || '';
+    if(!sku && !product && !ordered && !delivered) continue;
+    const exact=known.get(sku);
+    const named=dnBestStock(product,master);
+    const matched=exact || ((named.best?.score||0)>.75?named.best:null);
+    const crossedOut=/[-—_]{5,}/.test(product);
+    out.push({rowId:`R${String(out.length+1).padStart(2,'0')}`,
+      sku,deliverySku:sku,stockSku:matched?.sku||'', item:matched?.item||clean(product.replace(skuRx,'')),
+      ordered,delivered,match:exact?'SKU_EXACT':matched?'ITEM_NAME':'REVIEW',
+      score:exact?1:Number((named.best?.score||0).toFixed(4)),status:'REVIEW',
+      reviewReason:crossedOut?'POSSIBLY_CROSSED_OUT':(!ordered||!delivered?'CHECK_MISSING_QUANTITY':'VERIFY_OCR'),
+      ocrText:clean(dnClusterLines(within).map(l=>l.text).join(' | ')),crossedOut});
+  }
+  // Persist diagnostics on the array without changing the existing API item schema.
+  out.detection={method:bands.length&&usableRules?'IMAGE_TABLE_LINES':'OCR_SKU_ROW_ANCHORS',detectedRules:rules.length,physicalRows:out.length,wordCount:words.length};
   return out;
 }
 
@@ -6943,13 +6942,14 @@ export default {
         const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
           allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
         const documentType = stockLayout ? "STOCK_DOCUMENT" : "DELIVERY_NOTE";
-        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnBuildItems(annotation, master);
+        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnBuildItems(annotation, master, body.imageGrid);
         return jsonResponse({
           success: true,
           scanUsage,
           branch: { code: branch.code, name: branch.name },
           masterCount: master.length,
           items,
+          detection: items.detection || {method:"STOCK_SKU",detectedRules:0,physicalRows:items.length,wordCount:dnVisionWords(annotation).length},
           documentType,
           meta: dnMetaFromText(annotation.text),
           ocrText: annotation.text || '',
