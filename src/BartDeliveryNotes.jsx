@@ -107,10 +107,41 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       setRows(old => [...old, ...appended]);
       setPreviewApproved(false);
       setPreviewPage(pages.length);
-      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length }]);
+      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", originalOcrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length }]);
       setPendingFile(null); setPendingPreview("");
       setNote(n => ({ ...n, deliveryNoteNo: n.deliveryNoteNo || data.meta?.deliveryNoteNo || "", deliveryDate: n.deliveryDate || data.meta?.deliveryDate || "", supplier: n.supplier || data.meta?.supplier || "" }));
       setMessage(`Page ${pageNo} added: ${appended.length} item(s). ${pageNo} page(s) scanned · ${rows.length + appended.length} total item(s).`);
+    } catch (e) { setError(e.message); setMessage(""); }
+    finally { setBusy(false); }
+  }
+
+  async function continueFromOcr() {
+    if (!pages.length) return setError("Scan a document first.");
+    setBusy(true); setError(""); setMessage("Applying staff OCR corrections to item fields…");
+    try {
+      const nextRows = [];
+      for (const page of pages) {
+        const originalRows = rows.filter(r => r.pageNo === page.pageNo);
+        if (page.ocrText === page.originalOcrText) {
+          nextRows.push(...originalRows);
+          continue;
+        }
+        const data = await api("/api/staff/bart/delivery-notes/reparse", {
+          method: "POST",
+          body: JSON.stringify({ branch: branchCode, documentType, ocrText: page.ocrText })
+        });
+        // Corrected text is authoritative. Never silently reuse outdated OCR quantities.
+        const parsed = (data.items || []).map((r, i) => ({
+          ...r, pageNo: page.pageNo, rowId: `EDIT-P${page.pageNo}-${i + 1}`
+        }));
+        if (!parsed.length) {
+          throw new Error(`Page ${page.pageNo}: No SKU was found in the corrected text. Add the SKU to the transcription or restore the original text.`);
+        }
+        nextRows.push(...parsed);
+      }
+      setRows(nextRows);
+      setPreviewApproved(true);
+      setMessage("Corrected OCR applied. Check every SKU and quantity in the item table before submission.");
     } catch (e) { setError(e.message); setMessage(""); }
     finally { setBusy(false); }
   }
@@ -231,8 +262,8 @@ export default function BartDeliveryNotes({ branch, onBack }) {
           </details>
         </div>
       </div>}
-      <p style={{marginTop:12}}>OCR can miss handwriting, rotated or mirrored writing. The photo remains visible so staff can compare and correct the transcription. Corrected text is retained with the transaction, but does not automatically change item fields.</p>
-      {!previewApproved ? <button type="button" className="dnv-primary" disabled={busy} onClick={()=>{setPreviewApproved(true);setMessage("OCR preview reviewed. Now verify every structured item and quantity below.");}}>✓ I reviewed the full OCR — Continue to Items</button> : <button type="button" onClick={()=>setPreviewApproved(false)} style={{padding:"10px 16px",cursor:"pointer"}}>Edit Full OCR Again</button>}
+      <p style={{marginTop:12}}>OCR can miss handwriting, rotated or mirrored writing. The photo remains visible so staff can compare and correct the transcription. After editing, Continue will re-extract items from corrected text. Separate columns with | or tabs for best accuracy. All corrected rows require staff review.</p>
+      {!previewApproved ? <button type="button" className="dnv-primary" disabled={busy} onClick={continueFromOcr}>✓ Apply Corrected OCR — Continue to Items</button> : <button type="button" onClick={()=>setPreviewApproved(false)} style={{padding:"10px 16px",cursor:"pointer"}}>Edit Full OCR Again</button>}
     </section>}
 
     {rows.length > 0 && previewApproved && <section className="dnv-table-card"><div className="dnv-title"><div><h2>4. Verify & confirm</h2><p>English item names come from the branch Stocks master. Verify every detected SKU and quantity against the original image. Handwritten or missed values can be entered manually. English item names come from the branch Stocks master.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>

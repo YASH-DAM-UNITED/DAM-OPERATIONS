@@ -6545,6 +6545,70 @@ function dnBuildStockDocumentItems(annotation, master) {
   return detected;
 }
 
+// Parse STAFF-CORRECTED OCR text without invoking Azure or consuming an OCR scan.
+// Lines can be separated with tabs, pipes, or spaced columns. Uncertain values
+// remain REVIEW instead of silently inheriting an obsolete Azure quantity.
+function dnReparseCorrectedText(text, master, documentType) {
+  const sourceLines = String(text || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const known = new Map(master.filter(x => x.sku).map(x => [String(x.sku).toUpperCase().replace(/[^A-Z0-9]/g,''), x]));
+  const results = [];
+  const skuPattern = /\[\s*([A-Z]{1,5}[\s._/-]*\d{2,6})\s*\]|\b([A-Z]{1,5}[._/-]?\d{2,6})\b/ig;
+  const isStock = documentType === 'STOCK_DOCUMENT';
+  const findQuantities = (value) => {
+    const v = String(value || '').trim();
+    // Capture decimal/integer amounts with optional UOM, preserving original wording.
+    return [...v.matchAll(/\b\d+(?:[.,]\d+)?(?:\s*(?:PCS?|KG|G|GM|CTN|CARTONS?|BOX(?:ES)?|PACKS?|BAGS?|BOTTLES?|LTR?|ML|TRAYS?|UNITS?))?\b/gi)].map(m=>m[0].trim());
+  };
+  for (let n=0;n<sourceLines.length;n++) {
+    const line=sourceLines[n];
+    const matches=[...line.matchAll(skuPattern)];
+    if (!matches.length) continue;
+    for (let j=0;j<matches.length;j++) {
+      const hit=matches[j];
+      const rawSku=hit[1] || hit[2];
+      const normalized=rawSku.toUpperCase().replace(/[^A-Z0-9]/g,'');
+      const masterItem=known.get(normalized);
+      const begin=hit.index+hit[0].length;
+      const end=matches[j+1]?.index ?? line.length;
+      const rest=line.slice(begin,end).replace(/^\s*[-:|]\s*/,'').trim();
+      const segments=rest.split(/\s*\|\s*|\t+|\s{2,}/).map(x=>x.trim()).filter(Boolean);
+      const nonSkuText=segments.join(' ');
+      const values=findQuantities(nonSkuText);
+      // Do not misinterpret digits in an item name as a confirmed quantity.
+      // Prefer explicit ORDERED/DELIVERED labels, then separated columns.
+      const labelledOrdered=rest.match(/\bORDER(?:ED)?\s*[:=]\s*([^|;]+?)(?=\s+DELIVER(?:ED)?\s*[:=]|$)/i)?.[1]?.trim() || '';
+      const labelledDelivered=rest.match(/\bDELIVER(?:ED)?\s*[:=]\s*([^|;]+)$/i)?.[1]?.trim() || '';
+      let ordered='', delivered='', detailedQty='', expireDate='', quantity='';
+      if (isStock) {
+        if (segments.length >= 4) {
+          // Item | Shelf# | Expire Date | Quantity (location may be present between).
+          detailedQty=segments[1] || '';
+          expireDate=segments.length>=5 ? segments[3] : segments[2];
+          quantity=segments.at(-1) || '';
+        } else {
+          quantity=rest.match(/\bQUANTITY\s*[:=]\s*([^|;]+)/i)?.[1]?.trim() || '';
+          detailedQty=rest.match(/\bSHELF\s*#?\s*[:=]\s*([^|;]+)/i)?.[1]?.trim() || '';
+          expireDate=rest.match(/\bEXPIR(?:E|Y)(?:\s*DATE)?\s*[:=]\s*([^|;]+)/i)?.[1]?.trim() || '';
+        }
+      } else {
+        ordered=labelledOrdered; delivered=labelledDelivered;
+        if ((!ordered || !delivered) && segments.length >= 3) {
+          ordered ||= segments.at(-2); delivered ||= segments.at(-1);
+        } else if ((!ordered || !delivered) && values.length >= 2) {
+          ordered ||= values.at(-2); delivered ||= values.at(-1);
+        }
+      }
+      const sku=masterItem?.sku || normalized;
+      const item=masterItem?.item || '';
+      results.push({rowId:`CORRECTED-${n+1}-${j+1}`, sku, stockSku:masterItem?.sku || '', item,
+        ordered, delivered, detailedQty, expireDate, quantity,
+        match:masterItem?'SKU_EXACT':'SKU_NOT_FOUND',
+        status:'REVIEW', reviewReason:'VERIFY_CORRECTED_OCR', ocrText:line});
+    }
+  }
+  return results;
+}
+
 async function dnVisionScan(env, imageBase64) {
   const key = String(env.AZURE_VISION_KEY || '').trim();
   const endpoint = String(env.AZURE_VISION_ENDPOINT || 'https://dam-operations-rg.cognitiveservices.azure.com/').trim().replace(/\/+$/, '');
@@ -6811,6 +6875,21 @@ export default {
         const stock = await getBartStockSheetSmart(env, branch, false);
         const master = dnStockMaster(stock.rows).filter(x => x.sku);
         return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item}))});
+      }
+
+      if (url.pathname === "/api/staff/bart/delivery-notes/reparse" && request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const branchCode = String(body.branch || '').trim().toUpperCase();
+        const correctedText = String(body.ocrText || '');
+        if (!branchCode || !correctedText.trim()) return jsonResponse({success:false,message:'Branch and corrected OCR text are required.'},400);
+        if (correctedText.length > 120000) return jsonResponse({success:false,message:'OCR text is too long.'},413);
+        const branch = await getBartBranchGoogle(env, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const stock = await getBartStockSheetSmart(env, branch, false);
+        const master = dnStockMaster(stock.rows);
+        const documentType = body.documentType === 'STOCK_DOCUMENT' ? 'STOCK_DOCUMENT' : 'DELIVERY_NOTE';
+        const items = dnReparseCorrectedText(correctedText, master, documentType);
+        return jsonResponse({success:true,items,documentType,meta:dnMetaFromText(correctedText)});
       }
 
       if (url.pathname === "/api/staff/bart/delivery-notes/scan-status" && request.method === "GET") {
