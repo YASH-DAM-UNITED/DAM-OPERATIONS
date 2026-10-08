@@ -29,6 +29,8 @@ export default function BartDeliveryNotes({ branch, onBack }) {
   const [pendingFile, setPendingFile] = useState(null);
   const [pendingPreview, setPendingPreview] = useState("");
   const [pages, setPages] = useState([]);
+  const [previewApproved, setPreviewApproved] = useState(false);
+  const [previewPage, setPreviewPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -103,7 +105,9 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       const pageNo = pages.length + 1;
       const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}` }));
       setRows(old => [...old, ...appended]);
-      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", itemCount: appended.length }]);
+      setPreviewApproved(false);
+      setPreviewPage(pages.length);
+      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length }]);
       setPendingFile(null); setPendingPreview("");
       setNote(n => ({ ...n, deliveryNoteNo: n.deliveryNoteNo || data.meta?.deliveryNoteNo || "", deliveryDate: n.deliveryDate || data.meta?.deliveryDate || "", supplier: n.supplier || data.meta?.supplier || "" }));
       setMessage(`Page ${pageNo} added: ${appended.length} item(s). ${pageNo} page(s) scanned · ${rows.length + appended.length} total item(s).`);
@@ -140,10 +144,12 @@ export default function BartDeliveryNotes({ branch, onBack }) {
     if (busy) return;
     setPages(old => old.filter(p => p.pageNo !== pageNo));
     setRows(old => old.filter(r => r.pageNo !== pageNo));
+    setPreviewApproved(false); setPreviewPage(0);
     setMessage(`Page ${pageNo} removed. Scan it again if required.`); setError("");
   }
 
   async function submit() {
+    if (!previewApproved) return setError("Review the full OCR preview and select Continue to Items first.");
     if (!rows.length) return setError("Nothing to submit.");
     if (!note.deliveryNoteNo.trim()) return setError("Delivery Note No is required.");
     if (unresolved) return setError(`${unresolved} row(s) still need review. Confirm/edit them first.`);
@@ -164,6 +170,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       setPendingFile(null);
       setPendingPreview("");
       setPages([]);
+      setPreviewApproved(false); setPreviewPage(0);
       setRows([]);
       setDocumentType("DELIVERY_NOTE");
       setNote({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
@@ -211,7 +218,24 @@ export default function BartDeliveryNotes({ branch, onBack }) {
 
     {(message || error) && <div className={`dnv-msg ${error ? "bad" : "ok"}`}>{error ? <TriangleAlert size={18}/> : <CheckCircle2 size={18}/>} {error || message}</div>}
 
-    {rows.length > 0 && <section className="dnv-table-card"><div className="dnv-title"><div><h2>3. Verify & confirm</h2><p>English item names come from the branch Stocks master. Landscape stock forms extract SKUs only; enter Detailed Quantity, Expire Date and Quantity manually. Portrait delivery notes retain ORDERED and DELIVERED extraction.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
+    {pages.length > 0 && <section className="dnv-table-card" style={{marginTop:20}}>
+      <div className="dnv-title"><div><h2>3. Full OCR Preview — Review every detected line</h2><p>Compare the original photo with Azure's complete detected text. Printed text, handwriting, Arabic, numbers and table details are shown when recognized. Missing or uncertain text must be corrected manually.</p></div></div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"12px 0"}}>
+        {pages.map((p,i)=><button key={p.pageNo} type="button" onClick={()=>setPreviewPage(i)} style={{padding:"9px 14px",borderRadius:8,border:"1px solid #cbd5e1",background:previewPage===i?"#dbeafe":"#fff",cursor:"pointer"}}>Page {p.pageNo}</button>)}
+      </div>
+      {pages[previewPage] && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,340px),1fr))",gap:16}}>
+        <div><h3>Original photo</h3><img src={pages[previewPage].preview} alt={`Original page ${pages[previewPage].pageNo}`} style={{width:"100%",height:"auto",maxHeight:680,objectFit:"contain",border:"1px solid #cbd5e1",borderRadius:10}}/></div>
+        <div><h3>Full OCR text — editable</h3><textarea aria-label="Complete OCR transcription" value={pages[previewPage].ocrText} onChange={e=>{const v=e.target.value;setPages(old=>old.map((p,i)=>i===previewPage?{...p,ocrText:v}:p));setPreviewApproved(false);}} style={{width:"100%",boxSizing:"border-box",minHeight:360,resize:"vertical",padding:12,border:"1px solid #94a3b8",borderRadius:10,whiteSpace:"pre-wrap",fontFamily:"monospace",fontSize:14}}/>
+          <details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:700}}>Individual Azure OCR lines ({pages[previewPage].ocrLines?.length || 0})</summary>
+            <div style={{maxHeight:280,overflow:"auto",marginTop:8}}>{(pages[previewPage].ocrLines||[]).map((line,i)=><div key={i} style={{padding:"6px 4px",borderBottom:"1px solid #e2e8f0",fontSize:13}}><b>{i+1}.</b> {line.text}{line.confidence!=null&&<small> · confidence {Math.round(line.confidence*100)}%</small>}</div>)}</div>
+          </details>
+        </div>
+      </div>}
+      <p style={{marginTop:12}}>OCR can miss handwriting, rotated or mirrored writing. The photo remains visible so staff can compare and correct the transcription. Corrected text is retained with the transaction, but does not automatically change item fields.</p>
+      {!previewApproved ? <button type="button" className="dnv-primary" disabled={busy} onClick={()=>{setPreviewApproved(true);setMessage("OCR preview reviewed. Now verify every structured item and quantity below.");}}>✓ I reviewed the full OCR — Continue to Items</button> : <button type="button" onClick={()=>setPreviewApproved(false)} style={{padding:"10px 16px",cursor:"pointer"}}>Edit Full OCR Again</button>}
+    </section>}
+
+    {rows.length > 0 && previewApproved && <section className="dnv-table-card"><div className="dnv-title"><div><h2>4. Verify & confirm</h2><p>English item names come from the branch Stocks master. Verify every detected SKU and quantity against the original image. Handwritten or missed values can be entered manually. English item names come from the branch Stocks master.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
       <div style={{display:"flex",gap:12,alignItems:"center",margin:"12px 0"}}>
         <b>Detected format: {documentType === "STOCK_DOCUMENT" ? "BART Stock Document" : "Delivery Note"}</b>
         <button type="button" className="dnv-primary" onClick={addManualRow}>+ Add Item Manually</button>

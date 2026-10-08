@@ -6861,6 +6861,15 @@ export default {
           documentType,
           meta: dnMetaFromText(annotation.text),
           ocrText: annotation.text || '',
+          // Preserve original Azure reading order and word confidence for the full OCR review.
+          // Never discard unmatched lines just because they are not stock items.
+          ocrLines: (annotation.azureResult?.analyzeResult?.readResults || []).flatMap(page =>
+            (page.lines || []).map(line => ({
+              text: String(line.text || ''),
+              confidence: line.words?.length ? line.words.reduce((sum,w) => sum + (Number(w.confidence) || 0), 0) / line.words.length : null,
+              boundingBox: line.boundingBox || [],
+            }))
+          ),
           ocrDiagnostics: {
             wordCount: dnVisionWords(annotation).length,
             reconstructedLineCount: dnClusterLines(dnVisionWords(annotation)).length,
