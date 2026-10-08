@@ -6484,19 +6484,21 @@ function dnBuildItems(annotation, master) {
 
   return kept.map((c, i) => {
     const printedSku = dnExtractPrintedSku(c.productText || c.line.text);
-    const strong = (c.best?.score || 0) >= 0.58 && c.margin >= 0.045;
+    const exact = printedSku ? master.find(x => String(x.sku).trim().toUpperCase() === printedSku) : null;
+    const strong = !!exact || ((c.best?.score || 0) >= 0.58 && c.margin >= 0.045);
+    const matched = exact || c.best;
     const skuMismatch = strong && printedSku && c.best?.sku &&
       printedSku.toUpperCase() !== String(c.best.sku).toUpperCase();
 
     return {
       rowId: `R${String(i + 1).padStart(2, '0')}`,
-      sku: strong ? String(c.best?.sku || '') : printedSku,
-      stockSku: strong ? String(c.best?.sku || '') : '',
+      sku: strong ? String(matched?.sku || '') : printedSku,
+      stockSku: strong ? String(matched?.sku || '') : '',
       deliverySku: printedSku,
-      item: strong ? String(c.best?.item || '') : String(c.productText || c.line.text || ''),
+      item: strong ? String(matched?.item || '') : String(c.productText || c.line.text || ''),
       ordered: c.orderedText,
       delivered: c.deliveredText,
-      match: strong ? 'ITEM_NAME' : 'REVIEW',
+      match: exact ? 'SKU_EXACT' : strong ? 'ITEM_NAME' : 'REVIEW',
       score: Number((c.best?.score || 0).toFixed(4)),
       status: strong && c.orderedText && c.deliveredText ? 'CONFIRMED' : 'REVIEW',
       reviewReason: !strong ? 'ITEM_NAME_AMBIGUOUS_OR_WEAK' :
@@ -6507,6 +6509,46 @@ function dnBuildItems(annotation, master) {
       secondCandidate: c.second ? { sku:c.second.sku, item:c.second.item, score:Number(c.second.score.toFixed(4)) } : null,
     };
   });
+}
+
+function dnBuildStockDocumentItems(annotation, master) {
+  const lines = dnClusterLines(dnVisionWords(annotation));
+  const header = lines.find(l => /SKU/i.test(l.text) && /(?:SHELF|QUANTITY)/i.test(l.text));
+  if (!header) return [];
+  const columns = {};
+  for (const w of header.words) {
+    const t = w.text.toUpperCase().replace(/[^A-Z#]/g,"");
+    if (t === "SKU" && !Number.isFinite(columns.sku)) columns.sku = w.cx;
+    if (t.includes("SHELF")) columns.shelf = w.cx;
+    if (t.includes("EXPIRE")) columns.expire = w.cx;
+    if (t.includes("QUANTITY")) columns.quantity = w.cx;
+  }
+  // Printed SKU is the reliable row anchor; do not confuse stock-location IDs with SKUs.
+  const items = [];
+  for (const line of lines.filter(l => l.cy > header.cy + 5)) {
+    const skuMatch = line.text.match(/(?:^|\\s)([A-Z]{1,3}\\d{2,4})(?=\\s|$)/i);
+    if (!skuMatch) continue;
+    const sku = skuMatch[1].toUpperCase();
+    const known = master.find(x => x.sku.toUpperCase() === sku);
+    const ws = line.words || [];
+    const bounds = [columns.shelf,columns.expire,columns.quantity].filter(Number.isFinite);
+    const nameEnd = bounds.length ? Math.min(...bounds) : Infinity;
+    const itemRaw = ws.filter(w => w.cx < nameEnd && w.cx > (columns.sku || -Infinity) + 10).map(w=>w.text).join(" ");
+    const between = (a,b) => ws.filter(w => w.cx >= a && w.cx < b).map(w=>w.text).join(" ").trim();
+    const detailedQty = Number.isFinite(columns.shelf) ? between(columns.shelf - 15, (columns.expire || columns.quantity || Infinity)-15) : "";
+    const expireDate = Number.isFinite(columns.expire) ? between(columns.expire-15, (columns.quantity || Infinity)-15) : "";
+    const quantity = Number.isFinite(columns.quantity) ? between(columns.quantity-15,Infinity) : "";
+    items.push({
+      rowId:`R${String(items.length+1).padStart(2,"0")}`, sku,
+      stockSku:known?.sku || "", item:known?.item || itemRaw.replace(sku,"").trim(),
+      detailedQty, expireDate, quantity,
+      ordered:detailedQty, delivered:quantity,
+      match:known ? "SKU_EXACT" : "REVIEW", score:known ? 1 : 0,
+      status:"REVIEW", reviewReason:"VERIFY_STOCK_DOCUMENT_FIELDS",
+      ocrText:line.text
+    });
+  }
+  return items;
 }
 
 async function dnVisionScan(env, imageBase64) {
@@ -6643,7 +6685,7 @@ async function dnDuplicateExists(env, spreadsheetId, deliveryNoteNo) {
 
 function dnItemsCell(items) {
   return items.map((x, i) =>
-    `${i + 1}. ${String(x.sku || x.stockSku || '').trim()} | ${String(x.item || '').trim()} | ORDERED: ${String(x.ordered || '').trim()} | DELIVERED: ${String(x.delivered || '').trim()}`
+    `${i + 1}. ${String(x.sku || x.stockSku || '').trim()} | ${String(x.item || '').trim()} | ${x.quantity !== undefined && x.quantity !== "" ? `DETAILED QTY: ${String(x.detailedQty || "")} | EXPIRE: ${String(x.expireDate || "")} | QTY: ${String(x.quantity || "")}` : `ORDERED: ${String(x.ordered || "").trim()} | DELIVERED: ${String(x.delivered || "").trim()}`}`
   ).join('\n');
 }
 
@@ -6767,6 +6809,16 @@ export default {
          BART DELIVERY NOTES — AZURE AI VISION
       ====================================================== */
 
+      if (url.pathname === "/api/staff/bart/delivery-notes/stock-master" && request.method === "GET") {
+        const branchCode = String(url.searchParams.get("branch") || "").trim().toUpperCase();
+        if (!branchCode) return jsonResponse({success:false,message:"Branch is required."},400);
+        const branch = await getBartBranchGoogle(env, branchCode);
+        if (!branch) return jsonResponse({success:false,message:"BART branch not found."},404);
+        const stock = await getBartStockSheetSmart(env, branch, false);
+        const master = dnStockMaster(stock.rows).filter(x => x.sku);
+        return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item}))});
+      }
+
       if (url.pathname === "/api/staff/bart/delivery-notes/scan-status" && request.method === "GET") {
         const branchCode = String(url.searchParams.get('branch') || '').trim().toUpperCase();
         if (!branchCode) return jsonResponse({success:false,message:'Branch is required.'},400);
@@ -6801,13 +6853,18 @@ export default {
         }
 
         const annotation = await dnVisionScan(env, imageBase64);
-        const items = dnBuildItems(annotation, master);
+        const allLines = dnClusterLines(dnVisionWords(annotation));
+        const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
+          allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
+        const documentType = stockLayout ? "STOCK_DOCUMENT" : "DELIVERY_NOTE";
+        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnBuildItems(annotation, master);
         return jsonResponse({
           success: true,
           scanUsage,
           branch: { code: branch.code, name: branch.name },
           masterCount: master.length,
           items,
+          documentType,
           meta: dnMetaFromText(annotation.text),
           ocrText: annotation.text || '',
           ocrDiagnostics: {
@@ -6829,8 +6886,9 @@ export default {
         const invalid = items.find(x =>
           !String(x.item || '').trim() ||
           !String(x.sku || x.stockSku || '').trim() ||
-          !String(x.ordered || '').trim() ||
-          !String(x.delivered || '').trim() ||
+          (body.documentType === "STOCK_DOCUMENT"
+            ? !String(x.quantity || "").trim()
+            : (!String(x.ordered || "").trim() || !String(x.delivered || "").trim())) ||
           String(x.status || '').toUpperCase() !== 'CONFIRMED'
         );
         if (invalid) return jsonResponse({success:false,message:'Every item must be reviewed and have SKU, Item, Ordered and Delivered before submission.'},400);
@@ -6849,6 +6907,9 @@ export default {
           item:String(x.item || ''),
           ordered:String(x.ordered || ''),
           delivered:String(x.delivered || ''),
+          detailedQty:String(x.detailedQty || ""),
+          expireDate:String(x.expireDate || ""),
+          quantity:String(x.quantity || ""),
           match:String(x.match || 'MANUAL'),
           score:Number(x.score || 0),
           ocrText:String(x.ocrText || '')
