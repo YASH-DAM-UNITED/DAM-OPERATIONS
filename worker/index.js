@@ -6820,6 +6820,70 @@ async function dnVisionScan(env, imageBase64) {
   return { text, pages, azureResult: result };
 }
 
+// Gemini is an interpretation layer, never the source of truth. Azure's raw
+// transcript/geometry and staff-confirmed quantities remain authoritative.
+async function dnGeminiInterpret(env, annotation, master, fallbackItems) {
+  const key = String(env.GEMINI_API_KEY || '').trim();
+  if (!key) return { items: fallbackItems, state: 'NOT_CONFIGURED' };
+  const readResults = annotation.azureResult?.analyzeResult?.readResults || [];
+  const lines = readResults.flatMap((page, pi) => (page.lines || []).map((line, li) => ({
+    id: `P${pi + 1}-L${li + 1}`, page: pi + 1, text: String(line.text || ''),
+    boundingBox: line.boundingBox || [],
+    words: (line.words || []).map((w, wi) => ({ id: `P${pi + 1}-L${li + 1}-W${wi + 1}`,
+      text: String(w.text || ''), boundingBox: w.boundingBox || [], confidence: w.confidence ?? null }))
+  })));
+  const skuMaster = master.filter(x => x.sku).slice(0, 1500).map(x => ({ sku: x.sku, item: x.item }));
+  const prompt = `You reconstruct DAM UNITED delivery-note tables from Azure OCR.
+OCR may be column-wise, row-wise, or mixed. Use physical bounding boxes before text order.
+Preserve every physical product row, including crossed-out or unreadable rows. Never invent a SKU, quantity or missing row. Never infer DELIVERED=ORDERED.
+If a quantity is absent, use null. Do not shift all following values based only on count or matching units.
+Only use SKUs found in the supplied branch master; damaged OCR SKUs may be proposed ONLY if unambiguously matched by product name, and must be marked needs_review.
+Do not mistake wrapped product text for a new row unless visual evidence supports a separate physical row.
+Every uncertain association must be marked needs_review. Preserve full unit strings and the 90 ordered vs 30 delivered discrepancy.
+Output ONLY JSON: {"product_rows":[{"sku":string|null,"product_name":string|null,"ordered_raw":string|null,"delivered_raw":string|null,"needs_review":boolean,"review_reasons":string[],"ocr_line_ids":string[],"alignment_status":"geometry"|"inferred_text"|"uncertain"}],"document_warnings":string[]}.
+If you cannot distinguish rows, emit an uncertain row with null values, not a guessed value.
+INPUT:\n${JSON.stringify({ocr_text:annotation.text,ocr_lines:lines,sku_master:skuMaster}).slice(0,170000)}`;
+  const model = String(env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  if (!/^[a-zA-Z0-9._-]{3,70}$/.test(model)) throw new Error('Invalid GEMINI_MODEL setting');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  let payload;
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens:8192} })
+    });
+    if (!response.ok) throw new Error(`Gemini HTTP ${response.status}`);
+    const result = await response.json();
+    const content = (result.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('');
+    payload = JSON.parse(content);
+  } finally { clearTimeout(timer); }
+  if (!Array.isArray(payload?.product_rows) || !payload.product_rows.length || payload.product_rows.length > 120) throw new Error('Gemini returned invalid product rows');
+  const masterMap = new Map(skuMaster.map(x => [String(x.sku).toUpperCase(), x]));
+  const lineIds = new Set(lines.map(x => x.id));
+  const items = payload.product_rows.map((row, i) => {
+    const sku = String(row.sku || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const known = masterMap.get(sku);
+    const refs = Array.isArray(row.ocr_line_ids) ? row.ocr_line_ids.filter(x => lineIds.has(x)).slice(0, 30) : [];
+    const reasons = Array.isArray(row.review_reasons) ? row.review_reasons.map(String).slice(0, 8) : [];
+    if (!known && sku) reasons.push('SKU not found in branch Stocks master');
+    if (!refs.length) reasons.push('No verified OCR line references');
+    const ordered = typeof row.ordered_raw === 'string' ? row.ordered_raw.trim().slice(0, 250) : '';
+    const delivered = typeof row.delivered_raw === 'string' ? row.delivered_raw.trim().slice(0, 250) : '';
+    if (!ordered || !delivered) reasons.push('Missing quantity; staff must verify');
+    const status = 'REVIEW'; // Never auto-confirm AI predictions.
+    return { rowId:`AI-${i+1}`,sku:known?.sku || sku,stockSku:known?.sku || '',
+      item:known?.item || String(row.product_name || '').slice(0,250),ordered,delivered,
+      quantity:'',detailedQty:'',expireDate:'',status,match:known?'SKU_EXACT':'SKU_NOT_FOUND',
+      reviewReason:[...new Set(reasons)].join('; ') || 'AI_RESULT_REQUIRES_STAFF_CONFIRMATION',
+      alignmentStatus:['geometry','inferred_text','uncertain'].includes(row.alignment_status)?row.alignment_status:'uncertain',
+      ocrLineIds:refs,ocrText:refs.map(id => lines.find(l => l.id === id)?.text || '').join(' | ') || String(row.product_name || ''),
+      aiNeedsReview:true };
+  });
+  return { items, state:'READY', warnings:Array.isArray(payload.document_warnings)?payload.document_warnings.slice(0,15):[] };
+}
+
 function dnMetaFromText(text) {
   const t = String(text || '');
   const note = t.match(/(?:DELIVERY\s*(?:NOTE|NO|NUMBER)|DN\s*(?:NO)?)[\s:#-]*([A-Z0-9/-]{3,})/i);
@@ -7067,7 +7131,17 @@ export default {
         const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
           allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
         const documentType = stockLayout ? "STOCK_DOCUMENT" : "DELIVERY_NOTE";
-        const items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnV8Extract(annotation, master, dnBuildItems(annotation, master, body.imageGrid));
+        let items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnV8Extract(annotation, master, dnBuildItems(annotation, master, body.imageGrid));
+        let ai = {state:stockLayout?'SKIPPED_STOCK_DOCUMENT':'NOT_CONFIGURED',warnings:[]};
+        if (!stockLayout) {
+          try {
+            ai = await dnGeminiInterpret(env, annotation, master, items);
+            items = ai.items;
+          } catch (err) {
+            console.error('Gemini interpretation unavailable:', String(err));
+            ai = {state:'FALLBACK_OCR',warnings:['AI interpretation unavailable. Review OCR-based rows manually.']};
+          }
+        }
         const learned = await dnLearningSuggestions(env, branch.sheet_id).catch(()=>[]);
         dnApplyLearningSuggestions(items, learned, documentType);
         return jsonResponse({
@@ -7076,6 +7150,7 @@ export default {
           branch: { code: branch.code, name: branch.name },
           masterCount: master.length,
           items,
+          ai: {state:ai.state,warnings:ai.warnings || []},
           detection: items.detection || {method:"STOCK_SKU",detectedRules:0,physicalRows:items.length,wordCount:dnVisionWords(annotation).length},
           documentType,
           meta: dnMetaFromText(annotation.text),
@@ -7083,7 +7158,8 @@ export default {
           // Preserve original Azure reading order and word confidence for the full OCR review.
           // Never discard unmatched lines just because they are not stock items.
           ocrLines: (annotation.azureResult?.analyzeResult?.readResults || []).flatMap(page =>
-            (page.lines || []).map(line => ({
+            (page.lines || []).map((line, li) => ({
+              id: `P${(annotation.azureResult?.analyzeResult?.readResults || []).indexOf(page) + 1}-L${li + 1}`,
               text: String(line.text || ''),
               confidence: line.words?.length ? line.words.reduce((sum,w) => sum + (Number(w.confidence) || 0), 0) / line.words.length : null,
               boundingBox: line.boundingBox || [],

@@ -165,10 +165,10 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       setRows(old => [...old, ...appended]);
       setPreviewApproved(true);
       setPreviewPage(pages.length);
-      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", originalOcrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length, detection: data.detection || null }]);
+      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", originalOcrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length, detection: data.detection || null, ai: data.ai || null }]);
       setPendingFile(null); setPendingPreview("");
       setNote(n => ({ ...n, deliveryNoteNo: n.deliveryNoteNo || data.meta?.deliveryNoteNo || "", deliveryDate: n.deliveryDate || data.meta?.deliveryDate || "", supplier: n.supplier || data.meta?.supplier || "" }));
-      setMessage(`Page ${pageNo} added: ${appended.length} item(s). ${pageNo} page(s) scanned · ${rows.length + appended.length} total item(s).`);
+      setMessage(`Page ${pageNo} added: ${appended.length} item(s). AI: ${data.ai?.state || "OCR"}. All items require staff confirmation.`);
     } catch (e) { setError(e.message); setMessage(""); }
     finally { setBusy(false); }
   }
@@ -224,7 +224,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       const fieldsOk = documentType === "STOCK_DOCUMENT"
         ? String(next.quantity || "").trim()
         : String(next.ordered || "").trim() && String(next.delivered || "").trim();
-      next.status = String(next.item || "").trim() && String(next.sku || "").trim() && fieldsOk ? "CONFIRMED" : "REVIEW";
+      next.status = "REVIEW"; // Explicit staff confirmation is required after any edit.
       return next;
     }));
   }
@@ -318,7 +318,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
       <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"12px 0"}}>
         {pages.map((p,i)=><button key={p.pageNo} type="button" onClick={()=>setPreviewPage(i)} style={{padding:"9px 14px",borderRadius:8,border:"1px solid #cbd5e1",background:previewPage===i?"#dbeafe":"#fff",cursor:"pointer"}}>View Original Page {p.pageNo}</button>)}
       </div>
-      {pages[previewPage] && <><div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:13,color:"#475569",padding:"10px 0"}}><b>OCR words: {pages[previewPage].detection?.wordCount ?? "?"}</b><b>Physical rows: {pages[previewPage].detection?.physicalRows ?? "?"}</b><b>Table rules: {pages[previewPage].detection?.detectedRules ?? "?"}</b><b>Method: {pages[previewPage].detection?.method ?? "OCR"}</b></div><details open><summary style={{cursor:"pointer",fontWeight:700}}>Original photographed page {pages[previewPage].pageNo}</summary><img src={pages[previewPage].preview} alt={`Original document page ${pages[previewPage].pageNo}`} style={{display:"block",width:"100%",maxWidth:700,maxHeight:850,objectFit:"contain",margin:"12px auto",borderRadius:10}}/></details><details><summary style={{cursor:"pointer",fontWeight:700}}>Full OCR transcription (all detected lines)</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",background:"#f8fafc",padding:16,borderRadius:10,maxHeight:360,overflow:"auto"}}>{pages[previewPage].ocrText}</pre></details></>}
+      {pages[previewPage] && <><div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:13,color:"#475569",padding:"10px 0"}}><b>OCR words: {pages[previewPage].detection?.wordCount ?? "?"}</b><b>Physical rows: {pages[previewPage].detection?.physicalRows ?? "?"}</b><b>Table rules: {pages[previewPage].detection?.detectedRules ?? "?"}</b><b>Method: {pages[previewPage].detection?.method ?? "OCR"}</b><b>AI: {pages[previewPage].ai?.state || "OCR"}</b></div><details open><summary style={{cursor:"pointer",fontWeight:700}}>Original photographed page {pages[previewPage].pageNo}</summary><img src={pages[previewPage].preview} alt={`Original document page ${pages[previewPage].pageNo}`} style={{display:"block",width:"100%",maxWidth:700,maxHeight:850,objectFit:"contain",margin:"12px auto",borderRadius:10}}/></details><details><summary style={{cursor:"pointer",fontWeight:700}}>Full OCR transcription (all detected lines)</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",background:"#f8fafc",padding:16,borderRadius:10,maxHeight:360,overflow:"auto"}}>{pages[previewPage].ocrText}</pre></details></>}
       <p style={{marginTop:12,fontSize:13,color:"#64748b"}}>Rows marked REVIEW require your verification. Crossed-out rows stay visible until you delete them. Editing a quantity directly in the table changes the value that will be submitted.</p>
     </section>}
 
@@ -334,7 +334,7 @@ export default function BartDeliveryNotes({ branch, onBack }) {
         <tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}>
           <td>{i+1}</td><td>P{r.pageNo || 1}</td>
           <td className="dnv-sku"><input value={r.sku || ""} onChange={e=>updateRow(i,"sku",e.target.value)} title="Exact SKU lookup from branch Stocks"/></td>
-          <td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>{r.crossedOut ? "⚠ Possible crossed-out item — verify / delete. " : ""}OCR: {r.ocrText}{(r.learningSuggestions||[]).map((tip,k)=><span key={k} style={{display:'block',color:'#b45309',fontWeight:700}}>⚠ Previously corrected {tip.field}: {tip.original} → {tip.suggested} ({tip.confirmations} verified examples). Check before accepting.</span>)}</small></td>
+          <td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>{r.crossedOut ? "Possible crossed-out item — verify / delete. " : ""}{r.reviewReason ? `Review: ${r.reviewReason}. ` : ""}OCR: {r.ocrText}{(r.learningSuggestions||[]).map((tip,k)=><span key={k} style={{display:'block',color:'#b45309',fontWeight:700}}>⚠ Previously corrected {tip.field}: {tip.original} → {tip.suggested} ({tip.confirmations} verified examples). Check before accepting.</span>)}</small></td>
           {documentType === "STOCK_DOCUMENT" ? <>
             <td className="dnv-quantity"><textarea rows={2} value={r.detailedQty || ""} onChange={e=>updateRow(i,"detailedQty",e.target.value)}/></td>
             <td className="dnv-quantity"><textarea rows={2} value={r.expireDate || ""} onChange={e=>updateRow(i,"expireDate",e.target.value)}/></td>
