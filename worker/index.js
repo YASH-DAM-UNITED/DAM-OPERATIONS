@@ -6843,23 +6843,39 @@ Every uncertain association must be marked needs_review. Preserve full unit stri
 Output ONLY JSON: {"product_rows":[{"sku":string|null,"product_name":string|null,"ordered_raw":string|null,"delivered_raw":string|null,"needs_review":boolean,"review_reasons":string[],"ocr_line_ids":string[],"alignment_status":"geometry"|"inferred_text"|"uncertain"}],"document_warnings":string[]}.
 If you cannot distinguish rows, emit an uncertain row with null values, not a guessed value.
 INPUT:\n${JSON.stringify({ocr_text:annotation.text,ocr_lines:lines,sku_master:skuMaster}).slice(0,170000)}`;
-  const model = String(env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
-  if (!/^[a-zA-Z0-9._-]{3,70}$/.test(model)) throw new Error('Invalid GEMINI_MODEL setting');
+  const configuredModel = 'gemma-4-31b-it'; // Fixed model: no paid-model auto-selection.
+  if (!/^[a-zA-Z0-9._-]{3,70}$/.test(configuredModel)) throw new Error('Invalid GEMINI_MODEL setting');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   let payload;
-  try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST', signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens:8192} })
+  const requestBody = JSON.stringify({
+    contents:[{parts:[{text:prompt}]}],
+    generationConfig:{temperature:0,maxOutputTokens:8192}
+  });
+  const callModel = async (model) => {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method:'POST', signal:controller.signal,
+      headers:{'Content-Type':'application/json','x-goog-api-key':key}, body:requestBody
     });
-    if (!response.ok) throw new Error(`Gemini HTTP ${response.status}`);
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      // Only the API's public error message is logged; never log request headers or secrets.
+      const detail = String(errorPayload?.error?.message || '').slice(0,450);
+      const error = new Error(`Gemma HTTP ${response.status} (model ${model})${detail ? ': '+detail : ''}`);
+      error.httpStatus = response.status;
+      throw error;
+    }
     const result = await response.json();
     const content = (result.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('');
-    payload = JSON.parse(content);
+    // Gemma may return JSON in a Markdown code fence. Accept only a JSON object.
+    const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/,'').trim();
+    return JSON.parse(cleaned);
+  };
+  try {
+    payload = await callModel(configuredModel);
+    console.log('Gemma interpretation model:', configuredModel);
   } finally { clearTimeout(timer); }
-  if (!Array.isArray(payload?.product_rows) || !payload.product_rows.length || payload.product_rows.length > 120) throw new Error('Gemini returned invalid product rows');
+  if (!Array.isArray(payload?.product_rows) || !payload.product_rows.length || payload.product_rows.length > 120) throw new Error('Gemma returned invalid product rows');
   const masterMap = new Map(skuMaster.map(x => [String(x.sku).toUpperCase(), x]));
   const lineIds = new Set(lines.map(x => x.id));
   const items = payload.product_rows.map((row, i) => {
