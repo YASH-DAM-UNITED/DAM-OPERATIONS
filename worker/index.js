@@ -7340,15 +7340,7 @@ export default {
         );
         if (invalid) return jsonResponse({success:false,message:'Every item must have a product name and be explicitly confirmed before submission.'},400);
 
-        const rawPages=Array.isArray(body.ocrPages)?body.ocrPages:[];
-        const pageHints=rawPages.map(text=>String(text||'').slice(0,9000).match(/\bpages?\s*[:#-]?\s*(\d{1,2})\s*(?:\/|of)\s*(\d{1,2})\b|(?:^|\n)\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*(?:$|\n)/i)).filter(Boolean)
-          .map(m=>({current:Number(m[1]||m[3]),total:Number(m[2]||m[4])})).filter(x=>x.total>1&&x.total<=30&&x.current>0&&x.current<=x.total);
-        if(pageHints.length){
-          const expected=Math.max(...pageHints.map(x=>x.total));
-          const observed=new Set(pageHints.map(x=>x.current));
-          if(rawPages.length<expected||Array.from({length:expected},(_,i)=>i+1).some(n=>!observed.has(n)))
-            return jsonResponse({success:false,message:`This delivery note requires ${expected} pages. Upload all numbered pages before submitting.`},409);
-        }
+        // V3.2: numbered pages are optional; only uploaded pages are submitted.
         const orderType = String(body.orderType || '').trim();
         if (!['Dry Order','Food Order','Bakery Order'].includes(orderType)) return jsonResponse({success:false,message:'Select an order type: Dry Order, Food Order or Bakery Order.'},400);
         const submittedBy = String(body.submittedBy || '').trim();

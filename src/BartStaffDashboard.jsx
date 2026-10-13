@@ -721,6 +721,7 @@ export default function BartStaffDashboard({
     useState(null);
 
   const operationsSectionRef = useRef(null);
+  const [branchCardActivated,setBranchCardActivated] = useState(false);
   const stockViewRef =
     useRef(null);
 
@@ -1892,10 +1893,14 @@ export default function BartStaffDashboard({
             title="Go to branch operations"
             onClick={() => {
               touchSession();
-              scrollToElement(operationsSectionRef);
+              setBranchCardActivated(true);
+              window.requestAnimationFrame(() => {
+                operationsSectionRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
+                operationsSectionRef.current?.focus({preventScroll:true});
+              });
             }}
-            style={{cursor:'pointer',textAlign:'left',width:'100%',fontFamily:'inherit'}}
-            className="bart-branch-card"
+            style={{cursor:'pointer',textAlign:'left',width:'100%',fontFamily:'inherit',outline:branchCardActivated?'2px solid #06b6d4':undefined,outlineOffset:'3px',transition:'outline-color .2s'}}
+            className={`bart-branch-card ${branchCardActivated?"dam-branch-selected":""}`}
             initial={{
               opacity: 0,
               y: 25,
@@ -2241,7 +2246,7 @@ export default function BartStaffDashboard({
         </motion.section>
 
 
-        <section ref={operationsSectionRef} className="bart--header">
+        <section ref={operationsSectionRef} tabIndex={-1} style={{scrollMarginTop:24,outline:"none"}} className={`bart--header ${branchCardActivated?"dam-operations-focused":""}`}>
           <div>
             <span>
               OPERATIONS
