@@ -16,6 +16,7 @@
 import {
   handleMoomaRequest,
 } from "./moomaBackend.js";
+import deliveryItemCatalog from "../src/dam-item-catalog.json";
 
 
 
@@ -6323,6 +6324,41 @@ function dnStockMaster(stockRows) {
   return out;
 }
 
+// Delivery Note catalog: UOM is sourced ONLY from the versioned GitHub JSON,
+// never from the branch Stocks tab. Preserve the catalog's original UOM spelling.
+function dnCatalogMaster(brand, stockRows) {
+  const entries = deliveryItemCatalog?.brands?.[brand] || [];
+  const out = [];
+  const seen = new Set();
+  const catalogBySku = new Map();
+  const catalogByName = new Map();
+  for (const entry of entries) {
+    const sku = String(entry.sku || '').trim();
+    const item = String(entry.item || '').trim();
+    const norm = dnNormalize(item);
+    if (!item || !norm) continue;
+    // '-' is a placeholder shared by several distinct products, not a valid SKU.
+    const validSku = sku && sku !== '-' ? sku : '';
+    const obj = { sku: validSku, item, stockUom: String(entry.uom || '').trim(), norm, category: String(entry.category || '') };
+    const key = `${norm}|${validSku.toUpperCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(obj);
+    if (validSku && !catalogBySku.has(validSku.toUpperCase())) catalogBySku.set(validSku.toUpperCase(),obj);
+    if (!catalogByName.has(norm)) catalogByName.set(norm,obj);
+  }
+  // Keep products that exist only in the live Stocks sheet searchable, but DO NOT
+  // copy the Stocks UOM into them: unknown catalog UOM must remain empty.
+  for (const stock of dnStockMaster(stockRows)) {
+    const norm = dnNormalize(stock.item);
+    const sku = String(stock.sku || '').trim();
+    if (!norm || catalogByName.has(norm) || (sku && sku !== '-' && catalogBySku.has(sku.toUpperCase()))) continue;
+    const key = `${norm}|${sku.toUpperCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push({sku:sku === '-' ? '' : sku,item:stock.item,stockUom:'',norm,category:''});
+  }
+  return out;
+}
+
 function dnVertices(poly) {
   const v = Array.isArray(poly?.vertices) ? poly.vertices : [];
   const xs = v.map((p) => Number(p?.x)).filter(Number.isFinite);
@@ -7167,7 +7203,7 @@ export default {
         const branch = await getBartBranchGoogle(env, branchCode);
         if (!branch) return jsonResponse({success:false,message:"BART branch not found."},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
-        const master = dnStockMaster(stock.rows).filter(x => x.sku);
+        const master = dnCatalogMaster('BART', stock.rows);
         return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item,uom:x.stockUom || ""}))});
       }
 
@@ -7180,7 +7216,7 @@ export default {
         const branch = await getBartBranchGoogle(env, branchCode);
         if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
-        const master = dnStockMaster(stock.rows);
+        const master = dnCatalogMaster('BART', stock.rows);
         const documentType = body.documentType === 'STOCK_DOCUMENT' ? 'STOCK_DOCUMENT' : 'DELIVERY_NOTE';
         const items = dnV2MatchRows(dnReparseCorrectedText(correctedText, master, documentType), master, documentType);
         return jsonResponse({success:true,items,documentType,meta:dnMetaFromText(correctedText)});
@@ -7204,8 +7240,8 @@ export default {
         const branch = await getBartBranchGoogle(env, branchCode);
         if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
-        const master = dnStockMaster(stock.rows);
-        if (!master.length) return jsonResponse({success:false,message:'No items found in this branch Stocks tab.'},409);
+        const master = dnCatalogMaster('BART', stock.rows);
+        if (!master.length) return jsonResponse({success:false,message:'No items found in the delivery note catalog or branch Stocks tab.'},409);
 
         // Daily OCR allowance is stored in the SAME Delivery Note tab (M:N).
         // This is server-side, so refresh/device changes cannot reset the limit.

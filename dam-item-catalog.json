@@ -1,0 +1,1674 @@
+{
+  "schemaVersion": 1,
+  "source": "DAM_United_Master_Item_Catalog(1).xlsx",
+  "brands": {
+    "BART": [
+      {
+        "sku": "C045",
+        "item": "HDPE Poly Gloves (100 Packet x 50 Pcs)",
+        "uom": "CTN / 5000 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB043",
+        "item": "Vanilla Powder",
+        "uom": "PCS/250 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB054",
+        "item": "Kinder Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB055",
+        "item": "Nutella Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB056",
+        "item": "Pudding Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB057",
+        "item": "Kinder Maxi 36*21gm",
+        "uom": "Case / 24 pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB065",
+        "item": "Peanut Pack 250 gm",
+        "uom": "Case/250 gm",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB076",
+        "item": "Pecan Sauce",
+        "uom": "PCS / 5KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CRS",
+        "item": "Caramel Sauce Bucket",
+        "uom": "PCS / 5KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "F066",
+        "item": "BART French Toast Brioche",
+        "uom": "Blockes",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "F081",
+        "item": "Chocolate Pudding Cup",
+        "uom": "Crate / 80 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "K265",
+        "item": "Galaxy Chocolate Bars",
+        "uom": "Case / 24 pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "K274",
+        "item": "Kwality Vanilla Soft Ice Cream",
+        "uom": "CTN / 12 PAK",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "P130",
+        "item": "Wooden Coffee Stirrers - Bart",
+        "uom": "Carton / 500 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "C005",
+        "item": "Kitchen Tissue Roll",
+        "uom": "Carton / 6 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C007",
+        "item": "T. NAP 30X30 1P",
+        "uom": "Carton / 4000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C010",
+        "item": "Mask",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C011",
+        "item": "Gloves",
+        "uom": "Carton / 1000",
+        "category": "DRY"
+      },
+      {
+        "sku": "C012",
+        "item": "Hair Net",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C013",
+        "item": "Apron",
+        "uom": "Carton / 800 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C014",
+        "item": "Baladiya Bag",
+        "uom": "Bag 25 Kg",
+        "category": "DRY"
+      },
+      {
+        "sku": "C015",
+        "item": "Shrink Naylon Film",
+        "uom": "Carton / 6 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C016",
+        "item": "Scotch Bright",
+        "uom": "Carton / 120 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C048",
+        "item": "Trash bags 20 Gallon",
+        "uom": "Carton / 10 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "CF009",
+        "item": "Coffee Filter Papers",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P039",
+        "item": "Plastic Fork Black (20*50)(pp)",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P082",
+        "item": "Printed Paper Cup 12oz - Bart",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P083",
+        "item": "White Lid for Paper Cup 12oz - Bart",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P084",
+        "item": "Printed Paper Bag W/ Handle - Bart",
+        "uom": "Carton / 250 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P095",
+        "item": "BART Plastic Cold Cup 12oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P101",
+        "item": "Ice Cream Black Spoon",
+        "uom": "CTN /1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P125",
+        "item": "Black Plastic Knife (pp)",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P132",
+        "item": "Injection Lid for Paper Cup",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P155",
+        "item": "Flat Lid for Cold Cup",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P156",
+        "item": "Cups for Ice Cream Test",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P157",
+        "item": "Lid for Ice Cream Test Cup",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P158",
+        "item": "Sticker BART",
+        "uom": "Roll",
+        "category": "DRY"
+      },
+      {
+        "sku": "P160",
+        "item": "Kinder Sticker Label",
+        "uom": "Roll",
+        "category": "DRY"
+      },
+      {
+        "sku": "P161",
+        "item": "⁠Nutella Sticker Label",
+        "uom": "Roll",
+        "category": "DRY"
+      },
+      {
+        "sku": "P178",
+        "item": "Black Straw 8 ML (20 x 100 Pcs)",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P208",
+        "item": "Small Cake Box",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P218",
+        "item": "Ice Cream Plastic Cup 3 Oz",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P219",
+        "item": "Lid for Ice Cream Plastic Cup 3 Oz",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P296",
+        "item": "BART White Paper Cup 16oz",
+        "uom": "Carton / 450 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P298",
+        "item": "Black Straw 4 ML (20 x 200 Pcs)",
+        "uom": "Carton / 5000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P320",
+        "item": "BART PPG Paper Cup 12 Oz (Dark Pink)",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P321",
+        "item": "BART PPG Paper Cup 12 Oz (Light Pink)",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P337",
+        "item": "Bart Galaxy Paper Cup 12 Oz",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P341",
+        "item": "Plastic Cups 12 Oz",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P342",
+        "item": "PP Flat Black Lid for 12 Oz Plastic Cup",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P396",
+        "item": "Bart Sweet Box",
+        "uom": "Carton / 400 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P412",
+        "item": "Bart Bo3omar Paper Cup 12 Oz",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P417",
+        "item": "BART White Paper Cup 12 Oz (Ethiopi cup)",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "RS001",
+        "item": "POS Roll",
+        "uom": "Carton / 100 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "RS002",
+        "item": "Date Sticker",
+        "uom": "Carton / 36 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "T040",
+        "item": "Shelf Life Sticker",
+        "uom": "Roll",
+        "category": "DRY"
+      },
+      {
+        "sku": "T063",
+        "item": "BART PPG Figurine",
+        "uom": "Carton / 172 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "2 Cup Tray- Bart",
+        "uom": "Carton 400 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "4 Cup Tray - Bart",
+        "uom": "Carton 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "B014",
+        "item": "Mango Juice Gallon",
+        "uom": "Gallon 4.5L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B016",
+        "item": "Hibiscus Ice Tea",
+        "uom": "Bottle 900 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B017",
+        "item": "Peach Ice Tea Syrup",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B018",
+        "item": "Code Red Syrup",
+        "uom": "Bottle 900 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B019",
+        "item": "Code Blue Syrup",
+        "uom": "Bottle 900 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B026",
+        "item": "Red Bull Watermelon Slush",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B029",
+        "item": "Berry Ice Tea",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B034",
+        "item": "ARWA Water 330ML",
+        "uom": "Carton 40 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B039",
+        "item": "Coconut Slush",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB009",
+        "item": "CARLEX Spray Release Agent 6 x 600 ML",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB032",
+        "item": "BELCHOCO Feuilletine Flakes",
+        "uom": "Carton 2.5 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB036",
+        "item": "Frozen Whole Egg Liquid",
+        "uom": "Pack 2 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF006",
+        "item": "Coffee - Blend U",
+        "uom": "kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF007",
+        "item": "Coffee - Blend DR - DR بلند",
+        "uom": "kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF038",
+        "item": "Coffee Eth. Sidamo DAM 1Kg",
+        "uom": "Pack 1 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K072",
+        "item": "Bidfood - EMBORG Cooking Cream 12*1L",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K087",
+        "item": "Salt SASA 750 gm",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K176",
+        "item": "FRICHILI Cooking Cream 20% FAT 12x1Kg",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K242",
+        "item": "Nadec - UHT Milk FF 12 x 1L",
+        "uom": "Carton 12 Liters",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K308",
+        "item": "PUCK Cooking Cream 10*1L",
+        "uom": "Carton 10 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S046",
+        "item": "Nestle Sauce 500ml",
+        "uom": "Bottle 500 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "Cinnamon powder",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "SCOTCH FOR SAJ",
+        "uom": "PCS",
+        "category": "FOOD"
+      }
+    ],
+    "GLOR": [
+      {
+        "sku": "C045",
+        "item": "HDPE Poly Gloves (100 Packet x 50 Pcs)",
+        "uom": "CTN / 5000 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB043",
+        "item": "Vanilla Powder",
+        "uom": "PCS/250 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB055",
+        "item": "Nutella Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB057",
+        "item": "Kinder Maxi 36*21gm",
+        "uom": "Case / 36 PIECES",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB076",
+        "item": "Pecan Sauce",
+        "uom": "Pcs / 5 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB084",
+        "item": "DAM White Chocolate 5KG",
+        "uom": "Case / 5 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB088",
+        "item": "Galaxy Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB089",
+        "item": "Premium Kinder Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB093",
+        "item": "DeZaan Cacao Powder",
+        "uom": "Pack / 250 g",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB103",
+        "item": "Dark Chocolate Buttons",
+        "uom": "Pack / 3 Kg",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB104",
+        "item": "Oil Bottle",
+        "uom": "Bottle / 900 Gm",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "F081",
+        "item": "Chocolate Pudding Cup",
+        "uom": "Crate / 80 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "F144",
+        "item": "Brioche Loaf",
+        "uom": "Block / 8 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "F145",
+        "item": "Lava Cake",
+        "uom": "Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "K265",
+        "item": "Galaxy Small Smooth Milk",
+        "uom": "Cases / 24 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "K274",
+        "item": "Kwality Vanilla Soft Ice Cream",
+        "uom": "CTN / 12 PAK",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "P130",
+        "item": "Wooden Coffee Stirrers - GLOR",
+        "uom": "Carton / 500 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "-",
+        "item": "French Vanilla Syrup",
+        "uom": "Box/500 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "-",
+        "item": "Kinder Bueno",
+        "uom": "Box/30 Pkts",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "C005",
+        "item": "Kitchen Tissue Roll",
+        "uom": "Carton / 6 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C010",
+        "item": "Mask",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C011",
+        "item": "Gloves",
+        "uom": "Carton / 1000",
+        "category": "DRY"
+      },
+      {
+        "sku": "C012",
+        "item": "Hair Net",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C013",
+        "item": "Apron",
+        "uom": "Carton / 800 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C014",
+        "item": "Baladiya Bag",
+        "uom": "Bag 25 Kg",
+        "category": "DRY"
+      },
+      {
+        "sku": "C015",
+        "item": "Shrink Naylon Film",
+        "uom": "Carton / 6 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C016",
+        "item": "Scotch Bright",
+        "uom": "Carton / 120 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C048",
+        "item": "Trash bags 20 Gallon",
+        "uom": "Carton / 10 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C049",
+        "item": "GLOR T.Nap 24x24 1Ply",
+        "uom": "Carton / 4000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C051",
+        "item": "Black Large Vinyl Gloves",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "CF009",
+        "item": "Coffee Filter Papers",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "CF022",
+        "item": "Drip Coffee Filter V60",
+        "uom": "Carton / 8000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P156",
+        "item": "Cups for Ice Cream Test",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P157",
+        "item": "Lid for Ice Cream Test Cup",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P218",
+        "item": "Ice Cream Plastic Cup 3 Oz",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P219",
+        "item": "Lid for Ice Cream Plastic Cup 3 Oz",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P298",
+        "item": "Black Straw 4 ML (20 x 200 Pcs)",
+        "uom": "Carton / 5000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P342",
+        "item": "PP Flat Black Lid for 12 Oz Plastic Cup",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P360",
+        "item": "GLOR Paper Bag W/ Handle",
+        "uom": "Carton / 200 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P361",
+        "item": "GLOR Cake Box Tray",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P361-S",
+        "item": "GLOR Cake Box Sleeve",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P362",
+        "item": "GLOR Pudding Cup 12oz",
+        "uom": "Carton / 1050 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P362-L",
+        "item": "GLOR Lid for Pudding Cup 12oz",
+        "uom": "Carton / 200 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P363",
+        "item": "GLOR Paper Cup 12oz",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P369",
+        "item": "GLOR Paper Cup 9oz",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P370",
+        "item": "GLOR Espresso Cup 4oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P377",
+        "item": "GLOR Sandwich Paper 20*20",
+        "uom": "Bundle / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P381",
+        "item": "GLOR Plastic Cup 12oz",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P383",
+        "item": "GLOR Brown Spork",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P385",
+        "item": "GLOR Plastic Lid for Paper Cup 9oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P386",
+        "item": "GLOR Plastic Lid for Paper Cup 12oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P392",
+        "item": "Glor Cake Box 18*12*6cm",
+        "uom": "Carton / 150 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P418",
+        "item": "GLOR PET Plastic Cup 12oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P425",
+        "item": "GLOR Kinder Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P426",
+        "item": "GLOR Pecan Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P427",
+        "item": "GLOR Galaxy Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P428",
+        "item": "GLOR Belgian Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P436",
+        "item": "Glor National Day Paper Cup 12oz",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P449",
+        "item": "Injection Lid for Paper Cup 12oz",
+        "uom": "Carton / 1200 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "RS001",
+        "item": "POS Roll",
+        "uom": "Carton / 100 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "RS002",
+        "item": "Date Sticker",
+        "uom": "Carton 250 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "T040",
+        "item": "Shelf Life Sticker",
+        "uom": "Roll",
+        "category": "DRY"
+      },
+      {
+        "sku": "T069",
+        "item": "Star Wand",
+        "uom": "Carton / 200 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "2 Cup Tray- Bart",
+        "uom": "Carton / 250 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "4 Cup Tray - Bart",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "LID for GLOR PET Plastic Cup 12oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "B016",
+        "item": "Hibiscus Ice Tea",
+        "uom": "Bottle 900 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B017",
+        "item": "Peach Ice Tea Syrup",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B034",
+        "item": "ARWA Water 330ML",
+        "uom": "Carton 40 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB009",
+        "item": "CARLEX Spray Release Agent 6 x 600 ML",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB032",
+        "item": "BELCHOCO Feuilletine Flakes",
+        "uom": "Carton 2.5 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB036",
+        "item": "Frozen Whole Egg Liquid",
+        "uom": "Pack 2 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF036",
+        "item": "DAM Matcha Powder",
+        "uom": "Pack 250 GM",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF037",
+        "item": "Coffee Brazil Rosa DAM 1Kg",
+        "uom": "Pack 1 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF038",
+        "item": "Coffee Eth. Sidamo DAM 1Kg",
+        "uom": "Pack 1 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "F159",
+        "item": "Cinnabon Roll",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K072",
+        "item": "Bidfood - EMBORG Cooking Cream 12*1L",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K087",
+        "item": "Salt SASA 750 gm",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K127",
+        "item": "Nestle Sweetened Condensed Milk 12 x 1 Kg",
+        "uom": "Carton",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K242",
+        "item": "Nadec - UHT Milk FF 12 x 1L",
+        "uom": "Carton 12 Liters",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K258",
+        "item": "Badr Analogue Cream Bake Stable 5 Kg",
+        "uom": "Bucket 5 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K291",
+        "item": "Alpro Barista Coconut Milk 12 x 1L",
+        "uom": "Carton 12 Liters",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K292",
+        "item": "Hopla Vegetable Whipping Cream 12*1L",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K308",
+        "item": "PUCK Cooking Cream 10*1L",
+        "uom": "Carton 10 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S042",
+        "item": "Pecan Caramel Sauce",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S046",
+        "item": "Nestle Sauce 500ml",
+        "uom": "Bottle 500 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S048",
+        "item": "Honey Syrup",
+        "uom": "Bottle 500 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S049",
+        "item": "Brownie Syrup",
+        "uom": "Bottle 500 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "Cinnamon powder",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "SCOTCH FOR SAJ",
+        "uom": "Pcs",
+        "category": "FOOD"
+      }
+    ],
+    "MOOMA": [
+      {
+        "sku": "C045",
+        "item": "HDPE Poly Gloves (100 Packet x 50 Pcs)",
+        "uom": "CTN / 5000 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB024",
+        "item": "Belchoco Caramel Sea Salt",
+        "uom": "CARTON",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB043",
+        "item": "Vanilla Powder",
+        "uom": "PCS/250 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB057",
+        "item": "Kinder Maxi 36*21gm",
+        "uom": "Case / 36 PIECES",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB088",
+        "item": "Galaxy Sauce",
+        "uom": "Case/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB089",
+        "item": "Premium Kinder Sauce",
+        "uom": "Cases/2 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB093",
+        "item": "DeZaan Cacao Powder",
+        "uom": "Pack / 250 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB102",
+        "item": "White Chocolate Buttons",
+        "uom": "Cases/3 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB103",
+        "item": "Dark Chocolate Buttons",
+        "uom": "Cases/3 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CB104",
+        "item": "Sunflower Oil",
+        "uom": "Bottle/900 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "CWS",
+        "item": "Caramelized White Chocolate",
+        "uom": "Case/3 KG",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "F145",
+        "item": "Lava Cake",
+        "uom": "Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "K154",
+        "item": "KDD Vanilla Soft Ice Cream",
+        "uom": "Carton/12 PAK",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "LOAF",
+        "item": "Brioche Loaf",
+        "uom": "Block",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "P130",
+        "item": "Wooden Coffee Stirrers",
+        "uom": "Carton / 500 Pcs",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "-",
+        "item": "French Vanilla Syrup",
+        "uom": "Box / 500 G",
+        "category": "BAKERY"
+      },
+      {
+        "sku": "C002",
+        "item": "Autocut Roll",
+        "uom": "Carton / 6 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C005",
+        "item": "Kitchen Tissue Roll",
+        "uom": "Carton / 6 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C010",
+        "item": "Mask",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C011",
+        "item": "Gloves",
+        "uom": "Carton / 1000",
+        "category": "DRY"
+      },
+      {
+        "sku": "C012",
+        "item": "Hair Net",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C013",
+        "item": "Apron",
+        "uom": "Carton / 800 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C014",
+        "item": "Baladiya Bag",
+        "uom": "Carton 250 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C015",
+        "item": "Shrink Naylon Film",
+        "uom": "Carton 250 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C016",
+        "item": "Scotch Bright",
+        "uom": "Carton / 120 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C048",
+        "item": "Trash bags 20 Gallon",
+        "uom": "Carton / 10 Rolls",
+        "category": "DRY"
+      },
+      {
+        "sku": "C050",
+        "item": "Mooma T.NAP 24X24 1Ply",
+        "uom": "Carton / 4000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C051",
+        "item": "Black Large Vinyl Gloves",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "C052",
+        "item": "Blue Large TPE Gloves 10*100",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "CF009",
+        "item": "Coffee Filter Papers",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "CF022",
+        "item": "Drip Coffee Filter Paper (V60)",
+        "uom": "Carton / 8000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P155",
+        "item": "Flat Lid for Plastic Inner Cup 12oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P156",
+        "item": "Cups for Ice Cream Test",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P157",
+        "item": "Lid for Ice Cream Test Cup",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P218",
+        "item": "Ice Cream Plastic Cup 3 Oz",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P219",
+        "item": "Lid for Ice Cream Plastic Cup 3 Oz",
+        "uom": "Carton / 2000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P298",
+        "item": "Black Straw 4mm",
+        "uom": "Carton / 4000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P364",
+        "item": "Mooma Cake Box Tray",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P364-S",
+        "item": "Mooma Cake Box Sleeve",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P365",
+        "item": "Mooma Fabric Bag",
+        "uom": "Carton / 400 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P366",
+        "item": "Mooma Paper Cup 12oz",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P367",
+        "item": "Mooma Boat Tray 12*16*4cm",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P371",
+        "item": "Mooma Cake Box",
+        "uom": "Carton / 175 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P372",
+        "item": "Mooma Paper Cup 9oz",
+        "uom": "Carton / 500 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P373",
+        "item": "Mooma Espresso Cup 4oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P375",
+        "item": "Mooma Paper Bag W/O Handle",
+        "uom": "Carton / 600 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P376",
+        "item": "Mooma Sandwich Bag",
+        "uom": "Carton / 1720 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P378",
+        "item": "Mooma Sandwich paper 20*20",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P379",
+        "item": "Mooma Sandwich paper 35*25",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P384",
+        "item": "Mooma Burgundy Spork",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P385",
+        "item": "PP 80 Transparent lid for 8oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P397",
+        "item": "Plastic Inner Cup 12oz",
+        "uom": "Carton / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P420",
+        "item": "MOOMA Sticker Belgian",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P421",
+        "item": "MOOMA Kinder Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P422",
+        "item": "MOOMA Original Pecan Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P423",
+        "item": "MOOMA Original Salted Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P424",
+        "item": "MOOMA Original Belgian Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P429",
+        "item": "MOOMA Cream Belgian Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P430",
+        "item": "MOOMA Cream Salted Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P431",
+        "item": "MOOMA Cream Pecan Sticker",
+        "uom": "Roll / 1000 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "P449",
+        "item": "Injection Lid for Paper Cup 12oz",
+        "uom": "Carton / 1200 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "RS001",
+        "item": "POS Roll",
+        "uom": "Carton / 100 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "RS002",
+        "item": "Date Sticker",
+        "uom": "Carton / 36 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "T040",
+        "item": "Shelf Life Sticker",
+        "uom": "Roll",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "2 Cup Tray- Bart",
+        "uom": "Carton / 400 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "-",
+        "item": "4 Cup Tray - Bart",
+        "uom": "Carton / 300 Pcs",
+        "category": "DRY"
+      },
+      {
+        "sku": "B014",
+        "item": "Mango Juice Gallon",
+        "uom": "Gallon 4.5L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B016",
+        "item": "Hibiscus Ice Tea",
+        "uom": "Bottle 900 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B017",
+        "item": "Peach Ice Tea Syrup",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "B034",
+        "item": "ARWA Water 330ML",
+        "uom": "Carton 40 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB009",
+        "item": "CARLEX Spray Release Agent 6 x 600 ML",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB032",
+        "item": "BELCHOCO Feuilletine Flakes",
+        "uom": "Carton 2.5 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB036",
+        "item": "Frozen Whole Egg Liquid",
+        "uom": "Pack 2 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB100",
+        "item": "Roasted Pecan",
+        "uom": "Pack 500 GM",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CB119",
+        "item": "Frozen Square Cake",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF036",
+        "item": "DAM Matcha Powder",
+        "uom": "Pack 250 GM",
+        "category": "FOOD"
+      },
+      {
+        "sku": "CF038",
+        "item": "Coffee Eth. Sidamo DAM 1Kg",
+        "uom": "Pack 1 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "F108",
+        "item": "Goody Jalapeno Pickles SLC 6x2100G",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "F147",
+        "item": "Ciabatta Bread",
+        "uom": "Packet 5 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "F150",
+        "item": "Dolcey Cake Slice",
+        "uom": "Tray 9 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "F153",
+        "item": "London Cake",
+        "uom": "Tray 10 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "F158",
+        "item": "Cheese Cake",
+        "uom": "Carton 8 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K072",
+        "item": "Bidfood - EMBORG Cooking Cream 12*1L",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K087",
+        "item": "Salt SASA 750 gm",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K127",
+        "item": "Nestle Sweetened Condensed Milk 12 x 1 Kg",
+        "uom": "Carton",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K176",
+        "item": "FRICHILI Cooking Cream 20% FAT 12x1Kg",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K242",
+        "item": "Nadec - UHT Milk FF 12 x 1L",
+        "uom": "Carton 12 Liters",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K258",
+        "item": "Badr Analogue Cream Bake Stable 5 Kg",
+        "uom": "Bucket 5 Kg",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K259",
+        "item": "Flaked Light Tuna (6*1.22Kg)",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K271",
+        "item": "TABASCO Red Pepper Sauce 350ML 1*12Pcs",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K272",
+        "item": "TABASCO Green Pepper Sauce 150ML 1*12Pcs",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K291",
+        "item": "Alpro Barista Coconut Milk 12 x 1L",
+        "uom": "Carton 12 Liters",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K292",
+        "item": "Hopla Vegetable Whipping Cream 12*1L",
+        "uom": "Carton 12 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K301",
+        "item": "Fo Vanilla Syrup 925 gr",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K302",
+        "item": "Fo Caramel Syrup 925 gr",
+        "uom": "Carton 6 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "K308",
+        "item": "PUCK Cooking Cream 10*1L",
+        "uom": "Carton 10 Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S042",
+        "item": "Pecan Sauce",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S043",
+        "item": "Pesto Sauce",
+        "uom": "Bag 500gm",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S045",
+        "item": "Tuna Dressing",
+        "uom": "Pack 450GM",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S046",
+        "item": "Nestle Sauce 500ml",
+        "uom": "Bottle 500 ml",
+        "category": "FOOD"
+      },
+      {
+        "sku": "S047",
+        "item": "DAM Strawberry Cream Mix",
+        "uom": "Bottle 1L",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "Cinnamon powder",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "Frozen Square Cake Cover",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "Mooma Choco Chips for London cake",
+        "uom": "Pcs",
+        "category": "FOOD"
+      },
+      {
+        "sku": "-",
+        "item": "SCOTCH FOR SAJ",
+        "uom": "PCS",
+        "category": "FOOD"
+      }
+    ]
+  }
+}
