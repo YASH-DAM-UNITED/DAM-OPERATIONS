@@ -7042,20 +7042,26 @@ async function dnEnsureDeliverySheet(env, spreadsheetId) {
   }
 
   const sheetId = Number(sheet?.properties?.sheetId ?? sheet?.sheetId);
-  const headers = ["Timestamp","Transaction ID","Branch","Delivery Note No","Delivery Date","Supplier","Pages","Total Items","Items Data","Submitted By","OCR Raw"];
+  const headers = ["Timestamp","Transaction ID","Branch","Delivery Note No","Delivery Date","Supplier","Pages","Total Items","Items Data","Submitted By","OCR Raw","Order Type"];
   let rows = [];
-  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!A1:K2"); } catch {}
+  try { rows = await getSheetValues(env, spreadsheetId, "'Delivery Note'!A1:L2"); } catch {}
   if (!rows.length || String(rows[0]?.[0] || '').trim() !== 'Timestamp') {
-    await batchWriteSheet(env, spreadsheetId, [{ range:"'Delivery Note'!A1:K1", values:[headers] }]);
+    await batchWriteSheet(env, spreadsheetId, [{ range:"'Delivery Note'!A1:L1", values:[headers] }]);
+  }
+
+  // Existing sheets keep columns A:K unchanged; add the new field in L only.
+  if (rows.length && String(rows[0]?.[0] || '').trim() === 'Timestamp' && String(rows[0]?.[11] || '').trim() !== 'Order Type') {
+    if (String(rows[0]?.[11] || '').trim()) throw new Error('Delivery Note column L already contains another header; cannot safely add Order Type.');
+    await batchWriteSheet(env, spreadsheetId, [{range:"'Delivery Note'!L1",values:[["Order Type"]]}]);
   }
 
   if (Number.isFinite(sheetId)) {
     const formatUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`;
-    const widths = [155,210,120,180,125,180,70,90,620,150,360];
+    const widths = [155,210,120,180,125,180,70,90,620,150,360,150];
     const requests = [
       { updateSheetProperties:{ properties:{sheetId,gridProperties:{frozenRowCount:1}}, fields:'gridProperties.frozenRowCount' } },
-      { repeatCell:{ range:{sheetId,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:11}, cell:{userEnteredFormat:{textFormat:{bold:true},wrapStrategy:'WRAP',verticalAlignment:'MIDDLE'}}, fields:'userEnteredFormat(textFormat,wrapStrategy,verticalAlignment)' } },
-      { repeatCell:{ range:{sheetId,startRowIndex:1,startColumnIndex:0,endColumnIndex:11}, cell:{userEnteredFormat:{wrapStrategy:'WRAP',verticalAlignment:'TOP'}}, fields:'userEnteredFormat(wrapStrategy,verticalAlignment)' } },
+      { repeatCell:{ range:{sheetId,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:12}, cell:{userEnteredFormat:{textFormat:{bold:true},wrapStrategy:'WRAP',verticalAlignment:'MIDDLE'}}, fields:'userEnteredFormat(textFormat,wrapStrategy,verticalAlignment)' } },
+      { repeatCell:{ range:{sheetId,startRowIndex:1,startColumnIndex:0,endColumnIndex:12}, cell:{userEnteredFormat:{wrapStrategy:'WRAP',verticalAlignment:'TOP'}}, fields:'userEnteredFormat(wrapStrategy,verticalAlignment)' } },
     ];
     widths.forEach((pixelSize, i) => requests.push({updateDimensionProperties:{range:{sheetId,dimension:'COLUMNS',startIndex:i,endIndex:i+1},properties:{pixelSize},fields:'pixelSize'}}));
     await googleRequest(env, token => fetch(formatUrl,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests})}));
@@ -7343,6 +7349,11 @@ export default {
           if(rawPages.length<expected||Array.from({length:expected},(_,i)=>i+1).some(n=>!observed.has(n)))
             return jsonResponse({success:false,message:`This delivery note requires ${expected} pages. Upload all numbered pages before submitting.`},409);
         }
+        const orderType = String(body.orderType || '').trim();
+        if (!['Dry Order','Food Order','Bakery Order'].includes(orderType)) return jsonResponse({success:false,message:'Select an order type: Dry Order, Food Order or Bakery Order.'},400);
+        const submittedBy = String(body.submittedBy || '').trim();
+        if (!submittedBy) return jsonResponse({success:false,message:'Your name must be entered before submitting this delivery note.'},400);
+        if (submittedBy.length > 120) return jsonResponse({success:false,message:'Staff name is too long.'},400);
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
@@ -7370,10 +7381,10 @@ export default {
         const itemsData = dnItemsCell(safeItems);
         const ocrRaw = Array.isArray(body.ocrPages) ? body.ocrPages.map((t,i)=>`PAGE ${i+1}\n${String(t||'')}`).join('\n\n') : '';
 
-        const appendResult = await appendSheetRow(env, branch.sheet_id, "'Delivery Note'!A:K", [
+        const appendResult = await appendSheetRow(env, branch.sheet_id, "'Delivery Note'!A:L", [
           formatJeddahTimestamp(), transactionId, `${branch.code} - ${branch.name}`, deliveryNoteNo,
           String(body.deliveryDate || ''), String(body.supplier || ''), pageCount, safeItems.length,
-          itemsData, String(body.submittedBy || ''), ocrRaw
+          itemsData, submittedBy, ocrRaw, orderType
         ]);
         const updatedRange = String(appendResult?.updates?.updatedRange || '');
         const rowMatch = updatedRange.match(/![A-Z]+(\d+):/i) || updatedRange.match(/![A-Z]+(\d+)/i);

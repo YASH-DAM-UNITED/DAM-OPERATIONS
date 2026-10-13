@@ -60,7 +60,7 @@ const TRANSFER_POLL_MS =
   15000;
 
 const MODULE_TRANSITION_MS =
-  550;
+  140;
 
 
 /* ============================================================
@@ -111,7 +111,7 @@ const modules = [
     title: "Delivery Notes",
     subtitle: "SCAN & VERIFY",
     description:
-      "Scan delivery notes with Azure AI Vision, verify detected details and submit confirmed receiving data.",
+      "Scan delivery notes with Google Vision, verify detected details and submit confirmed receiving data.",
   },
 ];
 
@@ -720,6 +720,7 @@ export default function BartStaffDashboard({
   ] =
     useState(null);
 
+  const operationsSectionRef = useRef(null);
   const stockViewRef =
     useRef(null);
 
@@ -1885,7 +1886,15 @@ export default function BartStaffDashboard({
           </motion.div>
 
 
-          <motion.div
+          <motion.button
+            type="button"
+            aria-label="Go to branch operations"
+            title="Go to branch operations"
+            onClick={() => {
+              touchSession();
+              scrollToElement(operationsSectionRef);
+            }}
+            style={{cursor:'pointer',textAlign:'left',width:'100%',fontFamily:'inherit'}}
             className="bart-branch-card"
             initial={{
               opacity: 0,
@@ -1941,7 +1950,7 @@ export default function BartStaffDashboard({
                 </span>
               </div>
             </div>
-          </motion.div>
+          </motion.button>
         </section>
 
 
@@ -2232,7 +2241,7 @@ export default function BartStaffDashboard({
         </motion.section>
 
 
-        <section className="bart--header">
+        <section ref={operationsSectionRef} className="bart--header">
           <div>
             <span>
               OPERATIONS
