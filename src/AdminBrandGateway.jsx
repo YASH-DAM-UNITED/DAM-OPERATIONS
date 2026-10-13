@@ -218,11 +218,9 @@ function BrandCard({
   }
 
   function openBrand() {
-    setActiveBrand(brand.id);
-
-    window.setTimeout(() => {
-      onOpen(brand.id);
-    }, 420);
+    // The parent gateway controls the transition and navigation.
+    // Do not add another timer here: previously this delayed clicks twice.
+    onOpen(brand.id);
   }
 
   return (
@@ -262,6 +260,16 @@ function BrandCard({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onClick={openBrand}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openBrand();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-label={`Open ${brand.name} administration`}
     >
       {/* Cursor-follow light */}
       <div className="dam-card-pointer-glow" />
@@ -498,6 +506,14 @@ export default function AdminBrandGateway({
   const [openingBrand, setOpeningBrand] = useState(null);
 
   const gatewayRef = useRef(null);
+  const openingRef = useRef(false);
+  const navigationTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (navigationTimerRef.current !== null) {
+      window.clearTimeout(navigationTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -530,20 +546,32 @@ export default function AdminBrandGateway({
   }
 
   function openBrand(brandId) {
-    if (openingBrand) return;
+    // Guard synchronously against double taps, including tapping ENTER inside the card.
+    if (openingRef.current) return;
+    if (typeof onSelectBrand !== "function") {
+      console.error("AdminBrandGateway requires onSelectBrand to navigate.");
+      return;
+    }
 
+    openingRef.current = true;
     setOpeningBrand(brandId);
     setActiveBrand(brandId);
 
-    window.setTimeout(() => {
-      if (typeof onSelectBrand === "function") {
+    // One short visual acknowledgement, then immediately enter the selected brand.
+    navigationTimerRef.current = window.setTimeout(() => {
+      navigationTimerRef.current = null;
+      try {
         onSelectBrand(brandId);
-        return;
+        // Reset scroll after the parent has had a chance to render the destination.
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+        });
+      } catch (error) {
+        openingRef.current = false;
+        setOpeningBrand(null);
+        console.error("Could not open selected brand:", error);
       }
-
-      console.log(`Admin brand selected: ${brandId}`);
-      setOpeningBrand(null);
-    }, 650);
+    }, 180);
   }
 
   return (
