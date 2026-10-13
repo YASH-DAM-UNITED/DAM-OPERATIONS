@@ -6551,7 +6551,7 @@ function dnV8Extract(annotation, master, coordinateRows) {
       if(!known.has(sku) && !match[0].includes('[') && !match[0].includes(']')) continue;
       const endAt=j+1<matches.length?matches[j+1].index:line.length;
       const raw=line.slice(match.index+match[0].length,endAt).replace(/^\s*[-\]]\s*/,'').trim();
-      if(!entries.some(e=>e.sku===sku)) entries.push({sku,raw});
+      entries.push({sku,raw}); // Preserve repeated printed SKU rows; do not silently drop products.
     }
   }
   if(!entries.length) return coordinateRows;
@@ -6594,7 +6594,7 @@ function dnV8Extract(annotation, master, coordinateRows) {
     const exact=known.get(entry.sku);
     const row={...(old||{}),rowId:`R${String(i+1).padStart(2,'0')}`,sku:entry.sku,
       deliverySku:entry.sku,stockSku:exact?.sku||'',
-      item:exact?.item||old?.item||entry.raw,
+      item:exact?.item||old?.item||entry.raw,printedItem:entry.raw || old?.item || '',
       ordered:ordered[i]||old?.ordered||'',delivered:delivered[i]||old?.delivered||'',
       match:exact?'SKU_EXACT':old?.match||'REVIEW',score:exact?1:old?.score||0,
       status:'REVIEW',extractionMethod:mode,
@@ -6603,6 +6603,19 @@ function dnV8Extract(annotation, master, coordinateRows) {
     if(/[\$€£]/.test(row.ordered+' '+row.delivered)) row.reviewReason='SUSPICIOUS_QUANTITY_SYMBOL';
     return row;
   });
+  // Keep additional geometry-detected physical rows, including unreadable/mismatched SKUs.
+  // Only merge when they are not already represented by an extracted row.
+  for (const candidate of coordinateRows || []) {
+    const candidateName=String(candidate.printedItem || candidate.item || '').trim();
+    if (!candidateName && !candidate.sku) continue;
+    const exists=result.some(r =>
+      (candidate.sku && r.sku===candidate.sku && dnSimilarity(candidateName,r.item)>=.65) ||
+      (candidateName && dnSimilarity(candidateName,r.item)>=.84)
+    );
+    if (!exists) result.push({...candidate,rowId:`GEO-${result.length+1}`,status:'REVIEW',
+      reviewReason:'Additional physical row; verify product and quantities',
+      ordered:'',delivered:'',alignmentStatus:'uncertain'});
+  }
   result.detection={method:'V8_SKU_ANCHORED_'+mode,detectedRules:coordinateRows.detection?.detectedRules||0,
     physicalRows:result.length,wordCount:coordinateRows.detection?.wordCount||0,
     skuCount:entries.length,quantityPairs:Math.min(ordered.length,delivered.length),
@@ -6822,6 +6835,71 @@ async function dnVisionScan(env, imageBase64) {
 
 // Gemini is an interpretation layer, never the source of truth. Azure's raw
 // transcript/geometry and staff-confirmed quantities remain authoritative.
+function dnV2PreserveGeometryRows(items, coordinateRows) {
+  const result=[...(items||[])];
+  for(const candidate of coordinateRows||[]) {
+    const name=String(candidate.printedItem||candidate.item||'').trim();
+    const sku=String(candidate.deliverySku||candidate.sku||'').trim().toUpperCase();
+    if(!name&&!sku)continue;
+    const already=result.some(r=>
+      (sku&&sku===String(r.deliverySku||r.sku||'').toUpperCase()&&dnSimilarity(name,r.printedItem||r.item)>=.60) ||
+      (name&&dnSimilarity(name,r.printedItem||r.item)>=.84)
+    );
+    if(!already)result.push({...candidate,rowId:`ADDITIONAL-${result.length+1}`,
+      ordered:'',delivered:'',status:'REVIEW',alignmentStatus:'uncertain',
+      reviewReason:'Additional detected product row; verify against photo'});
+  }
+  return result;
+}
+
+// V2: never collapse OCR column lists into one quantity cell.
+function dnSafeQuantity(value) {
+  const v = String(value || '').trim();
+  if (!v || v.length > 65 || /[\n\r|;]/.test(v)) return '';
+  if ((v.match(/\b\d+(?:[.,]\d+)?\b/g) || []).length > 3) return '';
+  if (!/^\s*\d+(?:[.,]\d+)?(?:\s*[A-Za-z0-9.%/-]+){0,5}\s*$/.test(v)) return '';
+  return v;
+}
+function dnV2MatchRows(rows, master, documentType='DELIVERY_NOTE') {
+  const bySku = new Map(master.filter(x=>x.sku).map(x=>[String(x.sku).toUpperCase(),x]));
+  return (rows || []).map((source, i) => {
+    const r = {...source};
+    const printedSku = String(r.deliverySku || r.sku || '').trim().toUpperCase();
+    const printedName = String(r.printedItem || r.item || '').trim();
+    r.deliverySku = printedSku;
+    r.printedItem = printedName;
+    const skuHit = bySku.get(printedSku);
+    const cleanName = printedName.replace(/\[\s*[A-Z0-9._/-]+\s*\]/gi,' ').replace(/^\s*[A-Z]{1,5}[-.]?\d{2,6}\b/i,' ').replace(/^[\s:–—-]+/,'').trim();
+    const name = dnBestStock(cleanName, master);
+    const strong = name.best && name.best.score >= .79 && name.margin >= .08;
+    const agrees = skuHit && dnSimilarity(cleanName, skuHit.item) >= .69;
+    let chosen = null;
+    if (strong && (!skuHit || !agrees)) { chosen=name.best; r.match=printedSku && printedSku!==chosen.sku?'NAME_CORRECTED':'NAME_MATCH'; }
+    else if (skuHit && (agrees || !cleanName)) { chosen=skuHit; r.match='SKU_EXACT'; }
+    else if (strong) { chosen=name.best; r.match='NAME_MATCH'; }
+    else { r.match=skuHit?'SKU_NAME_CONFLICT':'UNMATCHED'; }
+    r.sku = chosen?.sku || printedSku;
+    r.stockSku = chosen?.sku || '';
+    r.uom = chosen?.stockUom || '';
+    r.item = chosen?.item || cleanName || printedName;
+    r.score = chosen ? Number((chosen === skuHit ? 1 : name.best?.score || 0).toFixed(3)) : 0;
+    r.status = 'REVIEW';
+    if (r.match==='NAME_CORRECTED') r.reviewReason = [r.reviewReason,'Printed SKU differs; matched by product name'].filter(Boolean).join('; ');
+    if (!chosen) r.reviewReason = [r.reviewReason,'Product not matched to stock master; verify manually'].filter(Boolean).join('; ');
+    if (documentType !== 'STOCK_DOCUMENT') {
+      r.ordered = dnSafeQuantity(r.ordered);
+      r.delivered = dnSafeQuantity(r.delivered);
+      // Text-only fallback column ordering is not sufficient proof of row alignment.
+      if (r.extractionMethod || (r.alignmentStatus && r.alignmentStatus !== 'geometry')) {
+        r.ordered='';r.delivered='';
+      }
+      // A single OCR quantity cell containing multiple values is never accepted.
+    }
+    r.rowId ||= `V2-${i+1}`;
+    return r;
+  });
+}
+
 async function dnGeminiInterpret(env, annotation, master, fallbackItems) {
   const key = String(env.GEMINI_API_KEY || '').trim();
   if (!key) return { items: fallbackItems, state: 'NOT_CONFIGURED' };
@@ -6832,14 +6910,14 @@ async function dnGeminiInterpret(env, annotation, master, fallbackItems) {
     words: (line.words || []).map((w, wi) => ({ id: `P${pi + 1}-L${li + 1}-W${wi + 1}`,
       text: String(w.text || ''), boundingBox: w.boundingBox || [], confidence: w.confidence ?? null }))
   })));
-  const skuMaster = master.filter(x => x.sku).slice(0, 1500).map(x => ({ sku: x.sku, item: x.item }));
+  const skuMaster = master.filter(x => x.sku).slice(0, 1500).map(x => ({ sku: x.sku, item: x.item, uom: x.stockUom || "" }));
   const prompt = `You reconstruct DAM UNITED delivery-note tables from Azure OCR.
 OCR may be column-wise, row-wise, or mixed. Use physical bounding boxes before text order.
 Preserve every physical product row, including crossed-out or unreadable rows. Never invent a SKU, quantity or missing row. Never infer DELIVERED=ORDERED.
 If a quantity is absent, use null. Do not shift all following values based only on count or matching units.
-Only use SKUs found in the supplied branch master; damaged OCR SKUs may be proposed ONLY if unambiguously matched by product name, and must be marked needs_review.
+Read the printed SKU even if it is not in the master. Preserve the original printed product name and printed SKU. The server will independently resolve against the branch stock master, prioritizing a strong product-name match when printed SKU conflicts. Never omit an item because its SKU or name is unmatched.
 Do not mistake wrapped product text for a new row unless visual evidence supports a separate physical row.
-Every uncertain association must be marked needs_review. Preserve full unit strings and the 90 ordered vs 30 delivered discrepancy.
+Every uncertain association must be marked needs_review. Preserve full unit strings and the 90 ordered vs 30 delivered discrepancy. Only fill ordered_raw and delivered_raw when independently and unambiguously assigned to this physical row by OCR bounding boxes; otherwise return null. Never put a column list into a single cell.
 Output ONLY JSON: {"product_rows":[{"sku":string|null,"product_name":string|null,"ordered_raw":string|null,"delivered_raw":string|null,"needs_review":boolean,"review_reasons":string[],"ocr_line_ids":string[],"alignment_status":"geometry"|"inferred_text"|"uncertain"}],"document_warnings":string[]}.
 If you cannot distinguish rows, emit an uncertain row with null values, not a guessed value.
 INPUT:\n${JSON.stringify({ocr_text:annotation.text,ocr_lines:lines,sku_master:skuMaster}).slice(0,170000)}`;
@@ -6876,26 +6954,25 @@ INPUT:\n${JSON.stringify({ocr_text:annotation.text,ocr_lines:lines,sku_master:sk
     console.log('Gemma interpretation model:', configuredModel);
   } finally { clearTimeout(timer); }
   if (!Array.isArray(payload?.product_rows) || !payload.product_rows.length || payload.product_rows.length > 120) throw new Error('Gemma returned invalid product rows');
-  const masterMap = new Map(skuMaster.map(x => [String(x.sku).toUpperCase(), x]));
   const lineIds = new Set(lines.map(x => x.id));
   const items = payload.product_rows.map((row, i) => {
-    const sku = String(row.sku || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const known = masterMap.get(sku);
+    const printedSku = String(row.sku || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const printedName = String(row.product_name || '').trim().slice(0,250);
     const refs = Array.isArray(row.ocr_line_ids) ? row.ocr_line_ids.filter(x => lineIds.has(x)).slice(0, 30) : [];
     const reasons = Array.isArray(row.review_reasons) ? row.review_reasons.map(String).slice(0, 8) : [];
-    if (!known && sku) reasons.push('SKU not found in branch Stocks master');
-    if (!refs.length) reasons.push('No verified OCR line references');
-    const ordered = typeof row.ordered_raw === 'string' ? row.ordered_raw.trim().slice(0, 250) : '';
-    const delivered = typeof row.delivered_raw === 'string' ? row.delivered_raw.trim().slice(0, 250) : '';
-    if (!ordered || !delivered) reasons.push('Missing quantity; staff must verify');
-    const status = 'REVIEW'; // Never auto-confirm AI predictions.
-    return { rowId:`AI-${i+1}`,sku:known?.sku || sku,stockSku:known?.sku || '',
-      item:known?.item || String(row.product_name || '').slice(0,250),ordered,delivered,
-      quantity:'',detailedQty:'',expireDate:'',status,match:known?'SKU_EXACT':'SKU_NOT_FOUND',
-      reviewReason:[...new Set(reasons)].join('; ') || 'AI_RESULT_REQUIRES_STAFF_CONFIRMATION',
-      alignmentStatus:['geometry','inferred_text','uncertain'].includes(row.alignment_status)?row.alignment_status:'uncertain',
-      ocrLineIds:refs,ocrText:refs.map(id => lines.find(l => l.id === id)?.text || '').join(' | ') || String(row.product_name || ''),
-      aiNeedsReview:true };
+    const alignment = ['geometry','inferred_text','uncertain'].includes(row.alignment_status) ? row.alignment_status : 'uncertain';
+    // Only geometry-backed, referenced quantities are eligible for automatic filling.
+    const quantitiesTrusted = alignment === 'geometry' && refs.length > 0 && !row.needs_review;
+    const ordered = quantitiesTrusted && typeof row.ordered_raw === 'string' ? dnSafeQuantity(row.ordered_raw) : '';
+    const delivered = quantitiesTrusted && typeof row.delivered_raw === 'string' ? dnSafeQuantity(row.delivered_raw) : '';
+    if (!quantitiesTrusted || !ordered || !delivered) reasons.push('Check quantities against the original document');
+    return { rowId:`DOC-${i+1}`,sku:printedSku,deliverySku:printedSku,stockSku:'',
+      item:printedName,printedItem:printedName,ordered,delivered,
+      quantity:'',detailedQty:'',expireDate:'',status:'REVIEW',match:'REVIEW',
+      reviewReason:[...new Set(reasons)].join('; ') || 'Verify document row',
+      alignmentStatus:alignment,ocrLineIds:refs,
+      ocrText:refs.map(id => lines.find(l => l.id === id)?.text || '').join(' | ') || printedName,
+      crossedOut:!!row.crossed_out };
   });
   return { items, state:'READY', warnings:Array.isArray(payload.document_warnings)?payload.document_warnings.slice(0,15):[] };
 }
@@ -6960,7 +7037,7 @@ async function dnDuplicateExists(env, spreadsheetId, deliveryNoteNo) {
 
 function dnItemsCell(items) {
   return items.map((x, i) =>
-    `${i + 1}. ${String(x.sku || x.stockSku || '').trim()} | ${String(x.item || '').trim()} | ${x.quantity !== undefined && x.quantity !== "" ? `DETAILED QTY: ${String(x.detailedQty || "")} | EXPIRE: ${String(x.expireDate || "")} | QTY: ${String(x.quantity || "")}` : `ORDERED: ${String(x.ordered || "").trim()} | DELIVERED: ${String(x.delivered || "").trim()}`}`
+    `${i + 1}. ${String(x.sku || x.stockSku || '').trim()} | ${String(x.item || '').trim()} | UOM: ${String(x.uom || '').trim() || '-'} | PRINTED SKU: ${String(x.deliverySku || '').trim() || '-'} | ${x.quantity !== undefined && x.quantity !== "" ? `DETAILED QTY: ${String(x.detailedQty || "")} | EXPIRE: ${String(x.expireDate || "")} | QTY: ${String(x.quantity || "")}` : `ORDERED: ${String(x.ordered || "").trim()} | DELIVERED: ${String(x.delivered || "").trim()}`}`
   ).join('\n');
 }
 
@@ -7091,7 +7168,7 @@ export default {
         if (!branch) return jsonResponse({success:false,message:"BART branch not found."},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
         const master = dnStockMaster(stock.rows).filter(x => x.sku);
-        return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item}))});
+        return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item,uom:x.stockUom || ""}))});
       }
 
       if (url.pathname === "/api/staff/bart/delivery-notes/reparse" && request.method === "POST") {
@@ -7105,7 +7182,7 @@ export default {
         const stock = await getBartStockSheetSmart(env, branch, false);
         const master = dnStockMaster(stock.rows);
         const documentType = body.documentType === 'STOCK_DOCUMENT' ? 'STOCK_DOCUMENT' : 'DELIVERY_NOTE';
-        const items = dnReparseCorrectedText(correctedText, master, documentType);
+        const items = dnV2MatchRows(dnReparseCorrectedText(correctedText, master, documentType), master, documentType);
         return jsonResponse({success:true,items,documentType,meta:dnMetaFromText(correctedText)});
       }
 
@@ -7147,7 +7224,8 @@ export default {
         const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
           allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
         const documentType = stockLayout ? "STOCK_DOCUMENT" : "DELIVERY_NOTE";
-        let items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnV8Extract(annotation, master, dnBuildItems(annotation, master, body.imageGrid));
+        const geometryRows = stockLayout ? [] : dnBuildItems(annotation, master, body.imageGrid);
+        let items = stockLayout ? dnBuildStockDocumentItems(annotation, master) : dnV8Extract(annotation, master, geometryRows);
         let ai = {state:stockLayout?'SKIPPED_STOCK_DOCUMENT':'NOT_CONFIGURED',warnings:[]};
         if (!stockLayout) {
           try {
@@ -7158,6 +7236,8 @@ export default {
             ai = {state:'FALLBACK_OCR',warnings:['AI interpretation unavailable. Review OCR-based rows manually.']};
           }
         }
+        if (!stockLayout) items = dnV2PreserveGeometryRows(items, geometryRows);
+        items = dnV2MatchRows(items, master, documentType);
         const learned = await dnLearningSuggestions(env, branch.sheet_id).catch(()=>[]);
         dnApplyLearningSuggestions(items, learned, documentType);
         return jsonResponse({
@@ -7199,13 +7279,10 @@ export default {
         if (!items.length) return jsonResponse({success:false,message:'No delivery items supplied.'},400);
         const invalid = items.find(x =>
           !String(x.item || '').trim() ||
-          !String(x.sku || x.stockSku || '').trim() ||
-          (body.documentType === "STOCK_DOCUMENT"
-            ? !String(x.quantity || "").trim()
-            : (!String(x.ordered || "").trim() || !String(x.delivered || "").trim())) ||
+          (body.documentType === "STOCK_DOCUMENT" && !String(x.quantity || '').trim()) ||
           String(x.status || '').toUpperCase() !== 'CONFIRMED'
         );
-        if (invalid) return jsonResponse({success:false,message:'Every item must be reviewed and have SKU, Item, Ordered and Delivered before submission.'},400);
+        if (invalid) return jsonResponse({success:false,message:'Every item must have a product name and be explicitly confirmed before submission.'},400);
 
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
@@ -7219,6 +7296,8 @@ export default {
         const safeItems = items.map(x => ({
           sku:String(x.sku || x.stockSku || ''),
           item:String(x.item || ''),
+          uom:String(x.uom || ''),
+          deliverySku:String(x.deliverySku || ''),
           ordered:String(x.ordered || ''),
           delivered:String(x.delivered || ''),
           detailedQty:String(x.detailedQty || ""),

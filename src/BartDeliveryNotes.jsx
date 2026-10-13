@@ -1,352 +1,210 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Camera, CheckCircle2, FilePlus2, FileScan, Loader2, RefreshCcw, Save, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Camera, Check, CheckCircle2, ChevronDown, CircleAlert, ClipboardCheck, CloudUpload, FilePlus2, FileText, Filter, Keyboard, Loader2, Moon, PackageCheck, Plus, RefreshCcw, Save, Search, ShieldCheck, Sun, Trash2, X } from "lucide-react";
 import "./BartDeliveryNotes.css";
 
 const MAX_FILE_MB = 10;
-
-function api(path, options = {}) {
-  return fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } })
-    .then(async (res) => { const data = await res.json().catch(() => ({})); if (!res.ok || data.success === false) throw new Error(data.message || `Request failed (${res.status})`); return data; });
+const quantityPattern = /^\s*\d+(?:[.,]\d+)?(?:\s*[a-zA-Z0-9.%/-]+){0,5}\s*$/;
+function safeQuantity(v) {
+  const text = String(v ?? "").trim();
+  return text && text.length <= 65 && !/[\n\r|;]/.test(text) && (text.match(/\b\d+(?:[.,]\d+)?\b/g) || []).length <= 3 && quantityPattern.test(text) ? text : "";
 }
-
-async function imageToJpegBase64(file, maxSide = 2200, quality = 0.88) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const ctx = canvas.getContext("2d", { alpha: false }); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close?.();
-  return canvas.toDataURL("image/jpeg", quality).split(",")[1];
+function api(path, options={}) {
+  return fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}}).then(async res=>{
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok || data.success===false) throw new Error(data.message||`Request failed (${res.status})`);
+    return data;
+  });
 }
-
-// Detect long printed horizontal table rules on the resized upload image.
-// This is local image processing; it does NOT spend an additional OCR scan.
+async function imageToJpegBase64(file,maxSide=2200,quality=.88) {
+  const bitmap=await createImageBitmap(file);
+  const scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+  const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+  const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();
+  return canvas.toDataURL('image/jpeg',quality).split(',')[1];
+}
 async function detectDocumentGrid(imageBase64) {
-  const picture = new Image();
-  picture.src = `data:image/jpeg;base64,${imageBase64}`;
-  await picture.decode();
-  const width = picture.naturalWidth, height = picture.naturalHeight;
-  const canvas = document.createElement("canvas");
-  canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(picture, 0, 0);
-  const data = ctx.getImageData(0, 0, width, height).data;
-  const dark = (x,y) => {
-    const k=(y*width+x)*4;
-    return (data[k]*.299+data[k+1]*.587+data[k+2]*.114)<145;
-  };
-  // A table rule crosses all three columns; text never spans these large widths.
-  // Check neighbouring scanlines to tolerate shallow photo skew and tiny breaks.
-  const step=Math.max(1,Math.round(width/360));
-  const scores=[];
-  for(let y=Math.floor(height*.13);y<height*.96;y++) {
+  const picture=new Image();picture.src=`data:image/jpeg;base64,${imageBase64}`;await picture.decode();
+  const width=picture.naturalWidth,height=picture.naturalHeight;
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(picture,0,0);
+  const data=ctx.getImageData(0,0,width,height).data;
+  const dark=(x,y)=>{const k=(y*width+x)*4;return data[k]*.299+data[k+1]*.587+data[k+2]*.114<145;};
+  const step=Math.max(1,Math.round(width/360)),scores=[];
+  for(let y=Math.floor(height*.13);y<height*.96;y++){
     let hits=0,total=0;
-    for(let x=Math.floor(width*.06);x<width*.95;x+=step) {
-      total++;
-      if(dark(x,y) || (y>0&&dark(x,y-1)) || (y+1<height&&dark(x,y+1))) hits++;
-    }
+    for(let x=Math.floor(width*.06);x<width*.95;x+=step){total++;if(dark(x,y)||(y>0&&dark(x,y-1))||(y+1<height&&dark(x,y+1)))hits++;}
     scores[y]=hits/Math.max(1,total);
   }
   const candidates=[];
-  for(let y=Math.floor(height*.13);y<height*.96;y++) {
-    if((scores[y]||0)<.47) continue;
-    if(candidates.length && y-candidates[candidates.length-1].y<=Math.max(3,Math.round(height*.005))) {
-      if(scores[y]>candidates[candidates.length-1].score) candidates[candidates.length-1]={y,score:scores[y]};
-    } else candidates.push({y,score:scores[y]});
+  for(let y=Math.floor(height*.13);y<height*.96;y++){
+    if((scores[y]||0)<.47)continue;
+    if(candidates.length&&y-candidates[candidates.length-1].y<=Math.max(3,Math.round(height*.005))){if(scores[y]>candidates[candidates.length-1].score)candidates[candidates.length-1]={y,score:scores[y]};}
+    else candidates.push({y,score:scores[y]});
   }
-  // Avoid mistaking underlines, headers or page folds for valid table boundaries.
-  const rules=candidates.filter(x=>x.score>.47).map(x=>x.y);
-  return {width,height,horizontalRules:rules,method:"DARK_PIXEL_HORIZONTAL_RULES"};
+  return {width,height,horizontalRules:candidates.filter(x=>x.score>.47).map(x=>x.y),method:'DARK_PIXEL_HORIZONTAL_RULES'};
 }
-
-function autoGrowDeliveryField(el) {
-  if (!el) return;
-  el.style.height = "auto";
-  el.style.height = `${Math.max(58, el.scrollHeight)}px`;
+const normalize=s=>String(s||'').toLowerCase().replace(/\[[^\]]*\]/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+function nameScore(a,b){
+  const x=normalize(a),y=normalize(b);if(!x||!y)return 0;if(x===y)return 1;
+  const aa=new Set(x.split(' ')),bb=new Set(y.split(' '));
+  const shared=[...aa].filter(t=>bb.has(t)).length;
+  const token=2*shared/(aa.size+bb.size);
+  return Math.min(1,token*.78+((x.includes(y)||y.includes(x)) ? .22 : 0));
 }
+function formatMatch(r){
+  if(r.match==='NAME_CORRECTED')return 'SKU corrected';
+  if(r.match==='NAME_MATCH'||r.match==='ITEM_NAME')return 'Name matched';
+  if(r.match==='SKU_EXACT')return 'Matched';
+  if(r.match==='MANUAL')return 'Staff edited';
+  return 'Needs matching';
+}
+function numberFromQuantity(value){const m=String(value||'').match(/^\s*(\d+(?:[.,]\d+)?)/);return m?Number(m[1].replace(',','.')):null;}
+function unitFromQuantity(value){return String(value||'').replace(/^\s*\d+(?:[.,]\d+)?\s*/, '').trim().toLowerCase();}
+function discrepancy(row){
+  const a=numberFromQuantity(row.ordered),b=numberFromQuantity(row.delivered);
+  if(a===null||b===null||unitFromQuantity(row.ordered)!==unitFromQuantity(row.delivered))return null;
+  const delta=b-a;return Math.abs(delta)<.000001?null:{delta,unit:unitFromQuantity(row.delivered)};
+}
+const emptyNote={deliveryNoteNo:'',deliveryDate:'',supplier:'',submittedBy:''};
+export default function BartDeliveryNotes({branch,onBack}){
+  const branchCode=String(branch?.code||branch?.BranchCode||branch?.branchCode||'').trim().toUpperCase();
+  const storageKey=`dam-delivery-v2:${branchCode}`;
+  const inputRef=useRef(null);
+  const [theme,setTheme]=useState(()=>{try{return localStorage.getItem('dam-delivery-theme')||'light';}catch{return 'light';}});
+  const [pendingFile,setPendingFile]=useState(null),[pendingPreview,setPendingPreview]=useState('');
+  const [pages,setPages]=useState([]),[previewPage,setPreviewPage]=useState(0);
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState('');
+  const [submitted,setSubmitted]=useState(null),[usage,setUsage]=useState({used:0,remaining:3,limit:3,loading:true});
+  const [rows,setRows]=useState([]),[note,setNote]=useState(emptyNote),[documentType,setDocumentType]=useState('DELIVERY_NOTE');
+  const [master,setMaster]=useState([]),[filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[showTranscript,setShowTranscript]=useState(false);
+  const [restored,setRestored]=useState(false);
+  const masterBySku=useMemo(()=>new Map(master.map(m=>[String(m.sku||'').trim().toUpperCase(),m])),[master]);
+  const unresolved=rows.filter(r=>r.status!=='CONFIRMED').length;
+  const flagged=rows.filter(r=>!r.stockSku||!r.ordered||!r.delivered||r.match==='NAME_CORRECTED'||r.match==='SKU_NAME_CONFLICT').length;
+  const scanLimitReached=!usage.loading&&usage.remaining<=0;
+  const progress=rows.length?Math.round(100*(rows.length-unresolved)/rows.length):0;
+  const visibleRows=rows.map((r,i)=>({...r,_index:i})).filter(r=>(filter==='all'||(filter==='review'?r.status!=='CONFIRMED':!r.stockSku||!r.ordered||!r.delivered||r.match==='NAME_CORRECTED'))&&(!search||[r.sku,r.deliverySku,r.item,r.uom].join(' ').toLowerCase().includes(search.toLowerCase())));
 
-export default function BartDeliveryNotes({ branch, onBack }) {
-  const inputRef = useRef(null);
-  const [pendingFile, setPendingFile] = useState(null);
-  const [pendingPreview, setPendingPreview] = useState("");
-  const [pages, setPages] = useState([]);
-  const [previewApproved, setPreviewApproved] = useState(false);
-  const [previewPage, setPreviewPage] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(null);
-  const [scanUsage, setScanUsage] = useState({ used: 0, remaining: 3, limit: 3, loading: true });
-  const [rows, setRows] = useState([]);
-  const [documentType, setDocumentType] = useState("DELIVERY_NOTE");
-  const [stockItems, setStockItems] = useState([]);
-  const skuMap = useMemo(() => new Map(stockItems.map(x => [String(x.sku || "").trim().toUpperCase(), x.item])), [stockItems]);
-  const [note, setNote] = useState({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
+  useEffect(()=>{try{localStorage.setItem('dam-delivery-theme',theme);}catch{}},[theme]);
+  useEffect(()=>{
+    let live=true;
+    if(!branchCode)return;
+    api(`/api/staff/bart/delivery-notes/scan-status?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setUsage({used:d.used||0,remaining:d.remaining??3,limit:d.limit||3,loading:false})).catch(e=>{if(live){setUsage(s=>({...s,loading:false}));setError(e.message);}});
+    api(`/api/staff/bart/delivery-notes/stock-master?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setMaster(d.items||[])).catch(e=>live&&setError(`Stock master unavailable: ${e.message}`));
+    try{const raw=localStorage.getItem(storageKey);if(raw){const d=JSON.parse(raw);if(Array.isArray(d.rows)&&d.rows.length){setRows(d.rows);setPages((d.pages||[]).map(p=>({...p,preview:''})));setNote(d.note||emptyNote);setDocumentType(d.documentType||'DELIVERY_NOTE');setRestored(true);}}}catch{}
+    return()=>{live=false;};
+  },[branchCode,storageKey]);
+  useEffect(()=>{
+    if(!branchCode||submitted)return;
+    try{if(rows.length)localStorage.setItem(storageKey,JSON.stringify({rows,pages:pages.map(({preview,...rest})=>rest),note,documentType}));else localStorage.removeItem(storageKey);}catch{}
+  },[rows,pages,note,documentType,storageKey,branchCode,submitted]);
 
-  const branchCode = String(branch?.code || branch?.BranchCode || branch?.branchCode || "").trim().toUpperCase();
-  const unresolved = useMemo(() => rows.filter(r => r.status !== "CONFIRMED").length, [rows]);
-  const scanLimitReached = !scanUsage.loading && scanUsage.remaining <= 0;
-
-  useEffect(() => {
-    let active = true;
-    if (!branchCode) return undefined;
-    api(`/api/staff/bart/delivery-notes/scan-status?branch=${encodeURIComponent(branchCode)}`)
-      .then(data => { if (active) setScanUsage({ used: data.used || 0, remaining: data.remaining ?? 3, limit: data.limit || 3, loading: false }); })
-      .catch(e => { if (active) { setScanUsage(s => ({ ...s, loading: false })); setError(e.message); } });
-    return () => { active = false; };
-  }, [branchCode]);
-
-  useEffect(() => {
-    let active = true;
-    if (!branchCode) return undefined;
-    api(`/api/staff/bart/delivery-notes/stock-master?branch=${encodeURIComponent(branchCode)}`)
-      .then(data => { if (active) setStockItems(data.items || []); })
-      .catch(e => { if (active) setError(`Stocks lookup unavailable: ${e.message}`); });
-    return () => { active = false; };
-  }, [branchCode]);
-
-  function confirmRow(index) {
-    setRows(old => old.map((r,i) => {
-      if (i !== index) return r;
-      const hasValues = documentType === "STOCK_DOCUMENT"
-        ? String(r.quantity || "").trim()
-        : String(r.ordered || "").trim() && String(r.delivered || "").trim();
-      if (!String(r.sku || "").trim() || !String(r.item || "").trim() || !hasValues) {
-        setError("Confirm needs SKU, item and all required quantities. Fill the missing cells first.");
-        return r;
+  function chooseFile(e){
+    const f=e.target.files?.[0];e.target.value='';if(!f)return;
+    if(scanLimitReached)return setError('Daily scan limit reached. Contact the IT Team.');
+    if(!f.type.startsWith('image/'))return setError('Choose a photo of the delivery note.');
+    if(f.size>MAX_FILE_MB*1024*1024)return setError(`Maximum image size is ${MAX_FILE_MB} MB.`);
+    setPendingFile(f);setPendingPreview(URL.createObjectURL(f));setError('');setMessage('');
+  }
+  async function scanPage(){
+    if(!pendingFile||!branchCode||busy||scanLimitReached)return;
+    setBusy(true);setError('');setMessage('Reading document and preparing product rows…');
+    try{
+      const imageBase64=await imageToJpegBase64(pendingFile);
+      const imageGrid=await detectDocumentGrid(imageBase64).catch(()=>null);
+      const d=await api('/api/staff/bart/delivery-notes/scan',{method:'POST',body:JSON.stringify({branch:branchCode,imageBase64,imageGrid})});
+      if(d.scanUsage)setUsage({...d.scanUsage,loading:false});
+      const type=d.documentType||'DELIVERY_NOTE';
+      if(pages.length&&type!==documentType)throw new Error('Cannot combine different document types. Start a new transaction.');
+      setDocumentType(type);
+      const pageNo=pages.length+1;
+      const next=(d.items||[]).map((r,i)=>({...r,rowId:`P${pageNo}-${r.rowId||i+1}`,pageNo,
+        deliverySku:r.deliverySku??r.sku??'',printedItem:r.printedItem??r.item??'',uom:r.uom||'',
+        ordered:safeQuantity(r.ordered),delivered:safeQuantity(r.delivered),status:'REVIEW',
+        originalFields:{sku:r.sku||'',item:r.item||'',ordered:r.ordered||'',delivered:r.delivered||'',quantity:r.quantity||'',detailedQty:r.detailedQty||'',expireDate:r.expireDate||''}}));
+      setRows(old=>[...old,...next]);
+      setPages(old=>[...old,{pageNo,preview:pendingPreview,ocrText:d.ocrText||'',originalOcrText:d.ocrText||'',itemCount:next.length}]);
+      setPreviewPage(pages.length);setPendingFile(null);setPendingPreview('');
+      setNote(n=>({...n,deliveryNoteNo:n.deliveryNoteNo||d.meta?.deliveryNoteNo||'',deliveryDate:n.deliveryDate||d.meta?.deliveryDate||'',supplier:n.supplier||d.meta?.supplier||''}));
+      setRestored(false);setMessage(`Page ${pageNo} added. ${next.length} product rows ready for staff verification.`);
+    }catch(e){setError(e.message);setMessage('');}finally{setBusy(false);}
+  }
+  function applyMaster(index,stock,match='MANUAL'){
+    setRows(old=>old.map((r,i)=>i!==index?r:{...r,sku:stock.sku,stockSku:stock.sku,item:stock.item,uom:stock.uom||'',match,status:'REVIEW',reviewReason:'Staff selected stock-master item'}));
+  }
+  function updateRow(index,field,value){
+    setRows(old=>old.map((r,i)=>{
+      if(i!==index)return r;
+      const next={...r,[field]:value,status:'REVIEW'};
+      if(field==='sku'){
+        const match=masterBySku.get(String(value||'').trim().toUpperCase());
+        if(match){next.stockSku=match.sku;next.item=match.item;next.uom=match.uom||'';next.match='SKU_EXACT';}
+        else {next.stockSku='';next.uom='';next.match='UNMATCHED';} // Preserve item name, never erase it.
       }
-      setError("");
-      return {...r,status:"CONFIRMED",reviewReason:"STAFF_VERIFIED"};
-    }));
-  }
-
-  function deleteRow(index) {
-    if (busy || !window.confirm("Delete this item row?")) return;
-    setRows(old => old.filter((_, i) => i !== index));
-  }
-
-  function addManualRow() {
-    setRows(old => [...old, {
-      rowId:`MANUAL-${Date.now()}`, pageNo: pages.length || 1,
-      sku:"", item:"", ordered:"", delivered:"",
-      detailedQty:"", expireDate:"", quantity:"",
-      match:"MANUAL", status:"REVIEW", ocrText:"Manually added row"
-    }]);
-  }
-
-  function chooseFile(e) {
-    if (scanLimitReached) { setError("Daily scan limit reached. Contact the IT Team for more queries."); return; }
-    const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-    setError(""); setMessage("");
-    if (!f.type.startsWith("image/")) return setError("Please choose a delivery-note image.");
-    if (f.size > MAX_FILE_MB * 1024 * 1024) return setError(`Maximum image size is ${MAX_FILE_MB} MB.`);
-    if (pendingPreview) URL.revokeObjectURL(pendingPreview);
-    setPendingFile(f); setPendingPreview(URL.createObjectURL(f));
-  }
-
-  async function scanPage() {
-    if (!pendingFile || !branchCode) return;
-    if (scanLimitReached) return setError("Daily scan limit reached. You have used all 3 Delivery Note scans for today. Contact the IT Team for more queries.");
-    setBusy(true); setError(""); setMessage(`Scanning page ${pages.length + 1} with Azure AI Vision…`);
-    try {
-      const imageBase64 = await imageToJpegBase64(pendingFile);
-      const imageGrid = await detectDocumentGrid(imageBase64).catch(() => null);
-      const data = await api("/api/staff/bart/delivery-notes/scan", { method: "POST", body: JSON.stringify({ branch: branchCode, imageBase64, imageGrid }) });
-      if (data.scanUsage) setScanUsage({ ...data.scanUsage, loading: false });
-      const nextType = data.documentType || "DELIVERY_NOTE";
-      if (pages.length && nextType !== documentType) {
-        setError("Different document types cannot be combined in one transaction. Remove the page or start a new delivery note.");
-        return;
+      if(field==='item'){
+        next.match='MANUAL';next.stockSku='';next.uom='';
       }
-      setDocumentType(nextType);
-      const pageNo = pages.length + 1;
-      const appended = (data.items || []).map((r, i) => ({ ...r, pageNo, rowId: `P${pageNo}-${r.rowId || i + 1}`,
-        originalFields:{sku:r.sku||'',item:r.item||'',ordered:r.ordered||'',delivered:r.delivered||'',quantity:r.quantity||'',detailedQty:r.detailedQty||'',expireDate:r.expireDate||''}
-      }));
-      setRows(old => [...old, ...appended]);
-      setPreviewApproved(true);
-      setPreviewPage(pages.length);
-      setPages(old => [...old, { pageNo, preview: pendingPreview, ocrText: data.ocrText || "", originalOcrText: data.ocrText || "", ocrLines: data.ocrLines || [], itemCount: appended.length, detection: data.detection || null, ai: data.ai || null }]);
-      setPendingFile(null); setPendingPreview("");
-      setNote(n => ({ ...n, deliveryNoteNo: n.deliveryNoteNo || data.meta?.deliveryNoteNo || "", deliveryDate: n.deliveryDate || data.meta?.deliveryDate || "", supplier: n.supplier || data.meta?.supplier || "" }));
-      setMessage(`Page ${pageNo} added: ${appended.length} item(s). AI: ${data.ai?.state || "OCR"}. All items require staff confirmation.`);
-    } catch (e) { setError(e.message); setMessage(""); }
-    finally { setBusy(false); }
-  }
-
-  async function continueFromOcr() {
-    if (!pages.length) return setError("Scan a document first.");
-    setBusy(true); setError(""); setMessage("Applying staff OCR corrections to item fields…");
-    try {
-      const nextRows = [];
-      for (const page of pages) {
-        const originalRows = rows.filter(r => r.pageNo === page.pageNo);
-        if (page.ocrText === page.originalOcrText) {
-          nextRows.push(...originalRows);
-          continue;
-        }
-        const data = await api("/api/staff/bart/delivery-notes/reparse", {
-          method: "POST",
-          body: JSON.stringify({ branch: branchCode, documentType, ocrText: page.ocrText })
-        });
-        // Corrected text is authoritative. Never silently reuse outdated OCR quantities.
-        const parsed = (data.items || []).map((r, i) => ({
-          ...r, pageNo: page.pageNo, rowId: `EDIT-P${page.pageNo}-${i + 1}`
-        }));
-        if (!parsed.length) {
-          throw new Error(`Page ${page.pageNo}: No SKU was found in the corrected text. Add the SKU to the transcription or restore the original text.`);
-        }
-        nextRows.push(...parsed);
-      }
-      setRows(nextRows);
-      setPreviewApproved(true);
-      setMessage("Corrected OCR applied. Check every SKU and quantity in the item table before submission.");
-    } catch (e) { setError(e.message); setMessage(""); }
-    finally { setBusy(false); }
-  }
-
-  function updateRow(index, field, value) {
-    setRows(old => old.map((r, i) => {
-      if (i !== index) return r;
-      const next = { ...r, [field]: value, reviewReason: "MANUAL_REVIEW", match: "MANUAL" };
-      if (field === "sku") {
-        const exactName = skuMap.get(String(value || "").trim().toUpperCase());
-        if (exactName) {
-          next.sku = String(value).trim().toUpperCase();
-          next.stockSku = next.sku;
-          next.item = exactName;
-          next.match = "SKU_EXACT";
-        } else {
-          next.stockSku = "";
-          next.item = "";
-          next.match = "SKU_NOT_FOUND";
-        }
-      }
-      const fieldsOk = documentType === "STOCK_DOCUMENT"
-        ? String(next.quantity || "").trim()
-        : String(next.ordered || "").trim() && String(next.delivered || "").trim();
-      next.status = "REVIEW"; // Explicit staff confirmation is required after any edit.
       return next;
     }));
   }
-
-  function removePage(pageNo) {
-    if (busy) return;
-    setPages(old => old.filter(p => p.pageNo !== pageNo));
-    setRows(old => old.filter(r => r.pageNo !== pageNo));
-    setPreviewApproved(false); setPreviewPage(0);
-    setMessage(`Page ${pageNo} removed. Scan it again if required.`); setError("");
+  function confirmRow(index){
+    const r=rows[index];if(!r||!String(r.item||'').trim())return setError('Enter a product name before confirming. Unmatched SKUs and empty quantities may remain blank after staff review.');
+    setRows(old=>old.map((x,i)=>i===index?{...x,status:'CONFIRMED',reviewReason:'Staff verified'}:x));setError('');
   }
-
-  async function submit() {
-    if (!previewApproved) return setError("Scan a page and review the item table first.");
-    if (!rows.length) return setError("Nothing to submit.");
-    if (!note.deliveryNoteNo.trim()) return setError("Delivery Note No is required.");
-    if (unresolved) return setError(`${unresolved} row(s) still need review. Confirm/edit them first.`);
-    setBusy(true); setError(""); setMessage("Saving ONE delivery-note transaction to the branch Google Sheet…");
-    try {
-      const feedback = rows.flatMap(r => {
-        if (!r.originalFields || r.status !== 'CONFIRMED') return [];
-        return ['sku','item','ordered','delivered','quantity','detailedQty','expireDate'].filter(field =>
-          String(r.originalFields[field]||'').trim() && String(r.originalFields[field]||'').trim() !== String(r[field]||'').trim()
-        ).map(field => ({sku:r.sku,field,before:r.originalFields[field],after:r[field]}));
-      });
-      const data = await api("/api/staff/bart/delivery-notes/submit", { method: "POST", body: JSON.stringify({ branch: branchCode, ...note, documentType, pageCount: pages.length, ocrPages: pages.map(p => p.ocrText), items: rows, feedback }) });
-
-      // Clear the transaction only after the backend confirms a successful save.
-      pages.forEach((page) => {
-        if (page?.preview?.startsWith?.("blob:")) URL.revokeObjectURL(page.preview);
-      });
-      if (pendingPreview?.startsWith?.("blob:")) URL.revokeObjectURL(pendingPreview);
-
-      setSubmitted({
-        deliveryNoteNo: note.deliveryNoteNo,
-        transactionId: data.transactionId || "",
-      });
-      setPendingFile(null);
-      setPendingPreview("");
-      setPages([]);
-      setPreviewApproved(false); setPreviewPage(0);
-      setRows([]);
-      setDocumentType("DELIVERY_NOTE");
-      setNote({ deliveryNoteNo: "", deliveryDate: "", supplier: "", submittedBy: "" });
-      setMessage("");
-      setError("");
-
-      window.setTimeout(() => onBack?.(), 3000);
-    } catch (e) { setError(e.message); setMessage(""); }
-    finally { setBusy(false); }
+  function addRow(){setRows(old=>[...old,{rowId:`MANUAL-${Date.now()}`,pageNo:pages.length||1,sku:'',deliverySku:'',stockSku:'',item:'',uom:'',ordered:'',delivered:'',quantity:'',detailedQty:'',expireDate:'',match:'MANUAL',status:'REVIEW',ocrText:''}]);}
+  function deleteRow(index){if(!busy&&window.confirm('Remove this product row? Only delete rows that are not actual delivery items.'))setRows(old=>old.filter((_,i)=>i!==index));}
+  function removePage(pageNo){if(busy||!window.confirm(`Remove page ${pageNo} and its items?`))return;const photo=pages.find(p=>p.pageNo===pageNo)?.preview;if(photo?.startsWith('blob:'))URL.revokeObjectURL(photo);setPages(old=>old.filter(p=>p.pageNo!==pageNo));setRows(old=>old.filter(r=>r.pageNo!==pageNo));setPreviewPage(0);}
+  async function reparse(){
+    if(!pages.length)return;
+    setBusy(true);setError('');
+    try{
+      const updated=[];
+      for(const page of pages){
+        if(page.ocrText===page.originalOcrText){updated.push(...rows.filter(r=>r.pageNo===page.pageNo));continue;}
+        const d=await api('/api/staff/bart/delivery-notes/reparse',{method:'POST',body:JSON.stringify({branch:branchCode,documentType,ocrText:page.ocrText})});
+        if(!(d.items||[]).length)throw new Error(`Page ${page.pageNo}: No product rows were detected. Keep the current rows and edit them manually.`);
+        updated.push(...d.items.map((r,i)=>({...r,pageNo:page.pageNo,rowId:`EDIT-P${page.pageNo}-${i+1}`,status:'REVIEW',ordered:safeQuantity(r.ordered),delivered:safeQuantity(r.delivered)})));
+      }
+      setRows(updated);setMessage('Updated transcription applied. Review all product rows.');
+    }catch(e){setError(e.message);}finally{setBusy(false);}
   }
-
-  if (submitted) {
-    return <div className="dnv-shell">
-      <div style={{ minHeight: "68vh", display: "grid", placeItems: "center", padding: "28px 16px" }}>
-        <div style={{ width: "min(560px, 100%)", textAlign: "center", padding: "44px 24px", borderRadius: 24, background: "#fff", boxShadow: "0 18px 60px rgba(0,0,0,.10)" }}>
-          <div style={{ width: 112, height: 112, margin: "0 auto 22px", borderRadius: "50%", display: "grid", placeItems: "center", background: "#16a34a", color: "#fff", fontSize: 72, fontWeight: 900 }}>✓</div>
-          <h1 style={{ margin: "0 0 10px", fontSize: "clamp(28px, 5vw, 42px)", color: "#15803d" }}>Delivery Note Submitted</h1>
-          <p>Saved successfully as one transaction.</p>
-          {submitted.deliveryNoteNo && <p><b>Delivery Note:</b> {submitted.deliveryNoteNo}</p>}
-          {submitted.transactionId && <p><b>Transaction:</b> {submitted.transactionId}</p>}
-          <p style={{ marginTop: 18, opacity: .68 }}>Returning to Staff Dashboard…</p>
-        </div>
-      </div>
-    </div>;
+  async function submit(){
+    if(!rows.length||!pages.length)return setError('Add and verify a document before submission.');
+    if(!note.deliveryNoteNo.trim())return setError('Delivery Note No is required.');
+    if(unresolved)return setError(`${unresolved} item(s) still need confirmation.`);
+    if(!window.confirm(`Submit ${rows.length} reviewed rows? Empty quantities will be saved as blank.`))return;
+    setBusy(true);setError('');setMessage('Saving verified delivery note…');
+    try{
+      const feedback=rows.flatMap(r=>!r.originalFields?[]:['sku','item','ordered','delivered','quantity','detailedQty','expireDate'].filter(k=>String(r.originalFields[k]||'').trim()&&String(r.originalFields[k]||'').trim()!==String(r[k]||'').trim()).map(field=>({sku:r.sku,field,before:r.originalFields[field],after:r[field]})));
+      const d=await api('/api/staff/bart/delivery-notes/submit',{method:'POST',body:JSON.stringify({branch:branchCode,...note,documentType,pageCount:pages.length,ocrPages:pages.map(p=>p.ocrText),items:rows,feedback})});
+      try{localStorage.removeItem(storageKey);}catch{}
+      pages.forEach(p=>{if(p.preview?.startsWith('blob:'))URL.revokeObjectURL(p.preview);});
+      setSubmitted({deliveryNoteNo:note.deliveryNoteNo,transactionId:d.transactionId||''});setRows([]);setPages([]);setMessage('');
+      window.setTimeout(()=>onBack?.(),3000);
+    }catch(e){setError(e.message);setMessage('');}finally{setBusy(false);}
   }
-
-  return <div className="dnv-shell">
-    <header className="dnv-head"><button className="dnv-back" onClick={onBack}><ArrowLeft size={18}/> Back</button><div><span>05 / DELIVERY NOTES</span><h1>Azure AI Vision Receiving</h1><p>{branchCode} · {branch?.name || branch?.BranchName || "BART Branch"}</p></div><div className="dnv-badge"><FileScan size={18}/> AZURE OCR</div></header>
-
-    <div style={{ margin: "14px 0 18px", padding: "14px 18px", borderRadius: 14, background: scanLimitReached ? "#fff1f2" : "#f0fdf4", border: `1px solid ${scanLimitReached ? "#fecdd3" : "#bbf7d0"}` }}>
-      <b>{scanUsage.loading ? "Checking today's scan allowance…" : `Daily Delivery Note scans: ${scanUsage.used} / ${scanUsage.limit} used · ${scanUsage.remaining} remaining`}</b>
-      <div style={{ marginTop: 5, fontSize: 14 }}>{scanLimitReached ? "Daily scan limit reached. Contact the IT Team for more queries." : "You have a maximum of 3 Delivery Note OCR scans available per day. Each page/rescan uses one scan."}</div>
+  if(submitted)return <main className={`dnv2 theme-${theme}`}><div className="dnv2-success"><CheckCircle2 size={76}/><h1>Delivery note submitted</h1><p>Saved as one verified transaction.</p><strong>{submitted.deliveryNoteNo}</strong>{submitted.transactionId&&<small>Transaction: {submitted.transactionId}</small>}<p>Returning to Staff Dashboard…</p></div></main>;
+  return <main className={`dnv2 theme-${theme}`}>
+    <div className="dnv2-orb dnv2-orb-a"/><div className="dnv2-orb dnv2-orb-b"/>
+    <div className="dnv2-container">
+      <header className="dnv2-header"><div className="dnv2-header-left"><button className="dnv2-iconbtn" onClick={onBack} title="Back to dashboard"><ArrowLeft size={19}/></button><div className="dnv2-brand-icon"><PackageCheck size={23}/></div><div><div className="dnv2-eyebrow">DAM OPERATIONS / RECEIVING</div><h1>Delivery Note Workspace</h1><p>{branchCode} · {branch?.name||branch?.BranchName||'BART Branch'}</p></div></div><div className="dnv2-header-right"><span className="dnv2-live"><span/> Secure verification</span><button className="dnv2-theme" onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} title="Switch appearance">{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} <span>{theme==='dark'?'Light':'Dark'} mode</span></button></div></header>
+      <section className="dnv2-stats"><div className="dnv2-stat"><div className="dnv2-stat-icon blue"><FileText size={21}/></div><div><span>Products detected</span><strong>{rows.length}</strong><small>Across {pages.length} page{pages.length===1?'':'s'}</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon green"><ShieldCheck size={21}/></div><div><span>Verified</span><strong>{rows.length-unresolved}</strong><small>{progress}% complete</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon amber"><CircleAlert size={21}/></div><div><span>Needs attention</span><strong>{unresolved}</strong><small>{flagged} with missing or corrected fields</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon cyan"><Camera size={21}/></div><div><span>Scans available today</span><strong>{usage.loading?'…':usage.remaining}</strong><small>{usage.used} / {usage.limit} used</small></div></div></section>
+      {(message||error||restored)&&<div className={`dnv2-alert ${error?'danger':'notice'}`}>{error?<CircleAlert size={18}/>:<CheckCircle2 size={18}/>}<span>{error||message||(restored?'Recovered an unfinished review. Original photos are not stored locally; re-open the document if you need to compare it.':'')}</span><button onClick={()=>{setError('');setMessage('');setRestored(false);}} title="Dismiss"><X size={16}/></button></div>}
+      <section className="dnv2-topgrid"><div className="dnv2-panel dnv2-upload"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 01</span><h2>Document pages</h2><p>Photograph or upload each page. All pages belong to one transaction.</p></div><span className="dnv2-counter">{pages.length} added</span></div><input hidden ref={inputRef} type="file" accept="image/*" capture="environment" onChange={chooseFile}/><button className="dnv2-drop" disabled={usage.loading||scanLimitReached||busy} onClick={()=>inputRef.current?.click()}><span className="dnv2-dropicon"><CloudUpload size={27}/></span><strong>{pendingFile?pendingFile.name:pages.length?'Add another document page':'Choose or photograph a delivery note'}</strong><small>JPG, PNG, HEIC where supported · Max 10 MB</small></button>{pendingPreview&&<div className="dnv2-pending"><img src={pendingPreview} alt="New document preview"/><button className="dnv2-button primary" disabled={busy} onClick={scanPage}>{busy?<Loader2 className="dnv2-spin" size={18}/>:<Camera size={18}/>} Process page {pages.length+1}</button></div>}{pages.length>0&&<div className="dnv2-pagechips">{pages.map((p,i)=><div className="dnv2-pagechip" key={p.pageNo}><button onClick={()=>setPreviewPage(i)} className={previewPage===i?'active':''}><FileText size={15}/> Page {p.pageNo} · {p.itemCount} items</button><button onClick={()=>removePage(p.pageNo)} title="Remove page"><X size={14}/></button></div>)}</div>}<div className="dnv2-tip"><ShieldCheck size={16}/> No additional scan is used when editing a detected row.</div></div>
+      <div className="dnv2-panel"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 02</span><h2>Delivery details</h2><p>Review the document information before submission.</p></div><ClipboardCheck size={22}/></div><div className="dnv2-fields"><label>Delivery note number <input value={note.deliveryNoteNo} onChange={e=>setNote(n=>({...n,deliveryNoteNo:e.target.value}))} placeholder="e.g. CKWH/INT/47503"/></label><label>Delivery date <input type="date" value={note.deliveryDate} onChange={e=>setNote(n=>({...n,deliveryDate:e.target.value}))}/></label><label>Supplier <input value={note.supplier} onChange={e=>setNote(n=>({...n,supplier:e.target.value}))} placeholder="Supplier name"/></label><label>Submitted by <input value={note.submittedBy} onChange={e=>setNote(n=>({...n,submittedBy:e.target.value}))} placeholder="Staff name"/></label></div><div className="dnv2-progress-label"><span>Verification progress</span><b>{progress}%</b></div><div className="dnv2-progress"><span style={{width:`${progress}%`}}/></div></div></section>
+      <section className="dnv2-workspace"><div className="dnv2-workhead"><div><span className="dnv2-kicker">STEP 03 / VERIFICATION</span><h2>Document & product review</h2><p>Check every physical row. Uncertain quantities stay empty until staff enters them.</p></div><div className="dnv2-workactions"><button className="dnv2-button subtle" onClick={addRow}><Plus size={16}/> Add item</button><button className="dnv2-button primary" disabled={busy||!rows.length||unresolved>0} onClick={submit}><Save size={17}/> Submit transaction</button></div></div>
+      <div className="dnv2-split"><aside className="dnv2-document"><div className="dnv2-panehead"><div><FileText size={18}/> Original document</div><span>{pages.length?`Page ${pages[previewPage]?.pageNo||1} of ${pages.length}`:'Waiting for upload'}</span></div>{pages.length&&pages[previewPage]?.preview?<img className="dnv2-documentimage" src={pages[previewPage].preview} alt="Original delivery note"/>:<div className="dnv2-documentempty"><FileText size={40}/><strong>{pages.length?'Document photo not saved':'Your document appears here'}</strong><span>{pages.length?'Draft data is available. The photo is only kept during the current session.':'Upload a photo to compare each item alongside the original.'}</span></div>}{pages.length>0&&<div className="dnv2-transcript"><button onClick={()=>setShowTranscript(v=>!v)}><span>Document transcription</span><ChevronDown size={16} className={showTranscript?'rotate':''}/></button>{showTranscript&&<><textarea aria-label="Document transcription" value={pages[previewPage]?.ocrText||''} onChange={e=>setPages(old=>old.map((p,i)=>i===previewPage?{...p,ocrText:e.target.value}:p))}/><button className="dnv2-button subtle" disabled={busy} onClick={reparse}><RefreshCcw size={15}/> Apply text corrections</button></>}</div>}</aside>
+      <div className="dnv2-review"><div className="dnv2-panehead"><div><ClipboardCheck size={18}/> Product verification</div><span>{rows.length} rows</span></div><div className="dnv2-tools"><div className="dnv2-search"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search product or SKU"/></div><div className="dnv2-filters"><Filter size={16}/>{[['all','All'],['review','To review'],['issues','Attention']].map(([v,label])=><button key={v} className={filter===v?'active':''} onClick={()=>setFilter(v)}>{label}</button>)}</div></div>
+      {!rows.length?<div className="dnv2-reviewempty"><PackageCheck size={44}/><h3>No products yet</h3><p>After scanning, products appear here for matching and verification.</p></div>:<div className="dnv2-rows">{visibleRows.length===0?<div className="dnv2-reviewempty"><CheckCircle2 size={34}/><p>No products match this filter.</p></div>:visibleRows.map(r=>{
+        const i=r._index,delta=discrepancy(r),suggestions=master.filter(m=>nameScore(r.printedItem||r.item,m.item)>.60).sort((a,b)=>nameScore(r.printedItem||r.item,b.item)-nameScore(r.printedItem||r.item,a.item)).slice(0,3);
+        return <article className={`dnv2-row ${r.status==='CONFIRMED'?'verified':''}`} key={r.rowId||i}><div className="dnv2-rowhead"><div className="dnv2-rowtitle"><span className="dnv2-rownum">{i+1}</span><span className="dnv2-rowpage">Page {r.pageNo||1}</span><span className={`dnv2-status ${r.status==='CONFIRMED'?'good':'warn'}`}>{r.status==='CONFIRMED'?<Check size={12}/>:<CircleAlert size={12}/>} {r.status==='CONFIRMED'?'Verified':'Review'}</span></div><div className="dnv2-rowbuttons"><button title="Confirm row (Ctrl/⌘ + Enter while editing)" disabled={busy||r.status==='CONFIRMED'} onClick={()=>confirmRow(i)}><Check size={16}/> Confirm</button><button title="Remove row" disabled={busy} onClick={()=>deleteRow(i)}><Trash2 size={15}/></button></div></div>
+        <div className="dnv2-rowgrid" onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();confirmRow(i);}}}><label className="dnv2-sku-field">SKU<input value={r.sku||''} onChange={e=>updateRow(i,'sku',e.target.value)} placeholder="Unmatched"/></label><label className="dnv2-name-field">Product name<input value={r.item||''} onChange={e=>updateRow(i,'item',e.target.value)} placeholder="Product description"/></label><label className="dnv2-uom-field">UOM <small>From Stocks</small><input value={r.uom||''} readOnly placeholder="—" title="UOM synchronized from the branch stock master"/></label>{documentType==='STOCK_DOCUMENT'?<><label>Detailed quantity<textarea value={r.detailedQty||''} onChange={e=>updateRow(i,'detailedQty',e.target.value)}/></label><label>Expiry date<textarea value={r.expireDate||''} onChange={e=>updateRow(i,'expireDate',e.target.value)}/></label><label>Quantity<textarea value={r.quantity||''} onChange={e=>updateRow(i,'quantity',e.target.value)}/></label></>:<><label className="dnv2-qty-field">ORDERED<input value={r.ordered||''} onChange={e=>updateRow(i,'ordered',e.target.value)} placeholder="Leave empty if unclear"/></label><label className="dnv2-qty-field">DELIVERED<input value={r.delivered||''} onChange={e=>updateRow(i,'delivered',e.target.value)} placeholder="Leave empty if unclear"/></label></>}</div>
+        <div className="dnv2-rowfooter"><span className={`dnv2-match ${r.stockSku?'matched':'unmatched'}`}>{formatMatch(r)}</span>{r.deliverySku&&r.deliverySku!==r.sku&&<span className="dnv2-original">Printed SKU: {r.deliverySku}</span>}{delta&&<span className="dnv2-shortage">{delta.delta<0?'Shortage':'Excess'}: {Math.abs(delta.delta)} {delta.unit}</span>}{r.crossedOut&&<span className="dnv2-original">Possibly crossed out</span>}</div>
+        {!r.stockSku&&suggestions.length>0&&<div className="dnv2-suggestions"><small>Possible stock-master matches:</small>{suggestions.map(m=><button key={m.sku} onClick={()=>applyMaster(i,m,'NAME_MATCH')} title={`Use ${m.item}`}><Check size={13}/> {m.sku} · {m.item}</button>)}</div>}
+      </article>;
+      })}</div>}
+      <div className="dnv2-reviewfoot"><Keyboard size={15}/> Use Tab to move between fields · Ctrl/⌘ + Enter to confirm a row. Every detected row remains visible, even without a matching SKU.</div></div></div>
+      <div className="dnv2-bottom"><div><ShieldCheck size={19}/><span><b>Staff-controlled verification</b><small>Nothing is submitted until every retained row is confirmed. Empty quantities and unmatched SKUs can be saved after review.</small></span></div><button className="dnv2-button primary" disabled={busy||!rows.length||unresolved>0} onClick={submit}><Save size={18}/> Submit verified document</button></div></section>
     </div>
-
-    <section className="dnv-grid">
-      <div className="dnv-card"><h2>1. Scan delivery-note pages</h2><p>Scan Page 1 first. If the delivery note has another page, add it before submitting. All pages stay in ONE transaction.</p>
-        <input ref={inputRef} hidden type="file" accept="image/*" capture="environment" onChange={chooseFile}/>
-        <button className="dnv-primary" disabled={scanUsage.loading || scanLimitReached} onClick={() => inputRef.current?.click()}><Camera size={18}/> {pages.length ? "+ Scan Another Page (Optional)" : "Take / choose Page 1"}</button>
-        {pendingPreview && <><img className="dnv-preview" src={pendingPreview} alt="Pending delivery note page"/><button className="dnv-scan" disabled={busy || scanUsage.loading || scanLimitReached} onClick={scanPage}>{busy ? <Loader2 className="dnv-spin" size={18}/> : <RefreshCcw size={18}/>} Scan & Add Page {pages.length + 1}</button></>}
-        {!!pages.length && <div className="dnv-pages"><div className="dnv-pages-head"><FilePlus2 size={17}/><b>{pages.length} page(s) scanned · {rows.length} items</b></div>{pages.map(p=><div className="dnv-page" key={p.pageNo}><span>Page {p.pageNo} · {p.itemCount} items</span><button onClick={()=>removePage(p.pageNo)} title="Remove this page"><Trash2 size={15}/> Remove</button></div>)}</div>}
-      </div>
-
-      <div className="dnv-card"><h2>2. Delivery details</h2><label>Delivery Note No<input value={note.deliveryNoteNo} onChange={e=>setNote({...note,deliveryNoteNo:e.target.value})}/></label><label>Delivery Date<input type="date" value={note.deliveryDate} onChange={e=>setNote({...note,deliveryDate:e.target.value})}/></label><label>Supplier<input value={note.supplier} onChange={e=>setNote({...note,supplier:e.target.value})}/></label><label>Submitted By<input value={note.submittedBy} onChange={e=>setNote({...note,submittedBy:e.target.value})}/></label><div className="dnv-stats"><b>{rows.length}</b><span>items detected</span><b>{unresolved}</b><span>need review</span></div></div>
-    </section>
-
-    {(message || error) && <div className={`dnv-msg ${error ? "bad" : "ok"}`}>{error ? <TriangleAlert size={18}/> : <CheckCircle2 size={18}/>} {error || message}</div>}
-
-    {pages.length > 0 && <section className="dnv-table-card" style={{marginTop:20,background:"#fff",border:"1px solid #e2e8f0"}}>
-      <div className="dnv-title"><div><h2>Detected Delivery Note — Original Document Review</h2><p>Every recognized English letter, number, and symbol is kept in the OCR transcript. Table separators are used where detectable; verify each ORDERED and DELIVERED cell against the photo.</p></div></div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"12px 0"}}>
-        {pages.map((p,i)=><button key={p.pageNo} type="button" onClick={()=>setPreviewPage(i)} style={{padding:"9px 14px",borderRadius:8,border:"1px solid #cbd5e1",background:previewPage===i?"#dbeafe":"#fff",cursor:"pointer"}}>View Original Page {p.pageNo}</button>)}
-      </div>
-      {pages[previewPage] && <><div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:13,color:"#475569",padding:"10px 0"}}><b>OCR words: {pages[previewPage].detection?.wordCount ?? "?"}</b><b>Physical rows: {pages[previewPage].detection?.physicalRows ?? "?"}</b><b>Table rules: {pages[previewPage].detection?.detectedRules ?? "?"}</b><b>Method: {pages[previewPage].detection?.method ?? "OCR"}</b><b>AI: {pages[previewPage].ai?.state || "OCR"}</b></div><details open><summary style={{cursor:"pointer",fontWeight:700}}>Original photographed page {pages[previewPage].pageNo}</summary><img src={pages[previewPage].preview} alt={`Original document page ${pages[previewPage].pageNo}`} style={{display:"block",width:"100%",maxWidth:700,maxHeight:850,objectFit:"contain",margin:"12px auto",borderRadius:10}}/></details><details><summary style={{cursor:"pointer",fontWeight:700}}>Full OCR transcription (all detected lines)</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",background:"#f8fafc",padding:16,borderRadius:10,maxHeight:360,overflow:"auto"}}>{pages[previewPage].ocrText}</pre></details></>}
-      <p style={{marginTop:12,fontSize:13,color:"#64748b"}}>Rows marked REVIEW require your verification. Crossed-out rows stay visible until you delete them. Editing a quantity directly in the table changes the value that will be submitted.</p>
-    </section>}
-
-    {rows.length > 0 && previewApproved && <section className="dnv-table-card"><div className="dnv-title"><div><h2>3. Editable Delivery Note — Verify & confirm</h2><p>One physical product row becomes one editable item. Validate ORDERED and DELIVERED against the original photo; fill unreadable handwriting manually.</p></div><button className="dnv-submit" disabled={busy || unresolved > 0} onClick={submit}><Save size={18}/> Submit ONE Transaction</button></div>
-      <div style={{display:"flex",gap:12,alignItems:"center",margin:"12px 0"}}>
-        <b>Detected format: {documentType === "STOCK_DOCUMENT" ? "BART Stock Document" : "Delivery Note"}</b>
-        <button type="button" className="dnv-primary" onClick={addManualRow}>+ Add Item Manually</button>
-      </div>
-      <div className="dnv-table-wrap"><table>
-        <thead><tr><th>#</th><th>Page</th><th>SKU</th><th>English Item</th>
-        {documentType === "STOCK_DOCUMENT" ? <><th>Detailed Qty (Shelf#)</th><th>Expire Date</th><th>Quantity</th></> : <><th>ORDERED</th><th>DELIVERED</th></>}
-        <th>Match</th><th>Status</th><th>Action</th></tr></thead>
-        <tbody>{rows.map((r,i)=><tr key={r.rowId || i} className={r.status === "CONFIRMED" ? "confirmed" : "review"}>
-          <td>{i+1}</td><td>P{r.pageNo || 1}</td>
-          <td className="dnv-sku"><input value={r.sku || ""} onChange={e=>updateRow(i,"sku",e.target.value)} title="Exact SKU lookup from branch Stocks"/></td>
-          <td className="dnv-item"><input value={r.item || ""} onChange={e=>updateRow(i,"item",e.target.value)}/><small>{r.crossedOut ? "Possible crossed-out item — verify / delete. " : ""}{r.reviewReason ? `Review: ${r.reviewReason}. ` : ""}OCR: {r.ocrText}{(r.learningSuggestions||[]).map((tip,k)=><span key={k} style={{display:'block',color:'#b45309',fontWeight:700}}>⚠ Previously corrected {tip.field}: {tip.original} → {tip.suggested} ({tip.confirmations} verified examples). Check before accepting.</span>)}</small></td>
-          {documentType === "STOCK_DOCUMENT" ? <>
-            <td className="dnv-quantity"><textarea rows={2} value={r.detailedQty || ""} onChange={e=>updateRow(i,"detailedQty",e.target.value)}/></td>
-            <td className="dnv-quantity"><textarea rows={2} value={r.expireDate || ""} onChange={e=>updateRow(i,"expireDate",e.target.value)}/></td>
-            <td className="dnv-quantity"><textarea rows={2} value={r.quantity || ""} onChange={e=>updateRow(i,"quantity",e.target.value)}/></td>
-          </> : <>
-            <td className="dnv-quantity"><textarea rows={2} value={r.ordered || ""} title={r.ordered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"ordered",e.target.value)} style={{overflow:"hidden",resize:"vertical",whiteSpace:"pre-wrap"}}/></td>
-            <td className="dnv-quantity"><textarea rows={2} value={r.delivered || ""} title={r.delivered || ""} ref={autoGrowDeliveryField} onInput={e=>autoGrowDeliveryField(e.currentTarget)} onChange={e=>updateRow(i,"delivered",e.target.value)} style={{overflow:"hidden",resize:"vertical",whiteSpace:"pre-wrap"}}/></td>
-          </>}
-          <td>{r.match || "REVIEW"}<small>{r.score ? ` ${Math.round(r.score*100)}%` : ""}</small></td>
-          <td>{r.status === "CONFIRMED" ? <span className="dnv-ok">CONFIRMED</span> : <span className="dnv-warn">REVIEW</span>}</td>
-          <td><div style={{display:"flex",gap:6,alignItems:"center"}}><button type="button" disabled={busy || r.status === "CONFIRMED"} onClick={() => confirmRow(i)} style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"9px 10px",fontWeight:700}}>✓ Confirm</button><button type="button" disabled={busy} onClick={() => deleteRow(i)} title="Delete this item" style={{background:"#fee2e2",color:"#b91c1c",border:"1px solid #fecaca",borderRadius:8,padding:"9px 12px",fontWeight:700}}>🗑 Delete</button></div></td>
-        </tr>)}</tbody></table></div>
-    </section>}
-  </div>;
+  </main>;
 }
