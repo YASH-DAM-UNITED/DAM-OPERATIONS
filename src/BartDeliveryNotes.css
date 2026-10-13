@@ -6,3 +6,29 @@
 @media(max-width:980px){.dnv2-stats{grid-template-columns:repeat(2,1fr)}.dnv2-topgrid{grid-template-columns:1fr}.dnv2-split{grid-template-columns:1fr}.dnv2-document{position:static}.dnv2-documentimage{max-height:450px}.dnv2-rows{max-height:none}}
 @media(max-width:620px){.dnv2{padding:13px 10px 36px}.dnv2-header{align-items:flex-start}.dnv2-header-right{flex-direction:column;align-items:flex-end}.dnv2-live{display:none}.dnv2-theme span{display:none}.dnv2-brand-icon{display:none}.dnv2-header-left h1{font-size:22px}.dnv2-stat{padding:12px;gap:8px}.dnv2-stat-icon{width:37px;height:37px;flex-basis:37px}.dnv2-stat strong{font-size:23px}.dnv2-stat small{font-size:10px}.dnv2-panel,.dnv2-workspace{padding:12px;border-radius:14px}.dnv2-workhead{align-items:stretch;flex-direction:column}.dnv2-workactions{width:100%}.dnv2-workactions .dnv2-button{flex:1}.dnv2-fields{grid-template-columns:1fr 1fr}.dnv2-rowgrid{grid-template-columns:1fr 1fr}.dnv2-name-field{grid-column:span 2}.dnv2-rowgrid .dnv2-uom-field{grid-column:span 1}.dnv2-bottom{align-items:stretch;flex-direction:column}.dnv2-bottom .dnv2-button{width:100%}.dnv2-rowbuttons button{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.dnv2 *{animation:none!important;transition:none!important}}
+
+/* V3 precision layout and document verification */
+.dnv2-split{grid-template-columns:minmax(0,var(--dnv3-doc-width,40%)) minmax(0,1fr);gap:12px;align-items:start}
+.dnv2-rowgrid{grid-template-columns:minmax(76px,.72fr) minmax(150px,2.3fr) minmax(90px,1fr) minmax(105px,1fr) minmax(105px,1fr);gap:8px;align-items:end}
+.dnv2-rowgrid label{min-width:0;gap:6px;justify-content:flex-end;line-height:1.2;min-height:58px}
+.dnv2-rowgrid input{height:37px;padding:7px 9px;line-height:1.2;text-overflow:ellipsis}
+.dnv2-rowgrid input[readonly]{cursor:default}
+.dnv2-row{padding:10px 12px;border-radius:11px;scroll-margin:75px}
+.dnv2-rowhead{margin-bottom:8px}.dnv2-rows{gap:7px;padding:9px}
+.dnv2-row.dnv3-selected{border-color:var(--primary);box-shadow:0 0 0 2px #2563eb22;background:var(--surface)}
+.dnv3-worktoolbar{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.dnv3-worktoolbar input{width:100px;accent-color:var(--primary)}
+.dnv3-worktoolbar .dnv2-button{margin-left:auto;padding:7px 10px}
+.dnv3-document-viewport{overflow:auto;max-height:690px;min-height:240px;background:var(--surface)}
+.dnv3-image-wrap{position:relative;transform-origin:top left;width:100%;transition:transform .15s}
+.dnv3-image-wrap .dnv2-documentimage{width:100%;height:auto;max-height:none;object-fit:contain;padding:0;display:block}
+.dnv3-highlight{position:absolute;pointer-events:none;border:2px solid #06b6d4;background:rgba(6,182,212,.23);box-shadow:0 0 0 3px rgba(6,182,212,.14);border-radius:4px;animation:dnv3-flash .55s ease-out}
+@keyframes dnv3-flash{from{opacity:.2}to{opacity:1}}
+.dnv3-zoom{display:flex;align-items:center;justify-content:center;gap:14px;border-top:1px solid var(--line);padding:7px;font-size:11px;color:var(--muted)}
+.dnv3-zoom button{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--text)}
+.dnv3-warning{display:flex;align-items:center;gap:9px;border:1px solid #e9ae4d;background:#f59e0b14;color:var(--text);border-radius:10px;padding:11px;margin-bottom:12px;font-size:12px}
+.dnv3-history{border:1px solid var(--line);background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:12px}
+.dnv3-history h3{margin:0 0 9px;font-size:13px}.dnv3-history>div{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding:9px 0;font-size:11px}.dnv3-history span,.dnv3-history small,.dnv3-history p{color:var(--muted);font-size:11px}
+@media(max-width:1200px){.dnv2-split{grid-template-columns:1fr}.dnv2-document{position:static}.dnv2-rowgrid{grid-template-columns:minmax(75px,.7fr) minmax(150px,2fr) minmax(90px,1fr) minmax(105px,1fr) minmax(105px,1fr)}}
+@media(max-width:780px){.dnv2-rowgrid{grid-template-columns:1fr 1fr}.dnv2-rowgrid .dnv2-name-field{grid-column:span 2}.dnv3-worktoolbar input{width:65px}.dnv3-document-viewport{max-height:420px}.dnv3-history>div{flex-direction:column}}
+@media(max-width:400px){.dnv2-rowgrid .dnv2-sku-field,.dnv2-rowgrid .dnv2-uom-field{grid-column:span 1}.dnv2-rowgrid .dnv2-qty-field{grid-column:span 1}}

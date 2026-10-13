@@ -7222,6 +7222,16 @@ export default {
         return jsonResponse({success:true,items,documentType,meta:dnMetaFromText(correctedText)});
       }
 
+      if (url.pathname === "/api/staff/bart/delivery-notes/preflight" && request.method === "GET") {
+        const branchCode=String(url.searchParams.get('branch')||'').trim().toUpperCase();
+        const note=String(url.searchParams.get('note')||'').trim();
+        if(!branchCode||!note||note.length>120)return jsonResponse({success:false,message:'Branch and delivery note number required.'},400);
+        const branch=await getBartBranchGoogle(env,branchCode);
+        if(!branch)return jsonResponse({success:false,message:'Branch not found.'},404);
+        const duplicate=await dnDuplicateExists(env,branch.sheet_id,note);
+        return jsonResponse({success:true,duplicate});
+      }
+
       if (url.pathname === "/api/staff/bart/delivery-notes/scan-status" && request.method === "GET") {
         const branchCode = String(url.searchParams.get('branch') || '').trim().toUpperCase();
         if (!branchCode) return jsonResponse({success:false,message:'Branch is required.'},400);
@@ -7287,6 +7297,10 @@ export default {
           documentType,
           meta: dnMetaFromText(annotation.text),
           ocrText: annotation.text || '',
+          ocrPageDimensions: {
+            width:Number(annotation.azureResult?.analyzeResult?.readResults?.[0]?.width)||0,
+            height:Number(annotation.azureResult?.analyzeResult?.readResults?.[0]?.height)||0,
+          },
           // Preserve original Azure reading order and word confidence for the full OCR review.
           // Never discard unmatched lines just because they are not stock items.
           ocrLines: (annotation.azureResult?.analyzeResult?.readResults || []).flatMap(page =>
@@ -7320,6 +7334,15 @@ export default {
         );
         if (invalid) return jsonResponse({success:false,message:'Every item must have a product name and be explicitly confirmed before submission.'},400);
 
+        const rawPages=Array.isArray(body.ocrPages)?body.ocrPages:[];
+        const pageHints=rawPages.map(text=>String(text||'').slice(0,9000).match(/\bpages?\s*[:#-]?\s*(\d{1,2})\s*(?:\/|of)\s*(\d{1,2})\b|(?:^|\n)\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*(?:$|\n)/i)).filter(Boolean)
+          .map(m=>({current:Number(m[1]||m[3]),total:Number(m[2]||m[4])})).filter(x=>x.total>1&&x.total<=30&&x.current>0&&x.current<=x.total);
+        if(pageHints.length){
+          const expected=Math.max(...pageHints.map(x=>x.total));
+          const observed=new Set(pageHints.map(x=>x.current));
+          if(rawPages.length<expected||Array.from({length:expected},(_,i)=>i+1).some(n=>!observed.has(n)))
+            return jsonResponse({success:false,message:`This delivery note requires ${expected} pages. Upload all numbered pages before submitting.`},409);
+        }
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
