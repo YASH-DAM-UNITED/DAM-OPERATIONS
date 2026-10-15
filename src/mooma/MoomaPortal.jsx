@@ -741,14 +741,6 @@ export default function MoomaPortal({
     }
 
     console.log(
-        "[MOOMA] STAFF SCHEDULE NOT CONNECTED YET"
-      );
-
-      return;
-    }
-
-
-    console.log(
       "[MOOMA] MODULE NOT CONNECTED YET:",
       moduleId
     );

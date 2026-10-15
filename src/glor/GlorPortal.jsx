@@ -741,14 +741,6 @@ export default function GlorPortal({
     }
 
     console.log(
-        "[GLOR] STAFF SCHEDULE NOT CONNECTED YET"
-      );
-
-      return;
-    }
-
-
-    console.log(
       "[GLOR] MODULE NOT CONNECTED YET:",
       moduleId
     );
