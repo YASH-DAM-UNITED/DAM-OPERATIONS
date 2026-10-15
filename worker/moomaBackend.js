@@ -691,6 +691,10 @@ async function stockSubmit(env, b) {
   if (ci < 0) {
     ci = h.length;
 
+    if (strict && next < 0) {
+      throw Error(`Insufficient stock for ${x.name} in ${br.code}.`);
+    }
+
     u.push({
       range: `${STOCK}!${col(ci + 1)}1`,
       values: [[b.date]],
@@ -764,7 +768,7 @@ async function transferHeaders(env) {
 
   await write(env, mid(env), [
     {
-      range: "Transfers!A1:H1",
+      range: "Transfers!A1:J1",
       values: [
         [
           "ID",
@@ -775,6 +779,8 @@ async function transferHeaders(env) {
           "Reason",
           "Status",
           "Timestamp",
+          "StockDate",
+          "ItemUOMs",
         ],
       ],
     },
@@ -790,6 +796,8 @@ async function transferHeaders(env) {
       "Reason",
       "Status",
       "Timestamp",
+      "StockDate",
+      "ItemUOMs",
     ],
   ];
 }
@@ -823,6 +831,7 @@ function parseCart(t) {
       )[1] || "",
 
     qty: q[i] || 0,
+    uom: String(t.itemUoms || "").split("\n")[i] || "",
   }));
 }
 
@@ -830,7 +839,9 @@ async function applyStock(
   env,
   br,
   cart,
-  mode
+  mode,
+  stockDate = jedYesterday(),
+  strict = false
 ) {
   const r = await read(
     env,
@@ -839,7 +850,7 @@ async function applyStock(
   );
 
   const s = structure(r);
-  const date = jedYesterday();
+  const date = stockDate;
 
   const ci = (r[0] || []).indexOf(date);
 
@@ -864,7 +875,12 @@ async function applyStock(
     );
 
     if (!it) {
+      if (strict) throw Error(`Transfer item ${x.sku || x.name} not found in ${br.code} stock.`);
       continue;
+    }
+
+    if (strict && (!Number.isFinite(Number(x.qty)) || Number(x.qty) <= 0)) {
+      throw Error(`Invalid transfer quantity for ${x.name}.`);
     }
 
     const cur =
@@ -897,231 +913,156 @@ async function applyStock(
 }
 
 async function createTransfer(env, b) {
-  const o = await getBranch(
-    env,
-    b.originBranch
-  );
+  const o = await getBranch(env, b.originBranch);
+  const d = await getBranch(env, b.destinationBranch);
+  if (!o?.sheetId || !d?.sheetId) throw Error("Origin or destination SheetID missing.");
+  if (o.code === d.code) throw Error("Origin and destination must be different branches.");
 
-  const d = await getBranch(
-    env,
-    b.destinationBranch
-  );
-
-  if (!o?.sheetId || !d?.sheetId) {
-    throw Error(
-      "Origin or destination SheetID missing."
-    );
+  const cart = (Array.isArray(b.items) ? b.items : []).filter(x => Number(x.qty) > 0);
+  if (!cart.length) return { success: false, message: "Add at least one transfer quantity." };
+  if (cart.some(x => !String(x.name || "").trim() || !Number.isFinite(Number(x.qty)))) {
+    throw Error("Transfer items require a valid name and quantity.");
   }
+  const uniqueItems = new Set(cart.map(x => String(x.sku || x.name).trim().toUpperCase()));
+  if (uniqueItems.size !== cart.length) throw Error("Duplicate items in transfer; combine their quantities before sending.");
 
-  const cart = (b.items || []).filter(
-    (x) => Number(x.qty) > 0
-  );
+  // The receiving branch must not be credited before its staff accepts.
+  // StockDate is fixed at creation so an overnight acceptance uses the same stock column.
+  const stockDate = jedYesterday();
+  await transferHeaders(env);
+  await write(env, mid(env), [{
+    range: "Transfers!I1:J1", values: [["StockDate", "ItemUOMs"]],
+  }]);
 
-  if (!cart.length) {
-    return {
-      success: false,
-      message:
-        "Add at least one transfer quantity.",
-    };
-  }
-
-  let originDone = false;
-
+  let originDebited = false;
   try {
-    await applyStock(
-      env,
-      o,
-      cart,
-      "subtract"
-    );
-
-    originDone = true;
-
-    await applyStock(
-      env,
-      d,
-      cart,
-      "add"
-    );
-
-    await transferHeaders(env);
-
-    const id = `MTR-${Date.now()}`;
-
-    await append(
-      env,
-      mid(env),
-      "Transfers!A:H",
-      [
-        id,
-
-        `${o.code} - ${o.name}`,
-
-        `${d.code} - ${d.name}`,
-
-        cart
-          .map(
-            (x) =>
-              `• ${x.name} [${
-                x.sku || ""
-              }]`
-          )
-          .join("\n"),
-
-        cart
-          .map((x) => x.qty)
-          .join("\n"),
-
-        b.reason || "",
-
-        "Pending",
-
-        new Date().toISOString(),
-      ]
-    );
-
-    return {
-      success: true,
+    await applyStock(env, o, cart, "subtract", stockDate, true);
+    originDebited = true;
+    const id = `MTR-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    await append(env, mid(env), "Transfers!A:J", [
       id,
-      message:
-        "MOOMA transfer created successfully.",
-    };
+      `${o.code} - ${o.name}`,
+      `${d.code} - ${d.name}`,
+      cart.map(x => `• ${x.name} [${x.sku || ""}]`).join("\n"),
+      cart.map(x => Number(x.qty)).join("\n"),
+      b.reason || "",
+      "AwaitingReceipt",
+      new Date().toISOString(),
+      stockDate,
+      cart.map(x => x.uom || x.UOM || "").join("\n"),
+    ]);
+    return { success: true, id, message: "Transfer sent. Destination stock updates only after acceptance." };
   } catch (e) {
-    if (originDone) {
-      try {
-        await applyStock(
-          env,
-          o,
-          cart,
-          "add"
-        );
-      } catch {}
+    if (originDebited) {
+      try { await applyStock(env, o, cart, "add", stockDate, true); }
+      catch (rollbackError) {
+        console.error("TRANSFER ORIGIN ROLLBACK FAILED", rollbackError);
+        throw Error("Transfer creation failed and origin stock rollback also failed. Reconcile stock before retrying.");
+      }
     }
-
     throw e;
   }
 }
 
 function transferObjects(r) {
-  if (r.length < 2) {
-    return [];
-  }
-
+  if (r.length < 2) return [];
   const h = r[0];
-  const I = (n) => idx(h, [n]);
-
-  return r
-    .slice(1)
-    .map((x, i) => ({
+  const I = n => idx(h, [n]);
+  const value = (row, name) => {
+    const i = I(name);
+    return i < 0 ? "" : String(row[i] ?? "");
+  };
+  return r.slice(1).map((x, i) => {
+    const origin = value(x, "Origin");
+    const destination = value(x, "Destination");
+    const t = {
       rowNumber: i + 2,
-
-      id: String(
-        x[I("ID")] || ""
-      ),
-
-      origin: String(
-        x[I("Origin")] || ""
-      ),
-
-      destination: String(
-        x[I("Destination")] || ""
-      ),
-
-      items: String(
-        x[I("Items")] || ""
-      ),
-
-      quantities: String(
-        x[I("Quantities")] || ""
-      ),
-
-      reason: String(
-        x[I("Reason")] || ""
-      ),
-
-      status: String(
-        x[I("Status")] || "Pending"
-      ),
-
-      updated_at: String(
-        x[I("Timestamp")] || ""
-      ),
-    }))
-    .filter((x) => x.id);
+      id: value(x, "ID"),
+      origin, destination,
+      items: value(x, "Items"),
+      quantities: value(x, "Quantities"),
+      reason: value(x, "Reason"),
+      status: value(x, "Status") || "Pending",
+      updated_at: value(x, "Timestamp"),
+      stockDate: value(x, "StockDate"),
+      itemUoms: value(x, "ItemUOMs"),
+    };
+    const parts = origin.split(/\s+-\s+/, 2);
+    t.fromBranchCode = (parts[0] || "").trim();
+    t.fromBranchName = parts[1] || origin;
+    t.createdAt = t.updated_at;
+    t.transferItems = parseCart(t);
+    return t;
+  }).filter(x => x.id);
 }
 
 async function respond(env, b) {
+  const action = String(b.action || "").toLowerCase();
+  if (!["accept", "reject"].includes(action)) throw Error("Invalid transfer action.");
   const r = await transferSheet(env);
   const a = transferObjects(r);
-
-  const t = a.find(
-    (x) => x.id === b.transferId
-  );
-
-  if (!t) {
-    throw Error("Transfer not found.");
+  const t = a.find(x => x.id === b.transferId);
+  if (!t) throw Error("Transfer not found.");
+  if (!["Pending", "AwaitingReceipt"].includes(t.status)) {
+    return { success: false, message: "Transfer already processed." };
   }
-
-  if (t.status !== "Pending") {
-    return {
-      success: false,
-      message:
-        "Transfer already processed.",
-    };
+  const originCode = t.origin.split(" - ")[0].trim();
+  const destinationCode = t.destination.split(" - ")[0].trim();
+  if (b.branchCode && String(b.branchCode).trim().toUpperCase() !== destinationCode) {
+    throw Error("This transfer belongs to a different receiving branch.");
   }
-
-  const h = r[0];
-  const si = idx(h, ["Status"]);
-
-  const status =
-    b.action === "accept"
-      ? "Accepted"
-      : "Rejected";
-
-  if (status === "Rejected") {
-    const oc =
-      t.origin.split(" - ")[0];
-
-    const dc =
-      t.destination.split(" - ")[0];
-
-    const o = await getBranch(env, oc);
-    const d = await getBranch(env, dc);
-
-    const cart = parseCart(t);
-
-    await applyStock(
-      env,
-      o,
-      cart,
-      "add"
-    );
-
-    await applyStock(
-      env,
-      d,
-      cart,
-      "subtract"
-    );
+  const cart = t.transferItems;
+  if (!cart.length || cart.some(x => !x.name || !Number.isFinite(x.qty) || x.qty <= 0)) {
+    throw Error("Transfer item details are missing or invalid. No stock was changed.");
   }
-
-  await write(env, mid(env), [
-    {
-      range: `Transfers!${col(
-        si + 1
-      )}${t.rowNumber}`,
-      values: [[status]],
-    },
-  ]);
-
+  const o = await getBranch(env, originCode);
+  const d = await getBranch(env, destinationCode);
+  if (!o?.sheetId || !d?.sheetId) throw Error("Transfer branch sheet missing.");
+  const legacy = t.status === "Pending"; // Legacy transfers already credited destination on creation.
+  const stockDate = t.stockDate || jedYesterday();
+  let stockUpdated = false;
+  let firstUpdated = false;
+  try {
+    if (legacy && action === "reject") {
+      await applyStock(env, d, cart, "subtract", stockDate, true);
+      firstUpdated = true;
+      await applyStock(env, o, cart, "add", stockDate, true);
+      stockUpdated = true;
+    } else if (!legacy && action === "accept") {
+      await applyStock(env, d, cart, "add", stockDate, true);
+      stockUpdated = true;
+    } else if (!legacy && action === "reject") {
+      await applyStock(env, o, cart, "add", stockDate, true);
+      stockUpdated = true;
+    }
+    const si = idx(r[0], ["Status"]);
+    if (si < 0) throw Error("Transfer status column missing.");
+    await write(env, mid(env), [{
+      range: `Transfers!${col(si + 1)}${t.rowNumber}`,
+      values: [[action === "accept" ? "Accepted" : "Rejected"]],
+    }]);
+  } catch (error) {
+    // Restore the stock if the final status update fails, so retry does not double-credit.
+    try {
+      if (legacy && action === "reject") {
+        if (stockUpdated) await applyStock(env, o, cart, "subtract", stockDate, true);
+        if (firstUpdated) await applyStock(env, d, cart, "add", stockDate, true);
+      } else if (stockUpdated) {
+        const branch = action === "accept" ? d : o;
+        await applyStock(env, branch, cart, "subtract", stockDate, true);
+      }
+    } catch (rollbackError) {
+      console.error("TRANSFER RESPONSE ROLLBACK FAILED", rollbackError);
+      throw Error("Transfer response failed and stock rollback failed. Reconcile balances before retrying.");
+    }
+    throw error;
+  }
   return {
     success: true,
-    status,
-
-    message:
-      status === "Accepted"
-        ? "Transfer accepted successfully."
-        : "Transfer rejected and stock reversal completed.",
+    status: action === "accept" ? "Accepted" : "Rejected",
+    message: action === "accept"
+      ? (legacy ? "Existing transfer accepted; stock was already received under the previous workflow." : "Transfer accepted and receiving branch stock updated.")
+      : "Transfer rejected and stock returned to the origin branch.",
   };
 }
 
@@ -2335,8 +2276,7 @@ export async function handleMoomaRequest(
             x.destination.startsWith(
               c
             ) &&
-            x.status ===
-              "Pending"
+            ["Pending", "AwaitingReceipt"].includes(x.status)
         );
 
       return J({

@@ -181,8 +181,8 @@ function transferItemsOf(transfer) {
   if (!transfer) return [];
 
   const candidates = [
-    transfer.items,
     transfer.transferItems,
+    transfer.items,
     transfer.itemList,
     transfer.itemsJson,
     transfer.items_json,
@@ -610,6 +610,7 @@ export default function GlorDashboard({
   function askAction(action) {
     if (
       !currentTransfer ||
+      transferItemsOf(currentTransfer).length === 0 ||
       actionBusy
     ) {
       return;
@@ -630,6 +631,7 @@ export default function GlorDashboard({
   async function executeTransferAction() {
     if (
       !currentTransfer ||
+      transferItemsOf(currentTransfer).length === 0 ||
       !confirmAction ||
       actionBusy
     ) {
@@ -2000,9 +2002,7 @@ export default function GlorDashboard({
 
                             <div className="glor-transfer-popup-no-items">
 
-                              No item details
-                              returned for this
-                              transfer.
+                              Transfer details are missing. Accept and Reject are disabled to protect stock balances.
 
                             </div>
 
@@ -2236,7 +2236,7 @@ export default function GlorDashboard({
                           }
 
                           disabled={
-                            actionBusy
+                            actionBusy || transferItemsOf(currentTransfer).length === 0
                           }
 
                           whileHover={{
@@ -2280,7 +2280,7 @@ export default function GlorDashboard({
                           }
 
                           disabled={
-                            actionBusy
+                            actionBusy || transferItemsOf(currentTransfer).length === 0
                           }
 
                           whileHover={{
