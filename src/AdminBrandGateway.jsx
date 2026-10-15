@@ -508,9 +508,6 @@ export default function AdminBrandGateway({
   const gatewayRef = useRef(null);
   const openingRef = useRef(false);
   const navigationTimerRef = useRef(null);
-  useEffect(() => () => { if (navigationTimerRef.current) window.clearTimeout(navigationTimerRef.current); }, []);
-  const openingRef = useRef(false);
-  const navigationTimerRef = useRef(null);
 
   useEffect(() => () => {
     if (navigationTimerRef.current !== null) {
