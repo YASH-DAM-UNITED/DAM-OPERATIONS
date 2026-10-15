@@ -381,7 +381,7 @@ function getGoogleAccounts(env) {
 
     accounts.push({
       id:
-        "google-1",
+        env.DN_GOOGLE_ACCOUNT_ID || "google-1",
 
       email:
         env.GOOGLE_CLIENT_EMAIL,
@@ -7141,6 +7141,36 @@ const EXTRA_BRANDS = {
   mooma: { envKey: 'MOOMA_MASTER_SHEET_ID', gid: 0, prefix: 'M' },
 };
 const extraHeader = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Delivery Note routes must use the credentials for their own brand.
+// The legacy stock modules and BART credentials remain untouched.
+// Brand-specific token IDs also prevent cross-brand token-cache reuse.
+function dnGoogleEnv(env, brand) {
+  if (brand === 'bart') return env;
+  if (brand !== 'glor' && brand !== 'mooma') {
+    throw new Error('Unsupported Delivery Note brand.');
+  }
+
+  const prefix = brand.toUpperCase();
+  const email = env[`${prefix}_GOOGLE_CLIENT_EMAIL`];
+  const privateKey = env[`${prefix}_GOOGLE_PRIVATE_KEY`];
+
+  // Preserve existing shared-account deployments when no brand-specific
+  // credentials have been configured. Never mix a brand email with a BART key.
+  if (!email && !privateKey) return env;
+  if (!email || !privateKey) {
+    throw new Error(`${prefix} Delivery Notes: configure both ${prefix}_GOOGLE_CLIENT_EMAIL and ${prefix}_GOOGLE_PRIVATE_KEY.`);
+  }
+
+  return Object.assign(Object.create(env), {
+    GOOGLE_CLIENT_EMAIL: email,
+    GOOGLE_PRIVATE_KEY: privateKey,
+    GOOGLE_CLIENT_EMAIL_2: undefined,
+    GOOGLE_PRIVATE_KEY_2: undefined,
+    DN_GOOGLE_ACCOUNT_ID: `${brand}-delivery`,
+  });
+}
+
 async function extraMasterTab(env, brand) {
   const config = EXTRA_BRANDS[brand];
   if (!config) throw Error('Unsupported brand.');
@@ -7275,6 +7305,7 @@ export default {
       const deliveryRouteMatch = url.pathname.match(/^\/api\/staff\/(bart|glor|mooma)\/delivery-notes\/(stock-master|reparse|preflight|scan-status|scan|submit)$/);
       const deliveryBrand = deliveryRouteMatch?.[1] || null;
       const deliveryRoute = deliveryRouteMatch?.[2] || null;
+      const deliveryEnv = deliveryRouteMatch ? dnGoogleEnv(env, deliveryBrand) : env;
       /* ======================================================
          BART DELIVERY NOTES — AZURE AI VISION
       ====================================================== */
@@ -7282,9 +7313,9 @@ export default {
       if (deliveryRoute === "stock-master" && request.method === "GET") {
         const branchCode = String(url.searchParams.get("branch") || "").trim().toUpperCase();
         if (!branchCode) return jsonResponse({success:false,message:"Branch is required."},400);
-        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        const branch = await dnBrandBranch(deliveryEnv, deliveryBrand, branchCode);
         if (!branch) return jsonResponse({success:false,message:"Branch not found."},404);
-        const stock = await getBartStockSheetSmart(env, branch, false);
+        const stock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
         return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item,uom:x.stockUom || ""}))});
       }
@@ -7295,9 +7326,9 @@ export default {
         const correctedText = String(body.ocrText || '');
         if (!branchCode || !correctedText.trim()) return jsonResponse({success:false,message:'Branch and corrected OCR text are required.'},400);
         if (correctedText.length > 120000) return jsonResponse({success:false,message:'OCR text is too long.'},413);
-        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        const branch = await dnBrandBranch(deliveryEnv, deliveryBrand, branchCode);
         if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
-        const stock = await getBartStockSheetSmart(env, branch, false);
+        const stock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
         const documentType = body.documentType === 'STOCK_DOCUMENT' ? 'STOCK_DOCUMENT' : 'DELIVERY_NOTE';
         const items = dnV2MatchRows(dnReparseCorrectedText(correctedText, master, documentType), master, documentType);
@@ -7308,18 +7339,18 @@ export default {
         const branchCode=String(url.searchParams.get('branch')||'').trim().toUpperCase();
         const note=String(url.searchParams.get('note')||'').trim();
         if(!branchCode||!note||note.length>120)return jsonResponse({success:false,message:'Branch and delivery note number required.'},400);
-        const branch=await dnBrandBranch(env, deliveryBrand,branchCode);
+        const branch=await dnBrandBranch(deliveryEnv, deliveryBrand,branchCode);
         if(!branch)return jsonResponse({success:false,message:'Branch not found.'},404);
-        const duplicate=await dnDuplicateExists(env,branch.sheet_id,note);
+        const duplicate=await dnDuplicateExists(deliveryEnv,branch.sheet_id,note);
         return jsonResponse({success:true,duplicate});
       }
 
       if (deliveryRoute === "scan-status" && request.method === "GET") {
         const branchCode = String(url.searchParams.get('branch') || '').trim().toUpperCase();
         if (!branchCode) return jsonResponse({success:false,message:'Branch is required.'},400);
-        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        const branch = await dnBrandBranch(deliveryEnv, deliveryBrand, branchCode);
         if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
-        const usage = await dnGetScanUsage(env, branch.sheet_id);
+        const usage = await dnGetScanUsage(deliveryEnv, branch.sheet_id);
         return jsonResponse({success:true,...usage});
       }
 
@@ -7329,15 +7360,15 @@ export default {
         const imageBase64 = String(body.imageBase64 || '').replace(/^data:image\/[^;]+;base64,/, '');
         if (!branchCode || !imageBase64) return jsonResponse({success:false,message:'Branch and image are required.'},400);
         if (imageBase64.length > 14_000_000) return jsonResponse({success:false,message:'Image payload is too large.'},413);
-        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        const branch = await dnBrandBranch(deliveryEnv, deliveryBrand, branchCode);
         if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
-        const stock = await getBartStockSheetSmart(env, branch, false);
+        const stock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
         if (!master.length) return jsonResponse({success:false,message:'No items found in the delivery note catalog or branch Stocks tab.'},409);
 
         // Daily OCR allowance is stored in the SAME Delivery Note tab (M:N).
         // This is server-side, so refresh/device changes cannot reset the limit.
-        const scanUsage = await dnConsumeScan(env, branch.sheet_id);
+        const scanUsage = await dnConsumeScan(deliveryEnv, branch.sheet_id);
         if (!scanUsage.allowed) {
           return jsonResponse({
             success:false,
@@ -7347,7 +7378,7 @@ export default {
           },429);
         }
 
-        const annotation = await dnVisionScan(env, imageBase64);
+        const annotation = await dnVisionScan(deliveryEnv, imageBase64);
         const allLines = dnClusterLines(dnVisionWords(annotation));
         const stockLayout = allLines.some(l => /SHELF/i.test(l.text)) &&
           allLines.some(l => /STOCK\\s*LOCATION|EXPIRE\\s*DATE/i.test(l.text));
@@ -7357,7 +7388,7 @@ export default {
         let ai = {state:stockLayout?'SKIPPED_STOCK_DOCUMENT':'NOT_CONFIGURED',warnings:[]};
         if (!stockLayout) {
           try {
-            ai = await dnGeminiInterpret(env, annotation, master, items);
+            ai = await dnGeminiInterpret(deliveryEnv, annotation, master, items);
             items = ai.items;
           } catch (err) {
             console.error('Gemini interpretation unavailable:', String(err));
@@ -7366,7 +7397,7 @@ export default {
         }
         if (!stockLayout) items = dnV2PreserveGeometryRows(items, geometryRows);
         items = dnV2MatchRows(items, master, documentType);
-        const learned = await dnLearningSuggestions(env, branch.sheet_id).catch(()=>[]);
+        const learned = await dnLearningSuggestions(deliveryEnv, branch.sheet_id).catch(()=>[]);
         dnApplyLearningSuggestions(items, learned, documentType);
         return jsonResponse({
           success: true,
@@ -7404,7 +7435,7 @@ export default {
       if (deliveryRoute === "submit" && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
         const branchCode = String(body.branch || '').trim().toUpperCase();
-        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        const branch = await dnBrandBranch(deliveryEnv, deliveryBrand, branchCode);
         if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
 
         const items = Array.isArray(body.items) ? body.items : [];
@@ -7425,8 +7456,8 @@ export default {
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
-        const { sheetId } = await dnEnsureDeliverySheet(env, branch.sheet_id);
-        if (await dnDuplicateExists(env, branch.sheet_id, deliveryNoteNo)) {
+        const { sheetId } = await dnEnsureDeliverySheet(deliveryEnv, branch.sheet_id);
+        if (await dnDuplicateExists(deliveryEnv, branch.sheet_id, deliveryNoteNo)) {
           return jsonResponse({success:false,message:`Delivery Note ${deliveryNoteNo} was already submitted for this branch.`},409);
         }
 
@@ -7449,7 +7480,7 @@ export default {
         const itemsData = dnItemsCell(safeItems);
         const ocrRaw = Array.isArray(body.ocrPages) ? body.ocrPages.map((t,i)=>`PAGE ${i+1}\n${String(t||'')}`).join('\n\n') : '';
 
-        const appendResult = await appendSheetRow(env, branch.sheet_id, "'Delivery Note'!A:L", [
+        const appendResult = await appendSheetRow(deliveryEnv, branch.sheet_id, "'Delivery Note'!A:L", [
           formatJeddahTimestamp(), transactionId, `${branch.code} - ${branch.name}`, deliveryNoteNo,
           String(body.deliveryDate || ''), String(body.supplier || ''), pageCount, safeItems.length,
           itemsData, submittedBy, ocrRaw, orderType
@@ -7457,7 +7488,7 @@ export default {
         const updatedRange = String(appendResult?.updates?.updatedRange || '');
         const rowMatch = updatedRange.match(/![A-Z]+(\d+):/i) || updatedRange.match(/![A-Z]+(\d+)/i);
         const rowNumber = rowMatch ? Number(rowMatch[1]) : null;
-        await dnFormatAppendedRow(env, branch.sheet_id, sheetId, rowNumber, safeItems.length);
+        await dnFormatAppendedRow(deliveryEnv, branch.sheet_id, sheetId, rowNumber, safeItems.length);
 
         // Store only corrections from confirmed, successfully submitted documents.
         // Never fail a successful delivery-note submission due to learning storage.
@@ -7467,9 +7498,9 @@ export default {
           const allowed=new Set(['sku','ordered','delivered','quantity','item','detailedQty','expireDate']);
           const valid=feedback.filter(f=>allowed.has(f.field)&&String(f.before||'').trim()&&String(f.after||'').trim()&&String(f.before).trim()!==String(f.after).trim());
           if(valid.length) {
-            await dnEnsureLearningSheet(env, branch.sheet_id);
+            await dnEnsureLearningSheet(deliveryEnv, branch.sheet_id);
             for(const f of valid) {
-              await appendSheetRow(env,branch.sheet_id,"'OCR Learning'!A:H",[
+              await appendSheetRow(deliveryEnv,branch.sheet_id,"'OCR Learning'!A:H",[
                 formatJeddahTimestamp(),transactionId,branch.code,String(body.documentType||'DELIVERY_NOTE'),
                 String(f.sku||'').slice(0,30),String(f.field),String(f.before).slice(0,250),String(f.after).slice(0,250)
               ]);
