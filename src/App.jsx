@@ -1253,11 +1253,14 @@ function BranchScreen({
                               ? "selected"
                               : ""
                           }`}
-                          onClick={() =>
-                            setSelected(
-                              branch
-                            )
-                          }
+                          type="button"
+                          onClick={() => {
+                            // One click selects the branch and opens its secure login.
+                            // The old version only highlighted the row and required
+                            // a second click on CONTINUE below the scrollable list.
+                            setSelected(branch);
+                            onSelect(branch);
+                          }}
                           initial={{
                             opacity: 0,
                             x: -15,
@@ -1334,54 +1337,8 @@ function BranchScreen({
                   </div>
                 )}
 
-                <AnimatePresence>
-                  {selected && (
-                    <motion.div
-                      className="branch-selection-footer"
-                      initial={{
-                        opacity: 0,
-                        y: 12,
-                      }}
-                      animate={{
-                        opacity: 1,
-                        y: 0,
-                      }}
-                      exit={{
-                        opacity: 0,
-                      }}
-                    >
-                      <div>
-                        <small>
-                          READY TO ENTER
-                        </small>
-
-                        <strong>
-                          {
-                            selected.code
-                          }{" "}
-                          •{" "}
-                          {
-                            selected.name
-                          }
-                        </strong>
-                      </div>
-
-                      <button
-                        onClick={() =>
-                          onSelect(
-                            selected
-                          )
-                        }
-                      >
-                        CONTINUE
-
-                        <ArrowRight
-                          size={17}
-                        />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {/* Selecting a branch now continues immediately.
+                    No hidden CONTINUE footer is required. */}
               </>
             )}
         </motion.div>
@@ -1798,9 +1755,11 @@ function App() {
   ======================================================= */
 
   function chooseBranch(branch) {
+    if (!branch?.code) return;
     setSelectedBranch(branch);
-
+    // Preserve password authentication; only remove the extra Continue click.
     setPage("branch-login");
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   /* =======================================================
