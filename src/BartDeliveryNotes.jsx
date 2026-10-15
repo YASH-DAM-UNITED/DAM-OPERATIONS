@@ -95,7 +95,9 @@ function highlightFromLines(row,lines,page){
 }
 const emptyNote={deliveryNoteNo:'',deliveryDate:'',supplier:'',orderType:'',submittedBy:''};
 const ORDER_TYPES=['Dry Order','Food Order','Bakery Order'];
-export default function BartDeliveryNotes({branch,onBack}){
+export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
+  const deliveryBrand = ["bart","glor","mooma"].includes(brand) ? brand : "bart";
+  const deliveryApiBase = `/api/staff/${deliveryBrand}/delivery-notes`;
   const branchCode=String(branch?.code||branch?.BranchCode||branch?.branchCode||'').trim().toUpperCase();
   const storageKey=`dam-delivery-v3:${branchCode}`;
   const historyKey=`dam-delivery-history-v3:${branchCode}`;
@@ -155,8 +157,8 @@ export default function BartDeliveryNotes({branch,onBack}){
   useEffect(()=>{
     let live=true;
     if(!branchCode)return;
-    api(`/api/staff/bart/delivery-notes/scan-status?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setUsage({used:d.used||0,remaining:d.remaining??3,limit:d.limit||3,loading:false})).catch(e=>{if(live){setUsage(s=>({...s,loading:false}));setError(e.message);}});
-    api(`/api/staff/bart/delivery-notes/stock-master?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setMaster(d.items||[])).catch(e=>live&&setError(`Stock master unavailable: ${e.message}`));
+    api(`${deliveryApiBase}/scan-status?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setUsage({used:d.used||0,remaining:d.remaining??3,limit:d.limit||3,loading:false})).catch(e=>{if(live){setUsage(s=>({...s,loading:false}));setError(e.message);}});
+    api(`${deliveryApiBase}/stock-master?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setMaster(d.items||[])).catch(e=>live&&setError(`Stock master unavailable: ${e.message}`));
     try{setHistory(JSON.parse(localStorage.getItem(historyKey)||'[]'));}catch{}
     try{const raw=localStorage.getItem(storageKey);if(raw){const d=JSON.parse(raw);if(Array.isArray(d.rows)&&d.rows.length){setRows(d.rows);setPages((d.pages||[]).map(p=>({...p,preview:''})));setNote(d.note||emptyNote);setSelectedRow(d.selectedRow||null);setDocumentType(d.documentType||'DELIVERY_NOTE');setRestored(true);}}}catch{}
     return()=>{live=false;};
@@ -179,7 +181,7 @@ export default function BartDeliveryNotes({branch,onBack}){
     try{
       const imageBase64=await imageToJpegBase64(pendingFile);
       const imageGrid=await detectDocumentGrid(imageBase64).catch(()=>null);
-      const d=await api('/api/staff/bart/delivery-notes/scan',{method:'POST',body:JSON.stringify({branch:branchCode,imageBase64,imageGrid})});
+      const d=await api(`${deliveryApiBase}/scan`,{method:'POST',body:JSON.stringify({branch:branchCode,imageBase64,imageGrid})});
       if(d.scanUsage)setUsage({...d.scanUsage,loading:false});
       const type=d.documentType||'DELIVERY_NOTE';
       if(pages.length&&type!==documentType)throw new Error('Cannot combine different document types. Start a new transaction.');
@@ -204,7 +206,7 @@ export default function BartDeliveryNotes({branch,onBack}){
     let active=true;
     const timer=setTimeout(async()=>{
       setCheckingDuplicate(true);
-      try{const d=await api(`/api/staff/bart/delivery-notes/preflight?branch=${encodeURIComponent(branchCode)}&note=${encodeURIComponent(note.deliveryNoteNo.trim())}`);
+      try{const d=await api(`${deliveryApiBase}/preflight?branch=${encodeURIComponent(branchCode)}&note=${encodeURIComponent(note.deliveryNoteNo.trim())}`);
         if(active)setDuplicateState(d.duplicate?'duplicate':'clear');
       }catch{if(active)setDuplicateState('unknown');}
       finally{if(active)setCheckingDuplicate(false);}
@@ -268,7 +270,7 @@ export default function BartDeliveryNotes({branch,onBack}){
       const updated=[];
       for(const page of pages){
         if(page.ocrText===page.originalOcrText){updated.push(...rows.filter(r=>r.pageNo===page.pageNo));continue;}
-        const d=await api('/api/staff/bart/delivery-notes/reparse',{method:'POST',body:JSON.stringify({branch:branchCode,documentType,ocrText:page.ocrText})});
+        const d=await api(`${deliveryApiBase}/reparse`,{method:'POST',body:JSON.stringify({branch:branchCode,documentType,ocrText:page.ocrText})});
         if(!(d.items||[]).length)throw new Error(`Page ${page.pageNo}: No product rows were detected. Keep the current rows and edit them manually.`);
         updated.push(...d.items.map((r,i)=>({...r,pageNo:page.pageNo,rowId:`EDIT-P${page.pageNo}-${i+1}`,status:'REVIEW',ordered:safeQuantity(r.ordered),delivered:safeQuantity(r.delivered)})));
       }
@@ -295,7 +297,7 @@ export default function BartDeliveryNotes({branch,onBack}){
     setBusy(true);setError('');setMessage('Saving verified delivery note…');
     try{
       const feedback=rows.flatMap(r=>!r.originalFields?[]:['sku','item','ordered','delivered','quantity','detailedQty','expireDate'].filter(k=>String(r.originalFields[k]||'').trim()&&String(r.originalFields[k]||'').trim()!==String(r[k]||'').trim()).map(field=>({sku:r.sku,field,before:r.originalFields[field],after:r[field]})));
-      const d=await api('/api/staff/bart/delivery-notes/submit',{method:'POST',body:JSON.stringify({branch:branchCode,...note,documentType,pageCount:pages.length,ocrPages:pages.map(p=>p.ocrText),items:rows.map(r=>({...r,status:'CONFIRMED'})),feedback})});
+      const d=await api(`${deliveryApiBase}/submit`,{method:'POST',body:JSON.stringify({branch:branchCode,...note,documentType,pageCount:pages.length,ocrPages:pages.map(p=>p.ocrText),items:rows.map(r=>({...r,status:'CONFIRMED'})),feedback})});
       try{
         localStorage.removeItem(storageKey);
         const entry={deliveryNoteNo:note.deliveryNoteNo,transactionId:d.transactionId||'',orderType:note.orderType,submittedBy:note.submittedBy.trim(),itemCount:rows.length,pageCount:pages.length,date:new Date().toISOString()};

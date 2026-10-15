@@ -143,8 +143,8 @@ async function token(env) {
     return TC.token;
   }
 
-  const email = env.MOOMA_GOOGLE_CLIENT_EMAIL;
-  const key = env.MOOMA_GOOGLE_PRIVATE_KEY;
+  const email = env.MOOMA_GOOGLE_CLIENT_EMAIL || env.GOOGLE_CLIENT_EMAIL;
+  const key = env.MOOMA_GOOGLE_PRIVATE_KEY || env.GOOGLE_PRIVATE_KEY;
 
   if (!email || !key) {
     throw Error("MOOMA Google credentials missing.");
@@ -1920,12 +1920,7 @@ export async function handleMoomaRequest(
         source: "MOOMA-GOOGLE",
         count: a.length,
 
-        branches: a.map(
-          ({
-            password,
-            ...x
-          }) => x
-        ),
+        branches: a.map(({code,name}) => ({code,name})),
       });
     }
 

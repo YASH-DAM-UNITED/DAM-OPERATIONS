@@ -16,6 +16,7 @@
 import {
   handleMoomaRequest,
 } from "./moomaBackend.js";
+import { handleGlorRequest } from "./glorBackend.js";
 import deliveryItemCatalog from "../src/dam-item-catalog.json";
 
 
@@ -7132,6 +7133,67 @@ function dnTransactionId(branchCode) {
 
 
 /* ============================================================
+   GLOR / MOOMA — additive brand isolation for delivery and admin
+   Master passwords are NEVER returned to browser responses.
+============================================================ */
+const EXTRA_BRANDS = {
+  glor: { envKey: 'GLOR_MASTER_SHEET_ID', gid: 627415313, prefix: 'G' },
+  mooma: { envKey: 'MOOMA_MASTER_SHEET_ID', gid: 0, prefix: 'M' },
+};
+const extraHeader = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+async function extraMasterTab(env, brand) {
+  const config = EXTRA_BRANDS[brand];
+  if (!config) throw Error('Unsupported brand.');
+  const forced = env[`${brand.toUpperCase()}_MASTER_TAB`];
+  if (forced) return String(forced);
+  const id = env[config.envKey];
+  if (!id) throw Error(`${config.envKey} not configured.`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}?fields=sheets.properties`;
+  const response = await googleRequest(env, token => fetch(url,{headers:{Authorization:`Bearer ${token}`}}));
+  const json = await response.json();
+  if (!response.ok) throw Error(json?.error?.message || 'Master sheet metadata unavailable.');
+  const gid = Number(env[`${brand.toUpperCase()}_MASTER_GID`] ?? config.gid);
+  const tab = (json.sheets || []).find(x => Number(x?.properties?.sheetId) === gid);
+  if (!tab?.properties?.title) throw Error(`${brand.toUpperCase()} master gid ${gid} not found.`);
+  return tab.properties.title;
+}
+async function extraBranchDirectory(env, brand) {
+  const cfg = EXTRA_BRANDS[brand];
+  if (!cfg) throw Error('Unsupported brand.');
+  const id = env[cfg.envKey];
+  if (!id) throw Error(`${cfg.envKey} missing.`);
+  const tab = await extraMasterTab(env,brand);
+  const rows = await getSheetValues(env,id,`'${tab.replace(/'/g,"''")}'!A:Z`);
+  if (!rows.length) throw Error('Master branch sheet is empty.');
+  const headers = rows[0].map(extraHeader);
+  const ci = headers.indexOf('branchcode'), ni = headers.indexOf('branchname'), si = headers.indexOf('sheetid');
+  if (ci < 0 || ni < 0 || si < 0) throw Error(`${brand.toUpperCase()} master must contain BranchCode, BranchName and SheetID headers.`);
+  return rows.slice(1).map(r => ({
+    code: String(r[ci] || '').trim().toUpperCase(),
+    name: String(r[ni] || '').trim(),
+    sheet_id: String(r[si] || '').trim(),
+  })).filter(r => r.code.startsWith(cfg.prefix) && r.name && r.sheet_id);
+}
+async function dnBrandBranch(env, brand, code) {
+  if (brand === 'bart') return getBartBranchGoogle(env,code);
+  const branches = await extraBranchDirectory(env,brand);
+  return branches.find(b => b.code === String(code || '').trim().toUpperCase()) || null;
+}
+async function extraAdminOverview(env, brand) {
+  const branches = await extraBranchDirectory(env,brand);
+  const results = await Promise.allSettled(branches.map(async branch => {
+    const rows = await getSheetValues(env,branch.sheet_id,'Stocks!A:Z');
+    const stockItems = dnStockMaster(rows);
+    return {code:branch.code,name:branch.name,stockItems:stockItems.length,stocksRows:rows.length};
+  }));
+  return {
+    success:true,brand:brand.toUpperCase(),branchCount:branches.length,
+    branches:branches.map((b,i)=> results[i].status === 'fulfilled' ? results[i].value : ({code:b.code,name:b.name,stockItems:null,stocksRows:null,error:'Stocks tab could not be read.'})),
+    readOnly:true,
+  };
+}
+
+/* ============================================================
    WORKER
 ============================================================ */
 
@@ -7151,6 +7213,9 @@ export default {
 
     if (url.pathname.startsWith("/api/mooma/")) {
       return handleMoomaRequest(request, env);
+    }
+    if (url.pathname.startsWith("/api/glor/")) {
+      return handleGlorRequest(request, env);
     }
 
 
@@ -7179,7 +7244,15 @@ export default {
 
     try {
 
-      const googleOnlyBartPath =
+      const brandAdminMatch = url.pathname.match(/^\/api\/admin\/(glor|mooma)\/overview$/);
+      if (brandAdminMatch) {
+        if (request.method !== 'GET') return jsonResponse({success:false,message:'Method not allowed.'},405);
+        if (!(await adminApiAuthorized(request,env))) return jsonResponse({success:false,message:'Admin login required.'},401);
+        return jsonResponse(await extraAdminOverview(env,brandAdminMatch[1]));
+      }
+
+      const extraDeliveryPath = /^\/api\/staff\/(glor|mooma)\/delivery-notes\//.test(url.pathname);
+      const googleOnlyBartPath = extraDeliveryPath ||
         url.pathname.startsWith("/api/admin/bart/") ||
         url.pathname.startsWith("/api/staff/bart/delivery-notes/") ||
         url.pathname === "/api/staff/bart/stock-view" ||
@@ -7199,64 +7272,67 @@ export default {
       }
 
 
+      const deliveryRouteMatch = url.pathname.match(/^\/api\/staff\/(bart|glor|mooma)\/delivery-notes\/(stock-master|reparse|preflight|scan-status|scan|submit)$/);
+      const deliveryBrand = deliveryRouteMatch?.[1] || null;
+      const deliveryRoute = deliveryRouteMatch?.[2] || null;
       /* ======================================================
          BART DELIVERY NOTES — AZURE AI VISION
       ====================================================== */
 
-      if (url.pathname === "/api/staff/bart/delivery-notes/stock-master" && request.method === "GET") {
+      if (deliveryRoute === "stock-master" && request.method === "GET") {
         const branchCode = String(url.searchParams.get("branch") || "").trim().toUpperCase();
         if (!branchCode) return jsonResponse({success:false,message:"Branch is required."},400);
-        const branch = await getBartBranchGoogle(env, branchCode);
-        if (!branch) return jsonResponse({success:false,message:"BART branch not found."},404);
+        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        if (!branch) return jsonResponse({success:false,message:"Branch not found."},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
-        const master = dnCatalogMaster('BART', stock.rows);
+        const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
         return jsonResponse({success:true, items:master.map(x => ({sku:x.sku,item:x.item,uom:x.stockUom || ""}))});
       }
 
-      if (url.pathname === "/api/staff/bart/delivery-notes/reparse" && request.method === "POST") {
+      if (deliveryRoute === "reparse" && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
         const branchCode = String(body.branch || '').trim().toUpperCase();
         const correctedText = String(body.ocrText || '');
         if (!branchCode || !correctedText.trim()) return jsonResponse({success:false,message:'Branch and corrected OCR text are required.'},400);
         if (correctedText.length > 120000) return jsonResponse({success:false,message:'OCR text is too long.'},413);
-        const branch = await getBartBranchGoogle(env, branchCode);
-        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
-        const master = dnCatalogMaster('BART', stock.rows);
+        const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
         const documentType = body.documentType === 'STOCK_DOCUMENT' ? 'STOCK_DOCUMENT' : 'DELIVERY_NOTE';
         const items = dnV2MatchRows(dnReparseCorrectedText(correctedText, master, documentType), master, documentType);
         return jsonResponse({success:true,items,documentType,meta:dnMetaFromText(correctedText)});
       }
 
-      if (url.pathname === "/api/staff/bart/delivery-notes/preflight" && request.method === "GET") {
+      if (deliveryRoute === "preflight" && request.method === "GET") {
         const branchCode=String(url.searchParams.get('branch')||'').trim().toUpperCase();
         const note=String(url.searchParams.get('note')||'').trim();
         if(!branchCode||!note||note.length>120)return jsonResponse({success:false,message:'Branch and delivery note number required.'},400);
-        const branch=await getBartBranchGoogle(env,branchCode);
+        const branch=await dnBrandBranch(env, deliveryBrand,branchCode);
         if(!branch)return jsonResponse({success:false,message:'Branch not found.'},404);
         const duplicate=await dnDuplicateExists(env,branch.sheet_id,note);
         return jsonResponse({success:true,duplicate});
       }
 
-      if (url.pathname === "/api/staff/bart/delivery-notes/scan-status" && request.method === "GET") {
+      if (deliveryRoute === "scan-status" && request.method === "GET") {
         const branchCode = String(url.searchParams.get('branch') || '').trim().toUpperCase();
         if (!branchCode) return jsonResponse({success:false,message:'Branch is required.'},400);
-        const branch = await getBartBranchGoogle(env, branchCode);
-        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
         const usage = await dnGetScanUsage(env, branch.sheet_id);
         return jsonResponse({success:true,...usage});
       }
 
-      if (url.pathname === "/api/staff/bart/delivery-notes/scan" && request.method === "POST") {
+      if (deliveryRoute === "scan" && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
         const branchCode = String(body.branch || '').trim().toUpperCase();
         const imageBase64 = String(body.imageBase64 || '').replace(/^data:image\/[^;]+;base64,/, '');
         if (!branchCode || !imageBase64) return jsonResponse({success:false,message:'Branch and image are required.'},400);
         if (imageBase64.length > 14_000_000) return jsonResponse({success:false,message:'Image payload is too large.'},413);
-        const branch = await getBartBranchGoogle(env, branchCode);
-        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
         const stock = await getBartStockSheetSmart(env, branch, false);
-        const master = dnCatalogMaster('BART', stock.rows);
+        const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
         if (!master.length) return jsonResponse({success:false,message:'No items found in the delivery note catalog or branch Stocks tab.'},409);
 
         // Daily OCR allowance is stored in the SAME Delivery Note tab (M:N).
@@ -7325,11 +7401,11 @@ export default {
         });
       }
 
-      if (url.pathname === "/api/staff/bart/delivery-notes/submit" && request.method === "POST") {
+      if (deliveryRoute === "submit" && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
         const branchCode = String(body.branch || '').trim().toUpperCase();
-        const branch = await getBartBranchGoogle(env, branchCode);
-        if (!branch) return jsonResponse({success:false,message:'BART branch not found.'},404);
+        const branch = await dnBrandBranch(env, deliveryBrand, branchCode);
+        if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
 
         const items = Array.isArray(body.items) ? body.items : [];
         if (!items.length) return jsonResponse({success:false,message:'No delivery items supplied.'},400);

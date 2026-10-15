@@ -28,6 +28,8 @@ import "./index.css";
 import "./CinematicBranch.css";
 import BartStaffDashboard from "./BartStaffDashboard.jsx";
 import MoomaPortal from "./mooma/MoomaPortal.jsx";
+import GlorPortal from "./glor/GlorPortal.jsx";
+import BrandAdminPortal from "./BrandAdminPortal.jsx";
 import AdminBrandGateway from "./AdminBrandGateway.jsx";
 import BartAdminPortal from "./BartAdminPortal.jsx";
 
@@ -1745,6 +1747,10 @@ function App() {
       setPage("mooma-portal");
       return;
     }
+    if (brand.id === "glor") {
+      setPage("glor-portal");
+      return;
+    }
 
     // Existing BART/GLOR flow remains untouched.
     setPage("branches");
@@ -1866,10 +1872,12 @@ function App() {
         <AdminBrandGateway
           key="admin-brands"
           onBack={() => setPage("home")}
-          onSelect={(brand) => {
-            setSelectedBrand(brand);
-            if (brand.id === "bart") setPage("bart-admin");
-            else setPage("admin-brand-pending");
+          onSelectBrand={(brandId) => {
+            const chosen = brands.find(item => item.id === brandId);
+            if (!chosen) return;
+            setSelectedBrand(chosen);
+            setPage(brandId === "bart" ? "bart-admin" : "brand-admin");
+            window.scrollTo({top:0,behavior:"instant"});
           }}
         />
       )}
@@ -1886,15 +1894,13 @@ function App() {
         />
       )}
 
-      {/* MOOMA / GLOR ADMIN DATA CONNECTION PLACEHOLDER */}
-
-      {page === "admin-brand-pending" && selectedBrand && (
-        <motion.div key={`pending-${selectedBrand.id}`} className="admin-pending-screen" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-          <button onClick={() => setPage("admin-brands")}>← ALL BRANDS</button>
-          <span>ADMIN COMMAND / {selectedBrand.name}</span>
-          <h1>{selectedBrand.name} is ready for its dedicated Admin data connection.</h1>
-          <p>The brand stays isolated. Connect its Admin endpoints and this shell can use the same deep command architecture without mixing BART data.</p>
-        </motion.div>
+      {/* GLOR / MOOMA ADMIN — READ-ONLY OVERVIEW, EXISTING ADMIN SESSION */}
+      {page === "brand-admin" && ["glor","mooma"].includes(selectedBrand?.id) && (
+        <BrandAdminPortal
+          key={`admin-${selectedBrand.id}`}
+          brand={selectedBrand.id}
+          onBack={() => setPage("admin-brands")}
+        />
       )}
 
       {/* BRAND SELECTION */}
@@ -1916,6 +1922,19 @@ function App() {
       {page === "mooma-portal" && selectedBrand?.id === "mooma" && (
         <MoomaPortal
           key="mooma-portal"
+          onBack={() => {
+            setSelectedBrand(null);
+            setSelectedBranch(null);
+            setAuthenticatedBranch(null);
+            setPage("brands");
+          }}
+        />
+      )}
+
+      {/* GLOR STAFF PORTAL — independent sheets and password source */}
+      {page === "glor-portal" && selectedBrand?.id === "glor" && (
+        <GlorPortal
+          key="glor-portal"
           onBack={() => {
             setSelectedBrand(null);
             setSelectedBranch(null);

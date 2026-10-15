@@ -45,7 +45,7 @@ const BRANDS = [
     eyebrow: "SPECIALTY OPERATIONS",
     description:
       "A focused command environment for GLOR branches and operational data.",
-    branchLabel: "05 BRANCHES",
+    branchLabel: "06 BRANCHES",
     icon: Crown,
     className: "brand-glor",
     words: ["STOCK", "TEAMS", "INSIGHTS", "OPERATIONS"],
@@ -508,6 +508,9 @@ export default function AdminBrandGateway({
   const gatewayRef = useRef(null);
   const openingRef = useRef(false);
   const navigationTimerRef = useRef(null);
+  useEffect(() => () => { if (navigationTimerRef.current) window.clearTimeout(navigationTimerRef.current); }, []);
+  const openingRef = useRef(false);
+  const navigationTimerRef = useRef(null);
 
   useEffect(() => () => {
     if (navigationTimerRef.current !== null) {
@@ -546,31 +549,14 @@ export default function AdminBrandGateway({
   }
 
   function openBrand(brandId) {
-    // Guard synchronously against double taps, including tapping ENTER inside the card.
-    if (openingRef.current) return;
-    if (typeof onSelectBrand !== "function") {
-      console.error("AdminBrandGateway requires onSelectBrand to navigate.");
-      return;
-    }
-
+    if (openingRef.current || typeof onSelectBrand !== "function") return;
     openingRef.current = true;
     setOpeningBrand(brandId);
     setActiveBrand(brandId);
-
-    // One short visual acknowledgement, then immediately enter the selected brand.
     navigationTimerRef.current = window.setTimeout(() => {
       navigationTimerRef.current = null;
-      try {
-        onSelectBrand(brandId);
-        // Reset scroll after the parent has had a chance to render the destination.
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-        });
-      } catch (error) {
-        openingRef.current = false;
-        setOpeningBrand(null);
-        console.error("Could not open selected brand:", error);
-      }
+      try { onSelectBrand(brandId); }
+      catch (error) { console.error(error); openingRef.current = false; setOpeningBrand(null); }
     }, 180);
   }
 

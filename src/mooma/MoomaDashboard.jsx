@@ -76,6 +76,15 @@ const MODULES = [
   },
 
   {
+    id: "delivery-notes",
+    number: "05",
+    label: "DOCUMENT OPERATIONS",
+    title: "Delivery Notes",
+    description: "Scan and verify delivery notes for this branch.",
+    icon: PackageCheck,
+  },
+
+  {
     id: "staff-schedule",
     number: "04",
     label: "TEAM OPERATIONS",

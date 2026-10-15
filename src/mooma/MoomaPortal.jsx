@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 
 import MoomaDashboard from "./MoomaDashboard.jsx";
+import BartDeliveryNotes from "../BartDeliveryNotes.jsx";
+import BrandScheduleView from "../BrandScheduleView.jsx";
 import MoomaLaunch from "./MoomaLaunch.jsx";
 import MoomaStockRecord from "./MoomaStockRecord.jsx";
 import MoomaStockView from "./MoomaStockView.jsx";
@@ -643,6 +645,12 @@ export default function MoomaPortal({
     );
 
 
+    if (moduleId === "delivery-notes") {
+      setActiveModule("delivery-notes");
+      window.scrollTo({top:0,behavior:"smooth"});
+      return;
+    }
+
     /*
      * STOCK RECORD
      */
@@ -726,14 +734,13 @@ export default function MoomaPortal({
      * ready when the page is connected.
      */
 
-    if (
-      moduleId ===
-        "staff-schedule" ||
-      moduleId ===
-        "schedule"
-    ) {
+    if (moduleId === "staff-schedule" || moduleId === "schedule") {
+      setActiveModule("staff-schedule");
+      window.scrollTo({top:0,behavior:"smooth"});
+      return;
+    }
 
-      console.log(
+    console.log(
         "[MOOMA] STAFF SCHEDULE NOT CONNECTED YET"
       );
 
@@ -787,6 +794,14 @@ export default function MoomaPortal({
     );
   }
 
+
+  if (authenticated && activeModule === "staff-schedule") {
+    return <BrandScheduleView brand="mooma" branch={authenticated} onBack={returnToDashboard} />;
+  }
+
+  if (authenticated && activeModule === "delivery-notes") {
+    return <BartDeliveryNotes branch={authenticated} brand="mooma" onBack={returnToDashboard} />;
+  }
 
   /* ==========================================================
      STOCK RECORD

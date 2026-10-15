@@ -6,7 +6,10 @@
 
 
   "vars": {
-    "AZURE_VISION_ENDPOINT": "https://dam-operations-rg.cognitiveservices.azure.com/"
+    "AZURE_VISION_ENDPOINT": "https://dam-operations-rg.cognitiveservices.azure.com/",
+    "GLOR_MASTER_SHEET_ID": "1fKOtqdN_QlVNuHQujSlBKPJDk3n19zy1A4S1DwNCQro",
+    "GLOR_MASTER_GID": "627415313",
+    "MOOMA_MASTER_SHEET_ID": "1hG25yLn1kGRKpyjtbUmBEZfKjLeiSQvz6sKp9uBeD2w"
   },
 
 
