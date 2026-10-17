@@ -706,10 +706,6 @@ async function stockSubmit(env, b) {
   if (ci < 0) {
     ci = h.length;
 
-    if (strict && next < 0) {
-      throw Error(`Insufficient stock for ${x.name} in ${br.code}.`);
-    }
-
     u.push({
       range: `${STOCK}!${col(ci + 1)}1`,
       values: [[b.date]],
@@ -909,6 +905,11 @@ async function applyStock(
       mode === "add"
         ? cur + Number(x.qty)
         : cur - Number(x.qty);
+
+    // Validate outgoing transfers here, where the stock value and item exist.
+    if (strict && mode === "subtract" && next < 0) {
+      throw Error(`Insufficient stock for ${x.name} in ${br.code}.`);
+    }
 
     u.push({
       range: `${STOCK}!${col(
