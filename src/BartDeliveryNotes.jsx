@@ -59,6 +59,26 @@ function formatMatch(r){
   return 'Needs matching';
 }
 function numberFromQuantity(value){const m=String(value||'').match(/^\s*(\d+(?:[.,]\d+)?)/);return m?Number(m[1].replace(',','.')):null;}
+// A blank field is never equivalent to an explicitly entered zero.
+function enteredQuantity(value) {
+  const v=String(value??'').trim();
+  if(!v || !safeQuantity(v))return false;
+  const n=numberFromQuantity(v);
+  return n!==null && Number.isFinite(n) && n>=0;
+}
+function rowQuantityIssue(row,documentType) {
+  if(documentType==='STOCK_DOCUMENT')return enteredQuantity(row.quantity)&&row.quantityVerified===true?'':'Enter and verify the stock quantity';
+  if(!enteredQuantity(row.ordered)||row.orderedVerified!==true)return 'Enter and verify the ordered quantity';
+  if(!enteredQuantity(row.delivered)||row.deliveredVerified!==true)return 'Enter and verify the delivered quantity';
+  return '';
+}
+function rowReviewIssue(row,documentType) {
+  if(!String(row.item||'').trim())return 'Product name required';
+  const qty=rowQuantityIssue(row,documentType);if(qty)return qty;
+  if(!row.stockSku && (!row.provisionalReason || !row.reviewedException))return 'Unmatched item: complete guided entry and confirm exception';
+  if(row.stockSku && ((row.deliverySku && String(row.deliverySku).trim().toUpperCase()!==String(row.stockSku).trim().toUpperCase()) || (row.printedItem && nameScore(row.printedItem,row.item)<.69)) && !row.reviewedConflict)return 'Printed SKU/name conflict: acknowledge after comparing the photo';
+  return '';
+}
 function unitFromQuantity(value){return String(value||'').replace(/^\s*\d+(?:[.,]\d+)?\s*/, '').trim().toLowerCase();}
 function discrepancy(row){
   const a=numberFromQuantity(row.ordered),b=numberFromQuantity(row.delivered);
@@ -126,8 +146,10 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
   const pickerRef=useRef(null);
   const finalReviewRef=useRef(null);
   const masterBySku=useMemo(()=>new Map(master.map(m=>[String(m.sku||'').trim().toUpperCase(),m])),[master]);
-  const unresolved=rows.filter(r=>!String(r.item||'').trim()||(documentType==='STOCK_DOCUMENT'&&!String(r.quantity||'').trim())).length;
-  const flagged=rows.filter(r=>!r.stockSku||!r.ordered||!r.delivered||r.match==='NAME_CORRECTED'||r.match==='SKU_NAME_CONFLICT').length;
+  const unresolved=rows.filter(r=>!!rowReviewIssue(r,documentType)).length;
+  const incompleteQuantity=rows.filter(r=>!!rowQuantityIssue(r,documentType)).length;
+  const exceptionCount=rows.filter(r=>!r.stockSku).length;
+  const flagged=rows.filter(r=>!!rowReviewIssue(r,documentType)||r.match==='NAME_CORRECTED'||r.match==='SKU_NAME_CONFLICT').length;
   const scanLimitReached=!usage.loading&&usage.remaining<=0;
   const pageHints=pages.map(p=>p.pageHint).filter(Boolean);
   const expectedCount=pageHints.length?Math.max(...pageHints.map(x=>x.total)):null;
@@ -145,7 +167,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
     const candidates=master.filter(m=>m?.item && (q?([m.sku,m.item,m.uom].join(' ').toLowerCase().includes(q)):true));
     return candidates.sort((a,b)=>nameScore(row.printedItem||row.item,b.item)-nameScore(row.printedItem||row.item,a.item)).slice(0,60);
   },[master,rows,pickerRow,pickerSearch]);
-  const visibleRows=rows.map((r,i)=>({...r,_index:i})).filter(r=>(filter==='all'||(filter==='review'?!String(r.item||'').trim()||!r.stockSku||!r.ordered||!r.delivered:!r.stockSku||!r.ordered||!r.delivered||r.match==='NAME_CORRECTED'))&&(!search||[r.sku,r.deliverySku,r.item,r.uom].join(' ').toLowerCase().includes(search.toLowerCase())));
+  const visibleRows=rows.map((r,i)=>({...r,_index:i})).filter(r=>(filter==='all'||(filter==='review'?!!rowReviewIssue(r,documentType):!!rowReviewIssue(r,documentType)||r.match==='NAME_CORRECTED'))&&(!search||[r.sku,r.deliverySku,r.item,r.uom].join(' ').toLowerCase().includes(search.toLowerCase())));
 
   useEffect(()=>{
     if(pickerRow===null)return;
@@ -187,9 +209,10 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
       if(pages.length&&type!==documentType)throw new Error('Cannot combine different document types. Start a new transaction.');
       setDocumentType(type);
       const pageNo=pages.length+1;
-      const next=(d.items||[]).map((r,i)=>({...r,rowId:`P${pageNo}-${r.rowId||i+1}`,pageNo,
+      const next=(d.items||[]).map((r,i)=>({...r,reviewedException:false,reviewedConflict:false,provisionalReason:'',rowId:`P${pageNo}-${r.rowId||i+1}`,pageNo,
         deliverySku:r.deliverySku??r.sku??'',printedItem:r.printedItem??r.item??'',uom:r.uom||'',
-        ordered:safeQuantity(r.ordered),delivered:safeQuantity(r.delivered),status:'REVIEW',
+        suggestedOrdered:safeQuantity(r.ordered),suggestedDelivered:safeQuantity(r.delivered),suggestedQuantity:safeQuantity(r.quantity),
+        ordered:'',delivered:'',quantity:'',orderedVerified:false,deliveredVerified:false,quantityVerified:false,status:'REVIEW',
         originalFields:{sku:r.sku||'',item:r.item||'',ordered:r.ordered||'',delivered:r.delivered||'',quantity:r.quantity||'',detailedQty:r.detailedQty||'',expireDate:r.expireDate||''}}));
       setRows(old=>[...old,...next]);if(!selectedRow&&next.length)setSelectedRow(next[0].rowId);
       setPages(old=>[...old,{pageNo,preview:pendingPreview,ocrText:d.ocrText||'',originalOcrText:d.ocrText||'',ocrLines:d.ocrLines||[],width:d.ocrPageDimensions?.width||0,height:d.ocrPageDimensions?.height||0,pageHint:expectedPages(d.ocrText),itemCount:next.length}]);
@@ -221,7 +244,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
   }
   function applyMaster(index,stock,match='MANUAL'){
     setReviewOpen(false);
-    setRows(old=>old.map((r,i)=>i!==index?r:{...r,sku:stock.sku,stockSku:stock.sku,item:stock.item,uom:stock.uom||'',match,status:'REVIEW',reviewReason:'Staff selected stock-master item'}));
+    setRows(old=>old.map((r,i)=>i!==index?r:{...r,sku:stock.sku,stockSku:stock.sku,item:stock.item,uom:stock.uom||'',match,reviewedConflict:false,reviewedException:false,provisionalReason:'',status:'REVIEW',reviewReason:'Staff selected catalog product'}));
     setPickerRow(null);setPickerSearch('');setError('');
   }
   function updateRow(index,field,value){
@@ -229,13 +252,14 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
     setRows(old=>old.map((r,i)=>{
       if(i!==index)return r;
       const next={...r,[field]:value,status:'REVIEW'};
+      if(['ordered','delivered','quantity'].includes(field))next[`${field}Verified`]=true;
       if(field==='sku'){
         const match=masterBySku.get(String(value||'').trim().toUpperCase());
-        if(match){next.stockSku=match.sku;next.item=match.item;next.uom=match.uom||'';next.match='SKU_EXACT';}
+        if(match){next.stockSku=match.sku;next.item=match.item;next.uom=match.uom||'';next.match='SKU_EXACT';next.reviewedConflict=false;next.reviewedException=false;next.provisionalReason='';}
         else {next.stockSku='';next.uom='';next.match='UNMATCHED';} // Preserve item name, never erase it.
       }
       if(field==='item'){
-        next.match='MANUAL';next.stockSku='';next.uom='';
+        next.match='MANUAL';next.stockSku='';next.uom='';next.reviewedException=false;next.provisionalReason='';
       }
       return next;
     }));
@@ -248,7 +272,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
     setReviewOpen(false);
     const id=`MANUAL-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     setFilter('all');setSearch('');setSelectedRow(id);setNewRowId(id);
-    setRows(old=>[...old,{rowId:id,pageNo:pages.length||1,sku:'',deliverySku:'',stockSku:'',item:'',uom:'',ordered:'',delivered:'',quantity:'',detailedQty:'',expireDate:'',match:'MANUAL',status:'REVIEW',ocrText:''}]);
+    setRows(old=>[...old,{rowId:id,pageNo:pages.length||1,sku:'',deliverySku:'',stockSku:'',item:'',uom:'',ordered:'',delivered:'',quantity:'',detailedQty:'',expireDate:'',match:'MANUAL',status:'REVIEW',orderedVerified:false,deliveredVerified:false,quantityVerified:false,ocrText:''}]);
     setMessage('New item added. Enter the product name.');setError('');
   }
   useEffect(()=>{
@@ -272,7 +296,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
         if(page.ocrText===page.originalOcrText){updated.push(...rows.filter(r=>r.pageNo===page.pageNo));continue;}
         const d=await api(`${deliveryApiBase}/reparse`,{method:'POST',body:JSON.stringify({branch:branchCode,documentType,ocrText:page.ocrText})});
         if(!(d.items||[]).length)throw new Error(`Page ${page.pageNo}: No product rows were detected. Keep the current rows and edit them manually.`);
-        updated.push(...d.items.map((r,i)=>({...r,pageNo:page.pageNo,rowId:`EDIT-P${page.pageNo}-${i+1}`,status:'REVIEW',ordered:safeQuantity(r.ordered),delivered:safeQuantity(r.delivered)})));
+        updated.push(...d.items.map((r,i)=>({...r,pageNo:page.pageNo,rowId:`EDIT-P${page.pageNo}-${i+1}`,status:'REVIEW',suggestedOrdered:safeQuantity(r.ordered),suggestedDelivered:safeQuantity(r.delivered),ordered:'',delivered:'',orderedVerified:false,deliveredVerified:false,quantityVerified:false})));
       }
       setRows(updated);setMessage('Updated transcription applied. Review all product rows.');
     }catch(e){setError(e.message);}finally{setBusy(false);}
@@ -291,9 +315,14 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
       staffNameRef.current?.focus({preventScroll:true});return;
     }
     if(duplicateState==='duplicate')return setError('This delivery note was already submitted for this branch.');
-    if(unresolved)return setError(`${unresolved} item(s) require a product name${documentType==='STOCK_DOCUMENT'?' and quantity':''}.`);
+    if(unresolved){
+      const first=rows.find(r=>rowReviewIssue(r,documentType));
+      setFilter('all');setSearch('');
+      if(first){setSelectedRow(first.rowId);window.setTimeout(()=>reviewRowRefs.current[first.rowId]?.scrollIntoView?.({behavior:'smooth',block:'center'}),70);}
+      return setError(`${unresolved} product(s) need attention. ${incompleteQuantity} have missing or invalid quantities. Finish all required fields before submitting.`);
+    }
     if(!reviewOpen){setReviewOpen(true);setMessage('Review all items before final submission.');return;}
-    if(!window.confirm(`Submit ${rows.length} reviewed products? Please ensure quantities and product matches are correct.`))return;
+    if(!window.confirm(`Submit ${rows.length} reviewed products? ${exceptionCount} unmatched item(s) will be recorded as exceptions, not approved catalog products. Confirm quantities and product matches.`))return;
     setBusy(true);setError('');setMessage('Saving verified delivery note…');
     try{
       const feedback=rows.flatMap(r=>!r.originalFields?[]:['sku','item','ordered','delivered','quantity','detailedQty','expireDate'].filter(k=>String(r.originalFields[k]||'').trim()&&String(r.originalFields[k]||'').trim()!==String(r[k]||'').trim()).map(field=>({sku:r.sku,field,before:r.originalFields[field],after:r[field]})));
@@ -314,11 +343,11 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
     <div className="dnv2-orb dnv2-orb-a"/><div className="dnv2-orb dnv2-orb-b"/>
     <div className="dnv2-container">
       <header className="dnv2-header"><div className="dnv2-header-left"><button className="dnv2-iconbtn" onClick={onBack} title="Back to dashboard"><ArrowLeft size={19}/></button><div className="dnv2-brand-icon"><PackageCheck size={23}/></div><div><div className="dnv2-eyebrow">DAM OPERATIONS / RECEIVING</div><h1>Delivery Note Workspace</h1><p>{branchCode} · {branch?.name||branch?.BranchName||'BART Branch'}</p></div></div><div className="dnv2-header-right"><span className="dnv2-live"><span/> Secure verification</span><button className="dnv2-theme" onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} title="Switch appearance">{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>} <span>{theme==='dark'?'Light':'Dark'} mode</span></button></div></header>
-      <section className="dnv2-stats"><div className="dnv2-stat"><div className="dnv2-stat-icon blue"><FileText size={21}/></div><div><span>Products detected</span><strong>{rows.length}</strong><small>Across {pages.length} page{pages.length===1?'':'s'}</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon green"><ShieldCheck size={21}/></div><div><span>Ready for review</span><strong>{rows.length-unresolved}</strong><small>{progress}% complete</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon amber"><CircleAlert size={21}/></div><div><span>Missing details</span><strong>{unresolved}</strong><small>{flagged} with missing or corrected fields</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon cyan"><Camera size={21}/></div><div><span>Scans available today</span><strong>{usage.loading?'…':usage.remaining}</strong><small>{usage.used} / {usage.limit} used</small></div></div></section>
+      <section className="dnv2-stats"><div className="dnv2-stat"><div className="dnv2-stat-icon blue"><FileText size={21}/></div><div><span>Products detected</span><strong>{rows.length}</strong><small>Across {pages.length} page{pages.length===1?'':'s'}</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon green"><ShieldCheck size={21}/></div><div><span>Ready for review</span><strong>{rows.length-unresolved}</strong><small>{progress}% complete</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon amber"><CircleAlert size={21}/></div><div><span>Missing details</span><strong>{unresolved}</strong><small>{incompleteQuantity} quantity fields incomplete · {flagged} require review</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon cyan"><Camera size={21}/></div><div><span>Scans available today</span><strong>{usage.loading?'…':usage.remaining}</strong><small>{usage.used} / {usage.limit} used</small></div></div></section>
       {(message||error||restored)&&<div className={`dnv2-alert ${error?'danger':'notice'}`}>{error?<CircleAlert size={18}/>:<CheckCircle2 size={18}/>}<span>{error||message||(restored?'Recovered an unfinished review. Original photos are not stored locally; re-open the document if you need to compare it.':'')}</span><button onClick={()=>{setError('');setMessage('');setRestored(false);}} title="Dismiss"><X size={16}/></button></div>}
       <section className="dnv2-topgrid"><div className="dnv2-panel dnv2-upload"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 01</span><h2>Document pages</h2><p>Photograph or upload each page. All pages belong to one transaction.</p></div><span className="dnv2-counter">{pages.length} added</span></div><input hidden ref={inputRef} type="file" accept="image/*" capture="environment" onChange={chooseFile}/><button className="dnv2-drop" disabled={usage.loading||scanLimitReached||busy} onClick={()=>inputRef.current?.click()}><span className="dnv2-dropicon"><CloudUpload size={27}/></span><strong>{pendingFile?pendingFile.name:pages.length?'Add another document page':'Choose or photograph a delivery note'}</strong><small>JPG, PNG, HEIC where supported · Max 10 MB</small></button>{pendingPreview&&<div className="dnv2-pending"><img src={pendingPreview} alt="New document preview"/><button className="dnv2-button primary" disabled={busy} onClick={scanPage}>{busy?<Loader2 className="dnv2-spin" size={18}/>:<Camera size={18}/>} Process page {pages.length+1}</button></div>}{pages.length>0&&<div className="dnv2-pagechips">{pages.map((p,i)=><div className="dnv2-pagechip" key={p.pageNo}><button onClick={()=>setPreviewPage(i)} className={previewPage===i?'active':''}><FileText size={15}/> Page {p.pageNo} · {p.itemCount} items</button><button onClick={()=>removePage(p.pageNo)} title="Remove page"><X size={14}/></button></div>)}</div>}<div className="dnv2-tip"><ShieldCheck size={16}/> No additional scan is used when editing a detected row.</div></div>
       <div className="dnv2-panel"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 02</span><h2>Delivery details</h2><p>Review the document information before submission.</p></div><ClipboardCheck size={22}/></div><div className="dnv2-fields"><label>Delivery note number <input value={note.deliveryNoteNo} onChange={e=>setNote(n=>({...n,deliveryNoteNo:e.target.value}))} placeholder="e.g. CKWH/INT/47503"/></label><label>Delivery date <input type="date" value={note.deliveryDate} onChange={e=>setNote(n=>({...n,deliveryDate:e.target.value}))}/></label><label>Supplier <input value={note.supplier} onChange={e=>setNote(n=>({...n,supplier:e.target.value}))} placeholder="Supplier name"/></label><label>Order type *<select ref={orderTypeRef} required value={note.orderType||''} onChange={e=>setNote(n=>({...n,orderType:e.target.value}))}><option value="">Select order type</option>{ORDER_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Submitted by (staff name) *<input ref={staffNameRef} required value={note.submittedBy||''} onChange={e=>setNote(n=>({...n,submittedBy:e.target.value}))} placeholder="Enter your full name"/></label></div><div className="dnv2-progress-label"><span>Item readiness</span><b>{progress}%</b></div><div className="dnv2-progress"><span style={{width:`${progress}%`}}/></div></div></section>
-      <section className="dnv2-workspace"><div className="dnv2-workhead"><div><span className="dnv2-kicker">STEP 03 / VERIFICATION</span><h2>Document & product review</h2><p>Enter quantities, correct products when needed, then review everything once.</p></div><div className="dnv2-workactions"><button className="dnv2-button subtle" onClick={addRow}><Plus size={16}/> Add item</button><button className="dnv2-button primary" disabled={busy||!rows.length||duplicateState==='duplicate'} onClick={submit}><ClipboardCheck size={17}/> Review all & submit</button></div></div>
+      <section className="dnv2-workspace"><div className="dnv2-workhead"><div><span className="dnv2-kicker">STEP 03 / VERIFICATION</span><h2>Document & product review</h2><p>Enter quantities, correct products when needed, then review everything once.</p></div><div className="dnv2-workactions"><button className="dnv2-button subtle" onClick={addRow}><Plus size={16}/> Add item</button><button className="dnv2-button primary" disabled={busy||!rows.length||duplicateState==='duplicate'||unresolved>0} onClick={submit}><ClipboardCheck size={17}/> Review all & submit</button></div></div>
       
       {duplicateState==='duplicate'&&<div className="dnv3-warning"><CircleAlert size={17}/> This delivery note number already exists for this branch. Submission is blocked.</div>}
       <div className="dnv3-worktoolbar"><span>Document width</span><input aria-label="Document panel width" type="range" min="30" max="55" value={paneWidth} onChange={e=>setPaneWidth(Number(e.target.value))}/><span>{paneWidth}%</span><button className="dnv2-button subtle" onClick={()=>setShowHistory(v=>!v)}><Clock3 size={15}/> Recent submissions</button></div>
@@ -327,9 +356,18 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
       <div className="dnv2-review"><div className="dnv2-panehead"><div><ClipboardCheck size={18}/> Product verification</div><span>{rows.length} rows</span></div><div className="dnv2-tools"><div className="dnv2-search"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search product or SKU"/></div><div className="dnv2-filters"><Filter size={16}/>{[['all','All'],['review','To review'],['issues','Attention']].map(([v,label])=><button key={v} className={filter===v?'active':''} onClick={()=>setFilter(v)}>{label}</button>)}</div></div>
       {!rows.length?<div className="dnv2-reviewempty"><PackageCheck size={44}/><h3>No products yet</h3><p>After scanning, products appear here for matching and verification.</p></div>:<div className="dnv2-rows">{visibleRows.length===0?<div className="dnv2-reviewempty"><CheckCircle2 size={34}/><p>No products match this filter.</p></div>:visibleRows.map(r=>{
         const i=r._index,delta=discrepancy(r),suggestions=master.filter(m=>nameScore(r.printedItem||r.item,m.item)>.60).sort((a,b)=>nameScore(r.printedItem||r.item,b.item)-nameScore(r.printedItem||r.item,a.item)).slice(0,3);
-        return <article ref={el=>{if(el)reviewRowRefs.current[r.rowId]=el;}} onClick={()=>selectRow(r)} className={`dnv2-row ${String(r.item||'').trim()?'verified':''} ${selectedRow===r.rowId?'dnv3-selected':''} ${newRowId===r.rowId?'dnv31-new-row':''}`} key={r.rowId||i}><div className="dnv2-rowhead"><div className="dnv2-rowtitle"><span className="dnv2-rownum">{i+1}</span><span className="dnv2-rowpage">Page {r.pageNo||1}</span><span className={`dnv2-status ${String(r.item||'').trim()?'good':'warn'}`}>{String(r.item||'').trim()?<Check size={12}/>:<CircleAlert size={12}/>} {String(r.item||'').trim()?'Ready':'Enter product'}</span></div><div className="dnv2-rowbuttons"><button type="button" className="dnv32-find" title="Find or change catalog product" onClick={e=>{e.stopPropagation();setPickerRow(pickerRow===i?null:i);setPickerSearch('');setFilter('all');}}><Search size={15}/> Find / Change Product</button><button title="Remove row" disabled={busy} onClick={()=>deleteRow(i)}><Trash2 size={15}/></button></div></div>
-        <div className="dnv2-rowgrid"><label className="dnv2-sku-field">SKU<input value={r.sku||''} onChange={e=>updateRow(i,'sku',e.target.value)} placeholder="Unmatched"/></label><label className="dnv2-name-field">Product name<input value={r.item||''} onChange={e=>updateRow(i,'item',e.target.value)} placeholder="Product description"/></label><label className="dnv2-uom-field">UOM <small>Catalog</small><input value={r.uom||''} readOnly placeholder="—" title="UOM from the DAM item catalog"/></label>{documentType==='STOCK_DOCUMENT'?<><label>Detailed quantity<textarea value={r.detailedQty||''} onChange={e=>updateRow(i,'detailedQty',e.target.value)}/></label><label>Expiry date<textarea value={r.expireDate||''} onChange={e=>updateRow(i,'expireDate',e.target.value)}/></label><label>Quantity<textarea value={r.quantity||''} onChange={e=>updateRow(i,'quantity',e.target.value)}/></label></>:<><label className="dnv2-qty-field">ORDERED<input value={r.ordered||''} onChange={e=>updateRow(i,'ordered',e.target.value)} placeholder="Enter ordered qty"/></label><label className="dnv2-qty-field">DELIVERED<input value={r.delivered||''} onChange={e=>updateRow(i,'delivered',e.target.value)} placeholder="Enter delivered qty"/></label></>}</div>
-        <div className="dnv2-rowfooter"><span className={`dnv2-match ${r.stockSku?'matched':'unmatched'}`}>{formatMatch(r)}</span>{r.deliverySku&&r.deliverySku!==r.sku&&<span className="dnv2-original">Printed SKU: {r.deliverySku}</span>}{delta&&<span className="dnv2-shortage">{delta.delta<0?'Shortage':'Excess'}: {Math.abs(delta.delta)} {delta.unit}</span>}{r.crossedOut&&<span className="dnv2-original">Possibly crossed out</span>}</div>
+        return <article ref={el=>{if(el)reviewRowRefs.current[r.rowId]=el;}} onClick={()=>selectRow(r)} className={`dnv2-row ${!rowReviewIssue(r,documentType)?'verified':''} ${selectedRow===r.rowId?'dnv3-selected':''} ${newRowId===r.rowId?'dnv31-new-row':''}`} key={r.rowId||i}><div className="dnv2-rowhead"><div className="dnv2-rowtitle"><span className="dnv2-rownum">{i+1}</span><span className="dnv2-rowpage">Page {r.pageNo||1}</span><span className={`dnv2-status ${String(r.item||'').trim()?'good':'warn'}`}>{String(r.item||'').trim()?<Check size={12}/>:<CircleAlert size={12}/>} {!rowReviewIssue(r,documentType)?'Ready':'Needs review'}</span></div><div className="dnv2-rowbuttons"><button type="button" className="dnv32-find" title="Find or change catalog product" onClick={e=>{e.stopPropagation();setPickerRow(pickerRow===i?null:i);setPickerSearch('');setFilter('all');}}><Search size={15}/> Find / Change Product</button><button title="Remove row" disabled={busy} onClick={()=>deleteRow(i)}><Trash2 size={15}/></button></div></div>
+        <div className="dnv2-rowgrid"><label className="dnv2-sku-field">SKU<input value={r.sku||''} onChange={e=>updateRow(i,'sku',e.target.value)} placeholder="Unmatched"/></label><label className="dnv2-name-field">Product name<input value={r.item||''} onChange={e=>updateRow(i,'item',e.target.value)} placeholder="Product description"/></label><label className="dnv2-uom-field">UOM <small>Catalog</small><input value={r.uom||''} readOnly placeholder="—" title="UOM from the DAM item catalog"/></label>{documentType==='STOCK_DOCUMENT'?<><label>Detailed quantity<textarea value={r.detailedQty||''} onChange={e=>updateRow(i,'detailedQty',e.target.value)}/></label><label>Expiry date<textarea value={r.expireDate||''} onChange={e=>updateRow(i,'expireDate',e.target.value)}/></label><label>Quantity * {r.suggestedQuantity&&<small>Scanned: {r.suggestedQuantity} (enter to verify)</small>}<textarea aria-invalid={!enteredQuantity(r.quantity)} value={r.quantity??''} onChange={e=>updateRow(i,'quantity',e.target.value)}/></label></>:<><label className="dnv2-qty-field">ORDERED * {r.suggestedOrdered&&<small>Scanned: {r.suggestedOrdered} (enter to verify)</small>}<input aria-invalid={!enteredQuantity(r.ordered)} value={r.ordered??''} onChange={e=>updateRow(i,'ordered',e.target.value)} placeholder="Enter ordered qty"/></label><label className="dnv2-qty-field">DELIVERED * {r.suggestedDelivered&&<small>Scanned: {r.suggestedDelivered} (enter to verify)</small>}<input aria-invalid={!enteredQuantity(r.delivered)} value={r.delivered??''} onChange={e=>updateRow(i,'delivered',e.target.value)} placeholder="Enter delivered qty"/></label></>}</div>
+        <div className="dnv2-rowfooter"><span className={`dnv2-match ${r.stockSku?'matched':'unmatched'}`}>{formatMatch(r)}</span>{r.deliverySku&&r.deliverySku!==r.sku&&<span className="dnv2-original">Printed SKU: {r.deliverySku}</span>}{delta&&<span className="dnv2-shortage">{delta.delta<0?'Shortage':'Excess'}: {Math.abs(delta.delta)} {delta.unit}</span>}{r.crossedOut&&<span className="dnv2-original">Possibly crossed out</span>}{rowReviewIssue(r,documentType)&&<span className="dnv32-review-error">{rowReviewIssue(r,documentType)}</span>}</div>
+        {!r.stockSku&&<div className="dnv4-exception" onClick={e=>e.stopPropagation()}>
+          <strong><CircleAlert size={15}/> Product not approved in the JSON catalog</strong>
+          <p>First compare the original photo and printed SKU, then use Find / Change Product. If it is genuinely missing, record it as a provisional exception. This will NOT add it to the JSON or post it to stock.</p>
+          <div className="dnv4-actions"><button type="button" onClick={()=>{setPickerRow(i);setPickerSearch(r.deliverySku||r.printedItem||'');}}>Search JSON again</button><button type="button" onClick={()=>{setPickerRow(i);setPickerSearch('');}}>See all suggestions</button></div>
+          <label>Reason for provisional entry *<select value={r.provisionalReason||''} onChange={e=>updateRow(i,'provisionalReason',e.target.value)}><option value="">Select a reason</option><option value="NOT_IN_CATALOG">Not found in JSON catalog</option><option value="UNREADABLE">Unclear printed SKU or name</option><option value="NEW_SUPPLIER_ITEM">New supplier product</option></select></label>
+          <label>Document UOM (reference only; not approved catalog UOM)<input value={r.documentUom||''} onChange={e=>updateRow(i,'documentUom',e.target.value)} placeholder="e.g. CTN / 12 PAK"/></label>
+          <label className="dnv4-check"><input type="checkbox" checked={!!r.reviewedException} onChange={e=>updateRow(i,'reviewedException',e.target.checked)}/> I checked the original photo and JSON suggestions. Record this as an unmatched exception.</label>
+        </div>}
+        {r.stockSku&&((r.deliverySku&&String(r.deliverySku).toUpperCase()!==String(r.stockSku).toUpperCase())||(r.printedItem&&nameScore(r.printedItem,r.item)<.69))&&<label className="dnv4-check dnv4-conflict" onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!r.reviewedConflict} onChange={e=>updateRow(i,'reviewedConflict',e.target.checked)}/> The printed SKU/name may differ from the selected JSON product ({r.stockSku}). I verified the product against the original photo.</label>}
         {pickerRow===i&&<div className="dnv32-picker" ref={pickerRef} onClick={e=>e.stopPropagation()}>
           <div className="dnv32-picker-head"><strong>Find product in stock master</strong><button type="button" onClick={()=>setPickerRow(null)} aria-label="Close product search"><X size={18}/></button></div>
           <label className="dnv32-picker-search"><Search size={17}/><input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder="Search by SKU or product name"/></label>
@@ -341,13 +379,13 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
       })}</div>}
       <div className="dnv2-reviewfoot"><Keyboard size={15}/> Use Tab to move between fields. Find / Change Product works on mobile and desktop. Review all once before submitting.</div></div></div>
       {reviewOpen&&<section ref={finalReviewRef} className="dnv32-final-review" role="region" aria-label="Final delivery review">
-        <div className="dnv32-final-title"><ClipboardCheck size={21}/><div><h3>Final review</h3><p>{rows.length} products · {rows.filter(r=>!r.ordered||!r.delivered).length} with empty quantity fields · {rows.filter(r=>!r.stockSku).length} without a catalog match</p></div></div>
-        {unresolved>0&&<p className="dnv32-review-error">Enter a product name for every row{documentType==='STOCK_DOCUMENT'?' and a quantity':''} before submitting.</p>}
-        <p>Check any blank quantities, product corrections and unmatched items. Blank quantities will remain blank in the saved record.</p>
-        <div className="dnv32-review-list">{rows.map((r,i)=><div key={r.rowId||i}><span><b>{i+1}. {r.sku||'No SKU'}</b> · {r.item||'Product name required'}</span><small>{documentType==='STOCK_DOCUMENT'?`Qty: ${r.quantity||'—'}`:`Ordered: ${r.ordered||'—'} · Delivered: ${r.delivered||'—'}`} · {r.uom||'No catalog UOM'}{!r.stockSku?' · Unmatched':''}</small></div>)}</div>
-        <div className="dnv32-final-actions"><button type="button" className="dnv2-button subtle" onClick={()=>setReviewOpen(false)}>Continue editing</button><button type="button" className="dnv2-button primary" disabled={busy||unresolved>0} onClick={submit}><Save size={17}/> Confirm all & submit</button></div>
+        <div className="dnv32-final-title"><ClipboardCheck size={21}/><div><h3>Final review</h3><p>{rows.length} products · {incompleteQuantity} with missing/invalid quantities · {exceptionCount} provisional exceptions</p></div></div>
+        {unresolved>0&&<p className="dnv32-review-error">{unresolved} rows require attention, including {incompleteQuantity} with missing/invalid quantities. Correct them before submission.</p>}
+        <p>All ordered and delivered quantities are mandatory (explicit zero is allowed). Unmatched products are recorded only as reviewed exceptions and never added to the JSON catalog.</p>
+        <div className="dnv32-review-list">{rows.map((r,i)=><div key={r.rowId||i}><span><b>{i+1}. {r.sku||'No SKU'}</b> · {r.item||'Product name required'}</span><small>{documentType==='STOCK_DOCUMENT'?`Qty: ${r.quantity||'—'}`:`Ordered: ${r.ordered||'—'} · Delivered: ${r.delivered||'—'}`} · {r.uom||'No catalog UOM'}{!r.stockSku?' · Provisional exception':''}{rowReviewIssue(r,documentType)?` · ${rowReviewIssue(r,documentType)}`:''}</small></div>)}</div>
+        <div className="dnv4-summary"><strong>Final summary</strong><span>Order: {note.orderType||'Not selected'} · Submitted by: {note.submittedBy||'Not entered'}</span><span>Pages: {pages.length} · Products: {rows.length} · Unmatched exceptions: {exceptionCount}</span><span>Shortages: {rows.filter(r=>discrepancy(r)?.delta<0).length} · Excesses: {rows.filter(r=>discrepancy(r)?.delta>0).length}</span></div><div className="dnv32-final-actions"><button type="button" className="dnv2-button subtle" onClick={()=>setReviewOpen(false)}>Continue editing</button><button type="button" className="dnv2-button primary" disabled={busy||unresolved>0||duplicateState==='duplicate'} onClick={submit}><Save size={17}/> Confirm all & submit</button></div>
       </section>}
-      <div className="dnv2-bottom"><div><ShieldCheck size={19}/><span><b>Staff-controlled verification</b><small>No individual confirmations needed. Review all items once before submitting.</small></span></div><button className="dnv2-button primary" disabled={busy||!rows.length||duplicateState==='duplicate'} onClick={submit}><ClipboardCheck size={18}/> Review all & submit</button></div></section>
+      <div className="dnv2-bottom"><div><ShieldCheck size={19}/><span><b>Staff-controlled verification</b><small>No individual confirmations needed. Review all items once before submitting.</small></span></div><button className="dnv2-button primary" disabled={busy||!rows.length||duplicateState==='duplicate'||unresolved>0} onClick={submit}><ClipboardCheck size={18}/> Review all & submit</button></div></section>
     </div>
   </main>;
 }

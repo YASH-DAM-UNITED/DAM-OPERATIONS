@@ -61,3 +61,18 @@
 @media(max-width:650px){.dnv32-find{width:100%;justify-content:center!important}.dnv2-rowbuttons{width:100%}.dnv32-picker{padding:10px}.dnv32-picker-results{max-height:42vh}.dnv32-final-actions .dnv2-button{flex:1;white-space:normal}.dnv32-final-review{padding:12px}}
 
 .dnv32-review-list{max-height:240px;overflow:auto;display:grid;gap:5px;margin:12px 0}.dnv32-review-list>div{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px}.dnv32-review-list small{color:var(--muted);text-align:right}.dnv32-review-list span{min-width:0;overflow-wrap:anywhere}@media(max-width:650px){.dnv32-review-list>div{flex-direction:column;gap:3px}.dnv32-review-list small{text-align:left}}
+
+/* Delivery-note catalog-first exception and quantity safeguards */
+.dnv2-qty-field input[aria-invalid="true"],.dnv2-rowgrid textarea[aria-invalid="true"]{border-color:#dc5c56!important;box-shadow:0 0 0 1px rgba(220,92,86,.16)}
+.dnv4-exception{margin:10px 0;padding:14px;border:1px solid #e3ac4d;border-radius:12px;background:rgba(245,158,11,.07);display:grid;gap:10px}
+.dnv4-exception strong{display:flex;align-items:center;gap:7px;font-size:13px}
+.dnv4-exception p{font-size:12px;line-height:1.5;margin:0}
+.dnv4-exception label{font-size:12px;display:grid;gap:6px}
+.dnv4-exception input:not([type=checkbox]),.dnv4-exception select{min-height:38px;padding:7px 10px;border:1px solid #8e9eae;border-radius:7px;background:var(--dnv2-input-bg,#fff);color:inherit}
+.dnv4-actions{display:flex;gap:8px;flex-wrap:wrap}
+.dnv4-actions button{border:1px solid #5684ad;border-radius:7px;padding:8px 11px;background:transparent;color:inherit;cursor:pointer}
+.dnv4-check{display:flex!important;align-items:center;gap:8px;font-size:12px;line-height:1.5}
+.dnv4-check input{width:18px;height:18px;flex-shrink:0}
+.dnv4-conflict{padding:12px;border:1px solid #e3ac4d;border-radius:9px;margin-top:9px}
+.dnv4-summary{display:grid;gap:6px;margin:12px 0;padding:14px;border:1px solid #9eb5cb;border-radius:10px;font-size:13px}
+.dnv4-summary span{font-size:12px}
