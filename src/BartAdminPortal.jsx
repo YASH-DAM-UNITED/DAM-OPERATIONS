@@ -3853,6 +3853,13 @@ export default function BartAdminPortal({
   const [error, setError] =
     useState("");
 
+  // BART Admin APIs require a signed HttpOnly admin-session cookie.
+  const [sessionStatus, setSessionStatus] = useState("checking");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [supplementalError, setSupplementalError] = useState("");
+
   const [branch, setBranch] =
     useState(null);
 
@@ -3892,7 +3899,7 @@ export default function BartAdminPortal({
     const response =
       await fetch(
         url,
-        options
+        { credentials: "same-origin", cache: "no-store", ...options }
       );
 
     let json;
@@ -3910,14 +3917,60 @@ export default function BartAdminPortal({
       !response.ok ||
       json.success === false
     ) {
-      throw new Error(
+      const err = new Error(
         json.error ||
           json.message ||
           `HTTP ${response.status}`
       );
+      err.status = response.status;
+      // A 401 means the signed admin session is missing or expired.
+      // Never bypass the backend check or put admin secrets in the browser.
+      if (response.status === 401 && !url.startsWith("/api/admin/bart/login")) {
+        setSessionStatus("unauthenticated");
+        setData(null);
+      }
+      throw err;
     }
 
     return json;
+  }
+
+  // Verify the session before requesting protected inventory endpoints.
+  useEffect(() => {
+    let live = true;
+    getJson("/api/admin/bart/session")
+      .then((result) => {
+        if (live) setSessionStatus(result.authenticated ? "authenticated" : "unauthenticated");
+      })
+      .catch((err) => {
+        if (live) {
+          setSessionStatus("unauthenticated");
+          setLoginError(err.message || "Could not verify admin session.");
+        }
+      });
+    return () => { live = false; };
+  }, []);
+
+  async function loginAdmin(event) {
+    event.preventDefault();
+    if (!loginPassword || loginBusy) return;
+    setLoginBusy(true);
+    setLoginError("");
+    try {
+      await getJson("/api/admin/bart/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: loginPassword }),
+      });
+      setLoginPassword("");
+      setError("");
+      setSupplementalError("");
+      setSessionStatus("authenticated");
+    } catch (err) {
+      setLoginError(err.message || "Unable to sign in.");
+    } finally {
+      setLoginBusy(false);
+    }
   }
 
   /* MAIN INVENTORY */
@@ -3949,10 +4002,12 @@ export default function BartAdminPortal({
         err
       );
 
-      setError(
-        err?.message ||
-          "Unable to load Admin inventory"
-      );
+      if (err?.status !== 401) {
+        setError(
+          err?.message ||
+            "Unable to load Admin inventory"
+        );
+      }
 
     } finally {
 
@@ -3987,10 +4042,9 @@ export default function BartAdminPortal({
         err
       );
 
-      setError(
-        err?.message ||
-          "Unable to load manager mapping"
-      );
+      if (err?.status !== 401) {
+        setSupplementalError(err?.message || "Unable to load manager mapping");
+      }
 
     } finally {
 
@@ -4036,10 +4090,9 @@ export default function BartAdminPortal({
         err
       );
 
-      setError(
-        err?.message ||
-          "Unable to load historical data"
-      );
+      if (err?.status !== 401) {
+        setSupplementalError(err?.message || "Unable to load historical data");
+      }
 
     } finally {
 
@@ -4053,8 +4106,8 @@ export default function BartAdminPortal({
   /* LOAD INVENTORY WHEN DATE CHANGES */
 
   useEffect(() => {
-    load(false);
-  }, [date]);
+    if (sessionStatus === "authenticated") load(false);
+  }, [date, sessionStatus]);
 
   const historicalTabs =
     useMemo(
@@ -4074,6 +4127,7 @@ export default function BartAdminPortal({
 
   useEffect(() => {
     if (
+      sessionStatus === "authenticated" &&
       historicalTabs.has(tab) &&
       !historical &&
       !historicalLoading
@@ -4084,6 +4138,7 @@ export default function BartAdminPortal({
     tab,
     historical,
     historicalLoading,
+    sessionStatus,
   ]);
 
   function choose(
@@ -4588,8 +4643,42 @@ export default function BartAdminPortal({
         </header>
 
         <div className="admin-content">
+          {sessionStatus === "authenticated" && supplementalError && (
+            <div role="alert" style={{ padding: "10px 16px", marginBottom: 12, border: "1px solid #ba6d54", borderRadius: 12, color: "#ffd5bd" }}>
+              Report data warning: {supplementalError}
+              <button type="button" onClick={() => setSupplementalError("")} style={{ marginLeft: 12 }}>Dismiss</button>
+            </div>
+          )}
 
-          {branch && data ? (
+          {sessionStatus === "checking" ? (
+            <div className="fatal">
+              <Database />
+              <h2>Checking Admin access</h2>
+              <p>Verifying your secure DAM Operations Admin session.</p>
+            </div>
+          ) : sessionStatus !== "authenticated" ? (
+            <div className="fatal">
+              <ShieldAlert />
+              <h2>BART Admin sign in</h2>
+              <p>Enter your existing DAM Admin password to access inventory and reports.</p>
+              <form onSubmit={loginAdmin} style={{ display: "grid", gap: 12, width: "min(100%, 380px)", textAlign: "left" }}>
+                <label htmlFor="bart-admin-login-password">Admin password</label>
+                <input
+                  id="bart-admin-login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid #48505d", background: "#151a24", color: "#fff", width: "100%" }}
+                />
+                {loginError && <p role="alert" style={{ color: "#ff8590", margin: 0 }}>{loginError}</p>}
+                <button type="submit" disabled={loginBusy} style={{ minHeight: 44, borderRadius: 12, background: "#f7f5ef", color: "#07090d", fontWeight: 700 }}>
+                  {loginBusy ? "Signing in..." : "Sign in to BART Admin"}
+                </button>
+              </form>
+            </div>
+          ) : branch && data ? (
 
             <BranchWorkspace
               branch={branch}
