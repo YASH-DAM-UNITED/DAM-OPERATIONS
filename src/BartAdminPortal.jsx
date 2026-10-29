@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
@@ -33,6 +33,8 @@ import {
   Settings2,
   ShieldAlert,
   Sparkles,
+  Sun,
+  Moon,
   Table2,
   Tags,
   TrendingDown,
@@ -44,6 +46,7 @@ import {
 } from "lucide-react";
 
 import "./BartAdminPortal.css";
+import "./BartAdminGlassTheme.css";
 import StreamlitReportPage from "./StreamlitReportPage.jsx";
 
 /* =========================================================
@@ -127,7 +130,6 @@ const GROUPS = [
     label: "REPORTS",
     tabs: [
       ["report-studio", "Report Studio", FileSpreadsheet],
-      ["streamlit-report-page", "Streamlit Report Page", FileSpreadsheet],
       ["date-range-reports", "Date Range Reports", FileChartColumn],
       ["executive-report", "Executive Report", Download],
       ["custom-export", "Custom Export", Filter],
@@ -145,14 +147,17 @@ const GROUPS = [
   },
 ];
 
-const ALL_TABS = GROUPS.flatMap((group) =>
-  group.tabs.map(([id, label, Icon]) => ({
-    id,
-    label,
-    Icon,
-    group: group.id,
-  }))
-);
+const ALL_TABS = [
+  { id: "streamlit-report-page", label: "Streamlit Report Page", Icon: FileSpreadsheet, group: "reports" },
+  ...GROUPS.flatMap((group) =>
+    group.tabs.map(([id, label, Icon]) => ({
+      id,
+      label,
+      Icon,
+      group: group.id,
+    }))
+  ),
+];
 
 /* =========================================================
    HELPERS
@@ -362,6 +367,12 @@ function InfiniteMarquee({ reverse = false }) {
 }
 
 function CommandCenter({ data, date, setTab }) {
+  const operationsCarouselRef = useRef(null);
+  const reportsCarouselRef = useRef(null);
+  const scrollCarousel = (ref, direction) => {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: direction * Math.max(300, el.clientWidth * 0.78), behavior: "smooth" });
+  };
   const all = [
     ...(data.daily || []),
     ...(data.weekly || []),
@@ -547,7 +558,14 @@ function CommandCenter({ data, date, setTab }) {
 
         </div>
 
-        <div className="bart-operation-carousel">
+        <div className="bart-carousel-controls" aria-label="Browse priority operations">
+          <span>Explore operations</span>
+          <div>
+            <button type="button" aria-label="Previous operations" onClick={() => scrollCarousel(operationsCarouselRef, -1)}><ArrowLeft size={16} /></button>
+            <button type="button" aria-label="Next operations" onClick={() => scrollCarousel(operationsCarouselRef, 1)}><ArrowRight size={16} /></button>
+          </div>
+        </div>
+        <div className="bart-operation-carousel" ref={operationsCarouselRef}>
 
           {operations.map(
             ({
@@ -785,7 +803,7 @@ function CommandCenter({ data, date, setTab }) {
           </p>
 
           <button
-            onClick={() => setTab("report-studio")}
+            onClick={() => setTab("streamlit-report-page")}
           >
             ENTER REPORT CENTER
             <ArrowUpRight />
@@ -793,7 +811,15 @@ function CommandCenter({ data, date, setTab }) {
 
         </motion.div>
 
-        <div className="bart-report-carousel">
+        <div className="bart-report-carousel-wrap">
+          <div className="bart-carousel-controls" aria-label="Browse report previews">
+            <span>Report previews</span>
+            <div>
+              <button type="button" aria-label="Previous reports" onClick={() => scrollCarousel(reportsCarouselRef, -1)}><ArrowLeft size={16} /></button>
+              <button type="button" aria-label="Next reports" onClick={() => scrollCarousel(reportsCarouselRef, 1)}><ArrowRight size={16} /></button>
+            </div>
+          </div>
+        <div className="bart-report-carousel" ref={reportsCarouselRef}>
 
           {[
             {
@@ -801,7 +827,7 @@ function CommandCenter({ data, date, setTab }) {
               tag: "LIVE",
               title: "Professional Inventory",
               text: "Daily + Weekly + category reporting.",
-              target: "report-studio",
+              target: "streamlit-report-page",
             },
 
             {
@@ -858,6 +884,7 @@ function CommandCenter({ data, date, setTab }) {
 
           ))}
 
+        </div>
         </div>
 
       </section>
@@ -3839,6 +3866,20 @@ export default function BartAdminPortal({
   const [openGroup, setOpenGroup] =
     useState("command");
 
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("dam-bart-admin-theme");
+      if (saved === "light" || saved === "dark") return saved;
+      return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  useEffect(() => {
+    try { window.localStorage.setItem("dam-bart-admin-theme", theme); } catch { /* storage disabled */ }
+  }, [theme]);
+
   const [date, setDate] =
     useState(
       yesterdayString
@@ -4426,7 +4467,7 @@ export default function BartAdminPortal({
   }
 
   return (
-    <div className="bart-admin">
+    <div className="bart-admin bart-glass" data-theme={theme}>
 
       {/* ===================================================
           LEFT ADMIN NAVIGATION
@@ -4454,6 +4495,20 @@ export default function BartAdminPortal({
           </div>
 
         </div>
+
+        <button
+          type="button"
+          className={`bart-featured-report ${tab === "streamlit-report-page" ? "active" : ""}`}
+          onClick={() => choose("streamlit-report-page", "reports")}
+          aria-current={tab === "streamlit-report-page" ? "page" : undefined}
+        >
+          <span className="bart-featured-icon"><FileSpreadsheet size={19} /></span>
+          <span className="bart-featured-copy">
+            <strong>Streamlit Report Page</strong>
+            <small>Inventory · Excel · History</small>
+          </span>
+          <ArrowUpRight size={16} aria-hidden="true" />
+        </button>
 
         <nav>
 
@@ -4600,6 +4655,17 @@ export default function BartAdminPortal({
 
           <div className="top-actions">
 
+            <button
+              type="button"
+              className="bart-theme-switch"
+              onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              <span>{theme === "dark" ? "Light" : "Dark"}</span>
+            </button>
+
             <label>
 
               <CalendarDays />
@@ -4644,7 +4710,7 @@ export default function BartAdminPortal({
 
         <div className="admin-content">
           {sessionStatus === "authenticated" && supplementalError && (
-            <div role="alert" style={{ padding: "10px 16px", marginBottom: 12, border: "1px solid #ba6d54", borderRadius: 12, color: "#ffd5bd" }}>
+            <div role="alert" className="bart-supplemental-warning">
               Report data warning: {supplementalError}
               <button type="button" onClick={() => setSupplementalError("")} style={{ marginLeft: 12 }}>Dismiss</button>
             </div>
@@ -4670,10 +4736,10 @@ export default function BartAdminPortal({
                   required
                   value={loginPassword}
                   onChange={(event) => setLoginPassword(event.target.value)}
-                  style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid #48505d", background: "#151a24", color: "#fff", width: "100%" }}
+                  className="bart-login-input"
                 />
-                {loginError && <p role="alert" style={{ color: "#ff8590", margin: 0 }}>{loginError}</p>}
-                <button type="submit" disabled={loginBusy} style={{ minHeight: 44, borderRadius: 12, background: "#f7f5ef", color: "#07090d", fontWeight: 700 }}>
+                {loginError && <p role="alert" className="bart-login-error">{loginError}</p>}
+                <button type="submit" disabled={loginBusy} className="bart-login-submit">
                   {loginBusy ? "Signing in..." : "Sign in to BART Admin"}
                 </button>
               </form>

@@ -1,0 +1,284 @@
+/* BART ONLY — Frosted Pearl / Midnight Glass. Loaded after BartAdminPortal.css.
+   No changes to DAM backend, staff, GLOR, MOOMA or report data logic. */
+.bart-admin.bart-glass[data-theme="dark"] {
+  color-scheme: dark;
+  --bart-bg: #10121e;
+  --bart-bg-2: #181b2b;
+  --bart-panel: rgba(33, 36, 56, .72);
+  --bart-panel-2: rgba(43, 46, 69, .8);
+  --bart-text: #f2f0fb;
+  --bart-muted: #b0b2c9;
+  --bart-line: rgba(212, 210, 255, .15);
+  --bart-line-strong: rgba(212, 210, 255, .28);
+  --bart-accent: #b8a7ff;
+  --bart-accent-2: #d6ccff;
+  --bart-green: #9ab6ff;
+  --bart-yellow: #dfc8ff;
+  --bart-red: #c6a8ef;
+  --bart-blue: #99b8ff;
+  --bart-soft: rgba(202, 196, 255, .075);
+  --glass-surface: rgba(31, 34, 55, .72);
+  --glass-surface-raised: rgba(43, 45, 69, .78);
+  --glass-table-head: #292c45;
+  --glass-table-cell: #1d2134;
+  --glass-table-alt: #252941;
+  --glass-sidebar: rgba(18, 21, 37, .82);
+  --glass-top: rgba(20, 22, 37, .74);
+  --glass-ink-on-accent: #17142c;
+  --glass-orb-a: rgba(138, 116, 244, .2);
+  --glass-orb-b: rgba(126, 156, 245, .11);
+  --glass-shadow: 0 20px 60px rgba(2, 4, 18, .28);
+}
+.bart-admin.bart-glass[data-theme="light"] {
+  color-scheme: light;
+  --bart-bg: #f3f4fb;
+  --bart-bg-2: #e9ebf7;
+  --bart-panel: rgba(255, 255, 255, .74);
+  --bart-panel-2: rgba(247, 247, 255, .88);
+  --bart-text: #26263f;
+  --bart-muted: #666982;
+  --bart-line: rgba(96, 91, 151, .15);
+  --bart-line-strong: rgba(96, 91, 151, .27);
+  --bart-accent: #6650bd;
+  --bart-accent-2: #8d7ada;
+  --bart-green: #617ebd;
+  --bart-yellow: #8976b8;
+  --bart-red: #896bb8;
+  --bart-blue: #5577c6;
+  --bart-soft: rgba(109, 91, 189, .06);
+  --glass-surface: rgba(255, 255, 255, .69);
+  --glass-surface-raised: rgba(255, 255, 255, .84);
+  --glass-table-head: #e9e8f7;
+  --glass-table-cell: #ffffff;
+  --glass-table-alt: #f5f4fc;
+  --glass-sidebar: rgba(247, 247, 255, .8);
+  --glass-top: rgba(249, 249, 255, .74);
+  --glass-ink-on-accent: #ffffff;
+  --glass-orb-a: rgba(161, 140, 241, .19);
+  --glass-orb-b: rgba(132, 174, 248, .17);
+  --glass-shadow: 0 18px 55px rgba(57, 52, 109, .1);
+}
+
+.bart-admin.bart-glass {
+  isolation: isolate;
+  background: radial-gradient(ellipse at 90% 8%, var(--glass-orb-a), transparent 40%),
+              radial-gradient(ellipse at 12% 86%, var(--glass-orb-b), transparent 48%),
+              var(--bart-bg);
+  color: var(--bart-text);
+  transition: background-color .28s ease, color .28s ease;
+}
+.bart-glass > main {
+  background: transparent;
+}
+.bart-glass > aside {
+  background: var(--glass-sidebar);
+  border-right: 1px solid var(--bart-line);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  backdrop-filter: blur(26px) saturate(140%);
+}
+.bart-glass .admin-top {
+  background: var(--glass-top);
+  border-bottom-color: var(--bart-line);
+  -webkit-backdrop-filter: blur(22px) saturate(145%);
+  backdrop-filter: blur(22px) saturate(145%);
+}
+.bart-glass .brand-mark {
+  background: linear-gradient(135deg, #8b7de0, #b1baf1);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(104, 92, 183, .2);
+}
+.bart-glass .admin-brand { margin-bottom: 10px; }
+
+/* Featured report — permanently visible above all collapsible groups. */
+.bart-glass .bart-featured-report {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 12px 10px; margin: 0 0 18px; text-align: left;
+  border-radius: 16px; border: 1px solid var(--bart-line-strong);
+  background: linear-gradient(125deg, var(--glass-orb-a), var(--glass-surface));
+  box-shadow: var(--glass-shadow); color: var(--bart-text);
+  cursor: pointer; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.bart-glass .bart-featured-report:hover,
+.bart-glass .bart-featured-report.active {
+  border-color: var(--bart-accent); transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(112, 94, 188, .17);
+}
+.bart-glass .bart-featured-icon {
+  flex: 0 0 37px; height: 37px; display: grid; place-items: center;
+  background: var(--bart-soft); border: 1px solid var(--bart-line);
+  border-radius: 11px; color: var(--bart-accent);
+}
+.bart-glass .bart-featured-copy { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.bart-glass .bart-featured-copy strong { font-size: 11px; line-height: 1.3; font-weight: 800; }
+.bart-glass .bart-featured-copy small { font-size: 9px; line-height: 1.2; color: var(--bart-muted); }
+.bart-glass .bart-featured-report > svg { flex-shrink: 0; color: var(--bart-accent); }
+
+/* Navigation + mode switch. */
+.bart-glass .group-title { color: var(--bart-muted); }
+.bart-glass .group-title:hover { background: var(--bart-soft); color: var(--bart-text); }
+.bart-glass .group-tabs button { color: var(--bart-muted); }
+.bart-glass .group-tabs button:hover { background: var(--bart-soft); color: var(--bart-text); }
+.bart-glass .group-tabs button.active {
+  background: linear-gradient(90deg, var(--glass-orb-a), var(--bart-soft));
+  border-color: var(--bart-line-strong); color: var(--bart-text);
+}
+.bart-glass .group-tabs button.active svg { color: var(--bart-accent); }
+.bart-glass .top-actions label,
+.bart-glass .top-actions button,
+.bart-glass .all-brands,
+.bart-glass .mobile-nav {
+  background: var(--glass-surface-raised);
+  border-color: var(--bart-line);
+  color: var(--bart-text);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.bart-glass .top-actions button:hover,
+.bart-glass .all-brands:hover { border-color: var(--bart-accent); background: var(--bart-soft); }
+.bart-glass .bart-theme-switch { gap: 8px; }
+.bart-glass .bart-theme-switch svg { color: var(--bart-accent); width: 16px; height: 16px; }
+.bart-glass .bart-theme-switch span { font-size: 10px; font-weight: 750; }
+.bart-glass .top-actions input { color: var(--bart-text); color-scheme: inherit; }
+.bart-glass .top-actions input::-webkit-calendar-picker-indicator { filter: none; opacity: .8; }
+.bart-glass[data-theme="dark"] .top-actions input::-webkit-calendar-picker-indicator { filter: invert(1); }
+
+/* Glass surfaces across existing BART workspaces. */
+.bart-glass :is(.ba-metric, .ba-panel, .download-main, .notice, .empty, .branch-card,
+  .bart-operation-card, .bart-network-panel, .bart-report-carousel > button,
+  .bart-signal-stack button, .download-hero, .branch-hero, .bart-network-orb,
+  .ba-table-wrap, .category-cards > button, .category-cards > section) {
+  background: var(--glass-surface);
+  border-color: var(--bart-line);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+.bart-glass :is(.bart-operation-card, .bart-network-panel, .bart-network-orb, .download-hero, .branch-hero) {
+  background: radial-gradient(circle at 90% 8%, var(--glass-orb-a), transparent 50%), var(--glass-surface);
+}
+.bart-glass :is(.bart-operation-card, .bart-report-carousel > button, .branch-card, .category-cards > button, .ba-metric) {
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.bart-glass :is(.bart-operation-card, .bart-report-carousel > button, .branch-card, .category-cards > button, .ba-metric):hover {
+  border-color: var(--bart-line-strong);
+  box-shadow: 0 20px 48px rgba(98, 86, 162, .15);
+}
+.bart-glass .metric-icon { background: var(--bart-soft); color: var(--bart-accent); }
+.bart-glass .bart-hero-kicker i,
+.bart-glass .branch-health i,
+.bart-glass .online { background: var(--bart-blue); box-shadow: none; }
+.bart-glass .bart-network-orb { color: var(--bart-text); }
+.bart-glass .bart-report-copy > button,
+.bart-glass .bart-network-panel > button,
+.bart-glass .srp-primary {
+  background: var(--bart-accent); color: var(--glass-ink-on-accent) !important;
+  border-color: transparent;
+}
+.bart-glass .bart-marquee { background: var(--bart-accent); }
+.bart-glass .bart-marquee :is(span, div) { color: var(--glass-ink-on-accent); }
+
+/* Inventory tables retain sticky headers/columns and work in both modes. */
+.bart-glass .ba-table th,
+.bart-glass .srp-table th { background: var(--glass-table-head); color: var(--bart-text); border-color: var(--bart-line); }
+.bart-glass .ba-table td,
+.bart-glass .srp-table td { background: var(--glass-table-cell); color: var(--bart-text); border-color: var(--bart-line); }
+.bart-glass .ba-table tbody tr:nth-child(even) td,
+.bart-glass .srp-table tr:nth-child(even) td { background: var(--glass-table-alt); }
+.bart-glass .ba-table :is(th,td):nth-child(-n+3) { background: var(--glass-table-head); }
+.bart-glass .ba-table tbody tr :is(td:nth-child(1),td:nth-child(2),td:nth-child(3)) { background: var(--glass-table-cell); }
+.bart-glass .ba-table tbody tr:nth-child(even) :is(td:nth-child(1),td:nth-child(2),td:nth-child(3)) { background: var(--glass-table-alt); }
+.bart-glass .srp-table th:nth-child(-n+2) { background: var(--glass-table-head); }
+.bart-glass .srp-table td:nth-child(-n+2) { background: var(--glass-table-cell); }
+.bart-glass .srp-table tr:nth-child(even) td:nth-child(-n+2) { background: var(--glass-table-alt); }
+.bart-glass :is(.ba-table tbody tr:hover td, .srp-table tbody tr:hover td) { background: var(--bart-soft); }
+.bart-glass .ba-table td.zero,
+.bart-glass .srp-table .srp-zero { color: var(--bart-muted); }
+.bart-glass .srp-table .srp-total,
+.bart-glass .ba-table td.total { color: var(--bart-accent); }
+
+/* Form controls and text stay readable in light mode. */
+.bart-glass :is(.toolbar input, .toolbar select, .searchbox input, .hero-search input,
+  .bart-login-input, .srp-range-form input) {
+  color: var(--bart-text); background: var(--glass-surface-raised);
+  border-color: var(--bart-line-strong); color-scheme: inherit;
+}
+.bart-glass :is(input, select, textarea)::placeholder { color: var(--bart-muted); opacity: .9; }
+.bart-glass :is(.toolbar select, .srp-range-form input) { color-scheme: inherit; }
+.bart-glass .bart-login-input { padding: 12px 14px; border: 1px solid var(--bart-line-strong); border-radius: 12px; width: 100%; }
+.bart-glass .bart-login-submit { min-height: 44px; border: 0; border-radius: 12px; background: var(--bart-accent); color: var(--glass-ink-on-accent); font-weight: 750; cursor: pointer; }
+.bart-glass .bart-supplemental-warning { padding: 10px 16px; margin-bottom: 12px; border: 1px solid var(--bart-line-strong); border-radius: 12px; background: var(--bart-soft); color: var(--bart-text); }
+.bart-glass .fatal button { background: var(--bart-accent); color: var(--glass-ink-on-accent); }
+
+/* Streamlit report panels + tabs. */
+.bart-glass .srp-panel,
+.bart-glass .srp-stats > div,
+.bart-glass .srp-date,
+.bart-glass .srp-search,
+.bart-glass .srp-picker-options,
+.bart-glass .srp-tabs button,
+.bart-glass .srp-category-tabs button,
+.bart-glass .srp-range-meta span {
+  background: var(--glass-surface);
+  border-color: var(--bart-line);
+  color: var(--bart-text);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+.bart-glass .srp-search input { color: var(--bart-text); }
+.bart-glass .srp-tabs button.active,
+.bart-glass .srp-category-tabs button.active {
+  background: var(--glass-orb-a); border-color: var(--bart-accent); color: var(--bart-accent);
+}
+.bart-glass .srp-option:hover { background: var(--bart-soft); }
+.bart-glass .srp-notice { background: var(--bart-soft); }
+.bart-glass .srp-warning { color: var(--bart-text); border-color: var(--bart-line-strong); background: var(--bart-soft); }
+.bart-glass .srp-export-description svg { color: var(--bart-accent); }
+.bart-glass .srp-pager button { background: var(--glass-surface-raised); border-color: var(--bart-line); color: var(--bart-text); }
+.bart-glass .srp-range-form input { color-scheme: inherit; }
+
+/* Mobile report KPI cards become a swipeable, snap-to-card carousel. */
+@media (max-width: 760px) {
+  .bart-glass .srp-stats {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 78%);
+    grid-template-columns: none; overflow-x: auto; scroll-snap-type: x mandatory;
+    padding: 4px 2px 16px; overscroll-behavior-inline: contain;
+    scrollbar-width: thin; scrollbar-color: var(--bart-accent) transparent;
+  }
+  .bart-glass .srp-stats > div { scroll-snap-align: start; }
+  .bart-glass .bart-theme-switch span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bart-glass *, .bart-glass *::before, .bart-glass *::after {
+    transition-duration: .01ms !important; scroll-behavior: auto !important;
+  }
+}
+
+/* Native scroll-snap carousels with accessible previous/next controls. */
+.bart-glass .bart-carousel-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin: 0 0 14px; color: var(--bart-muted);
+  font-size: 11px; font-weight: 750; letter-spacing: .04em;
+}
+.bart-glass .bart-carousel-controls > div { display: flex; gap: 8px; }
+.bart-glass .bart-carousel-controls button {
+  display: grid; place-items: center; width: 36px; height: 36px;
+  border: 1px solid var(--bart-line-strong); border-radius: 11px;
+  background: var(--glass-surface-raised); color: var(--bart-text);
+  cursor: pointer; transition: background .2s ease, transform .2s ease;
+}
+.bart-glass .bart-carousel-controls button:hover { background: var(--bart-soft); transform: translateY(-2px); }
+.bart-glass .bart-report-carousel-wrap { min-width: 0; }
+.bart-glass .bart-operation-carousel,
+.bart-glass .bart-report-carousel { scroll-behavior: smooth; scroll-padding-left: 4px; }
+.bart-glass .bart-hero-layout h1 { font-size: clamp(58px, 7vw, 112px); }
+.bart-glass .bart-editorial-hero { min-height: 420px; }
+.bart-glass .bart-operation-zone { padding: 62px 0 54px; }
+.bart-glass .bart-report-feature { padding: 70px 0 85px; }
+.bart-glass .bart-signal-stack button:hover { background: var(--glass-surface-raised); border-color: var(--bart-line-strong); }
+.bart-glass .health-bar i { box-shadow: 0 0 18px var(--glass-orb-a); }
+.bart-glass .bart-hero-kicker i { animation: none; }
+.bart-glass .bart-operation-card:hover,
+.bart-glass .bart-report-carousel > button:hover { border-color: var(--bart-accent); }
+
+.bart-glass .bart-login-error { margin: 0; color: var(--bart-accent); font-size: 12px; }
