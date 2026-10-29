@@ -282,3 +282,50 @@
 .bart-glass .bart-report-carousel > button:hover { border-color: var(--bart-accent); }
 
 .bart-glass .bart-login-error { margin: 0; color: var(--bart-accent); font-size: 12px; }
+
+/* 2026-10-29 — Compact, readable Command Center typography.
+   Preserve the existing glass theme and horizontal carousels. */
+.bart-glass .bart-hero-layout h1 {
+  font-size: clamp(31px, 3.5vw, 56px);
+  line-height: 1.03;
+  letter-spacing: -.045em;
+}
+.bart-glass .bart-editorial-hero { min-height: 300px; }
+.bart-glass .bart-operation-zone { padding: 36px 0 38px; }
+.bart-glass .bart-report-feature { padding: 40px 0 48px; }
+.bart-glass .bart-operation-card { min-height: 265px; }
+.bart-glass .bart-op-copy h3 {
+  font-size: clamp(17px, 1.5vw, 21px);
+  line-height: 1.18;
+  letter-spacing: -.02em;
+}
+.bart-glass .bart-op-copy p { font-size: 12px; line-height: 1.55; }
+.bart-glass .bart-op-icon { width: 78px; height: 78px; top: 65px; }
+.bart-glass .bart-report-carousel > button { min-height: 260px; }
+.bart-glass .bart-report-carousel h3 {
+  font-size: clamp(17px, 1.5vw, 21px);
+  line-height: 1.2;
+  margin-top: 42px;
+}
+.bart-glass .bart-report-carousel p { font-size: 12px; line-height: 1.5; }
+.bart-glass .bart-section-head h2 { font-size: clamp(24px, 2.5vw, 34px); line-height: 1.12; }
+/* Keep the optional Fast Moving picker visually grouped with the date fields. */
+.bart-glass .srp-range-form .srp-fast-picker-block {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  margin-top: 3px;
+  padding: 18px;
+  border: 1px solid var(--bart-line);
+  border-radius: 14px;
+  background: var(--glass-surface);
+}
+.bart-glass .srp-fast-picker-block h4 { margin: 0; font-size: 15px; }
+.bart-glass .srp-fast-picker-block .srp-picker-options { max-height: 190px; }
+.bart-glass .srp-generate-range { min-height: 44px; }
+@media (max-width: 640px) {
+  .bart-glass .bart-hero-layout h1 { font-size: clamp(28px, 8vw, 40px); }
+  .bart-glass .bart-editorial-hero { min-height: 0; }
+  .bart-glass .bart-operation-card { min-height: 240px; }
+  .bart-glass .srp-range-form .srp-fast-picker-block { padding: 12px; }
+}

@@ -3858,13 +3858,11 @@ function BranchWorkspace({
 export default function BartAdminPortal({
   onBack,
 }) {
-  const [tab, setTab] =
-    useState(
-      "command-center"
-    );
+  // The Streamlit reporting workspace is the default BART Admin landing page.
+  // Command Center remains available through the sidebar.
+  const [tab, setTab] = useState("streamlit-report-page");
 
-  const [openGroup, setOpenGroup] =
-    useState("command");
+  const [openGroup, setOpenGroup] = useState("reports");
 
   const [theme, setTheme] = useState(() => {
     try {

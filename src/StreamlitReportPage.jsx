@@ -235,7 +235,7 @@ function ItemPicker({ items, selected, onChange, label }) {
       })}
       {!options.length && <p className="srp-note">No matching items.</p>}
     </div>
-    {!!selected.length && <div className="srp-selection"><span>{selected.length} selected</span><button onClick={() => onChange([])}>Clear all <X size={13}/></button></div>}
+    {!!selected.length && <div className="srp-selection"><span>{selected.length} selected</span><button type="button" onClick={() => onChange([])}>Clear all <X size={13}/></button></div>}
   </div>;
 }
 
@@ -260,8 +260,21 @@ export default function StreamlitReportPage({ data, date, historical, historical
     for (const rows of Object.values(history?.byDate || {})) for (const row of rows) map.set(itemKey(row), row);
     return [...map.values()];
   }, [history]);
-  const fastSelected = historicalItems.filter((row) => fastChosen.includes(itemKey(row)));
-  const fastSkus = new Set(fastSelected.map((row) => row.sku.toUpperCase()));
+  // Build the SKU selector from the ALREADY LOADED snapshot first, so it is
+  // available before clicking Generate Date Range Report (as in Streamlit).
+  // Add historical-only SKUs after a range has been loaded, without another API call.
+  const fastPickerItems = useMemo(() => {
+    const unique = new Map();
+    for (const row of [...all, ...historicalItems]) {
+      if (row.sku) unique.set(itemKey(row), row);
+    }
+    return [...unique.values()].sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true }) || a.name.localeCompare(b.name));
+  }, [all, historicalItems]);
+  // Selection survives a historical refresh; SKU matching is independent of
+  // the historical response and covers both Daily and Weekly stock items.
+  const fastSkus = new Set(fastChosen.map((key) => asText(key.split("\u001f")[1]).toUpperCase()).filter(Boolean));
+  const availableHistorySkus = new Set(historicalItems.map((row) => row.sku.toUpperCase()));
+  const missingFastSkus = [...fastSkus].filter((sku) => history && !availableHistorySkus.has(sku));
 
   const download = async (filename, writer) => {
     setExporting(true); setExportError("");
@@ -329,17 +342,21 @@ export default function StreamlitReportPage({ data, date, historical, historical
       <form className="srp-range-form" onSubmit={(e) => { e.preventDefault(); if (range.start && range.end && range.start <= range.end && (Math.round((Date.parse(`${range.end}T00:00:00Z`) - Date.parse(`${range.start}T00:00:00Z`)) / 86400000) + 1) <= 93) loadHistorical(false); }}>
         <label>From Date<input required type="date" value={range.start} onChange={(e) => setRange((prev) => ({ ...prev, start: e.target.value }))}/></label>
         <label>To Date<input required type="date" value={range.end} onChange={(e) => setRange((prev) => ({ ...prev, end: e.target.value }))}/></label>
-        <button className="srp-primary" disabled={historicalLoading || !range.start || !range.end || range.start > range.end || ((Date.parse(`${range.end}T00:00:00Z`) - Date.parse(`${range.start}T00:00:00Z`)) / 86400000 + 1 > 93)} type="submit">{historicalLoading ? "Loading historical data..." : "Generate Date Range Report"}</button>
+        <div className="srp-fast-picker-block">
+          <h4>Fast Moving Items — Optional SKU Selection</h4>
+          <p className="srp-note">Search and select SKUs <strong>before generating</strong> your date-range report. Selected SKUs are exported into a separate Fast Moving Items Excel sheet. This is a selected-item report, not a calculated sales-velocity ranking.</p>
+          <ItemPicker items={fastPickerItems} selected={fastChosen} onChange={setFastChosen} label="Search and select fast moving SKUs"/>
+          <p className="srp-note">{fastSkus.size} unique SKU(s) selected. Leave empty to export the Daily, Weekly and Combined sheets only.</p>
+        </div>
+        <button className="srp-primary srp-generate-range" disabled={historicalLoading || !range.start || !range.end || range.start > range.end || ((Date.parse(`${range.end}T00:00:00Z`) - Date.parse(`${range.start}T00:00:00Z`)) / 86400000 + 1 > 93)} type="submit">{historicalLoading ? "Loading historical data..." : "Generate Date Range Stock Report"}</button>
       </form>
       {range.start > range.end && <div className="srp-warning">From Date cannot be after To Date.</div>}
       {range.start <= range.end && (Date.parse(`${range.end}T00:00:00Z`) - Date.parse(`${range.start}T00:00:00Z`)) / 86400000 + 1 > 93 && <div className="srp-warning">Select a date range of 93 days or fewer.</div>}
       {history && <>
         <div className="srp-range-meta"><span>{history.dates.length} dates</span><span>{history.branches.length} branches</span><span>{history.failed.length} failed branch reads</span></div>
         {history.failed.length > 0 && <div className="srp-warning"><AlertTriangle size={17}/> Incomplete historical data: {history.failed.map((b) => b.name || b.code || b).join(", ")}</div>}
-        <h4>Fast Moving Items — Optional SKU Selection</h4>
-        <p className="srp-note">Choose any SKUs to include in an additional “Fast Moving Items” worksheet. This is a selected-item report, not a calculated sales velocity ranking.</p>
-        <ItemPicker items={historicalItems} selected={fastChosen} onChange={setFastChosen} label="Select SKUs for Fast Moving Items sheet"/>
-        <div className="srp-toolbar"><span>Historical report ready: {historical.startDate} to {historical.endDate}</span><button className="srp-primary" disabled={exporting || !history.dates.length} onClick={() => download(`BART_Stock_Movement_${range.start}_${range.end}.xlsx`, (XLSX, book) => dateRangeExport(XLSX, book, history, fastSkus))}><Download size={16}/> Download Date Range Stock Report</button></div>
+        {missingFastSkus.length > 0 && <div className="srp-warning" role="status"><AlertTriangle size={17}/> No historical stock rows were found for selected SKU(s): {missingFastSkus.join(", ")}. Those items cannot appear in the Fast Moving Items worksheet for this range.</div>}
+        <div className="srp-toolbar"><span>Historical report ready: {historical.startDate} to {historical.endDate} · {fastSkus.size} selected fast-moving SKU(s)</span><button className="srp-primary" disabled={exporting || !history.dates.length} onClick={() => download(`BART_Stock_Movement_${range.start}_${range.end}.xlsx`, (XLSX, book) => dateRangeExport(XLSX, book, history, fastSkus))}><Download size={16}/> Download Date Range Stock Report</button></div>
         <div className="srp-category-tabs">{["Daily", "Weekly", "Combined"].map((v) => <button className={previewSchedule === v ? "active" : ""} onClick={() => setPreviewSchedule(v)} key={v}>{v} Preview</button>)}</div>
         <p className="srp-note">Preview totals sum daily stock snapshots across the date range; they are not stock consumption or sales figures. Download Excel for date-by-date values.</p>
         <DataTable key={previewSchedule + range.start + range.end} rows={historyPreview} branches={history.branches} showSchedule={previewSchedule === "Combined"}/>
