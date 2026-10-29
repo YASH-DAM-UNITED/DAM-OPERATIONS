@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 
 import "./BartAdminPortal.css";
+import StreamlitReportPage from "./StreamlitReportPage.jsx";
 
 /* =========================================================
    NAVIGATION
@@ -126,6 +127,7 @@ const GROUPS = [
     label: "REPORTS",
     tabs: [
       ["report-studio", "Report Studio", FileSpreadsheet],
+      ["streamlit-report-page", "Streamlit Report Page", FileSpreadsheet],
       ["date-range-reports", "Date Range Reports", FileChartColumn],
       ["executive-report", "Executive Report", Download],
       ["custom-export", "Custom Export", Filter],
@@ -4220,6 +4222,20 @@ export default function BartAdminPortal({
         <InventoryView
           data={data}
           mode="weekly"
+        />
+      );
+    }
+
+    else if (tab === "streamlit-report-page") {
+      body = (
+        <StreamlitReportPage
+          data={data}
+          date={date}
+          historical={historical}
+          historicalLoading={historicalLoading}
+          range={range}
+          setRange={setRange}
+          loadHistorical={loadHistorical}
         />
       );
     }
