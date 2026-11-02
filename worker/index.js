@@ -7223,6 +7223,58 @@ async function extraAdminOverview(env, brand) {
   };
 }
 
+/* GLOR / MOOMA Streamlit reporting: read-only, brand-isolated and cached.
+   Uses the same response contract as BART's Streamlit Report Page.
+   No staff write endpoint or existing BART admin handler is changed. */
+async function extraAdminStockBundle(env, brand, force = false) {
+  const scopedEnv = dnGoogleEnv(env, brand);
+  const directory = await adminCached(`streamlit:${brand}:master`, ADMIN_TTL.MASTER, force,
+    () => extraBranchDirectory(scopedEnv, brand));
+  const branches = directory.value.map(b => ({ code: b.code, name: b.name, sheetId: b.sheet_id }));
+  const results = await adminMapLimit(branches, 4, async branch => {
+    try {
+      const cached = await adminCached(`streamlit:${brand}:stocks:${branch.code}`, 6 * 60 * 60 * 1000, force,
+        () => getSheetValues(scopedEnv, branch.sheetId, 'Stocks!A:ZZ'));
+      return { branch, rows: cached.value, ok: true };
+    } catch (error) {
+      console.error('STREAMLIT BRAND STOCK READ FAILED', brand, branch.code, error);
+      return { branch, rows: [], ok: false, error: error.message };
+    }
+  });
+  return { branches, results };
+}
+async function extraAdminInventory(env, brand, selectedDate, force = false) {
+  const date = String(selectedDate || getJeddahYesterdayISO()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) {
+    throw new Error('Invalid stock date. Use YYYY-MM-DD.');
+  }
+  const cached = await adminCached(`streamlit:${brand}:inventory:${date}`, 6 * 60 * 60 * 1000, force, async () => {
+    const {branches,results} = await extraAdminStockBundle(env,brand,force);
+    return {
+      date, branches: branches.map(({code,name})=>({code,name})), branchCount:branches.length,
+      loadedBranchCount:results.filter(x=>x.ok).length,
+      failedBranches:results.filter(x=>!x.ok).map(x=>({code:x.branch.code,name:x.branch.name,error:x.error})),
+      ...adminProcessStock(results,date,branches.map(b=>b.name)),
+    };
+  });
+  return {success:true,brand:brand.toUpperCase(),source:cached.source,generatedAt:new Date().toISOString(),...cached.value};
+}
+async function extraAdminDateRange(env, brand, startDate, endDate, force = false) {
+  const dates = adminDateList(startDate,endDate);
+  const cached = await adminCached(`streamlit:${brand}:history:${startDate}:${endDate}`, 6 * 60 * 60 * 1000, force, async () => {
+    const {branches,results} = await extraAdminStockBundle(env,brand,force);
+    const names = branches.map(b=>b.name);
+    const byDate = {};
+    for (const date of dates) byDate[date] = adminProcessStock(results,date,names);
+    return {
+      startDate,endDate,dates,branches:branches.map(({code,name})=>({code,name})),
+      failedBranches:results.filter(x=>!x.ok).map(x=>({code:x.branch.code,name:x.branch.name,error:x.error})),
+      byDate,
+    };
+  });
+  return {success:true,brand:brand.toUpperCase(),source:cached.source,generatedAt:new Date().toISOString(),...cached.value};
+}
+
 /* ============================================================
    WORKER
 ============================================================ */
@@ -7274,11 +7326,18 @@ export default {
 
     try {
 
-      const brandAdminMatch = url.pathname.match(/^\/api\/admin\/(glor|mooma)\/overview$/);
+      const brandAdminMatch = url.pathname.match(/^\/api\/admin\/(glor|mooma)\/(overview|inventory|date-range)$/);
       if (brandAdminMatch) {
         if (request.method !== 'GET') return jsonResponse({success:false,message:'Method not allowed.'},405);
         if (!(await adminApiAuthorized(request,env))) return jsonResponse({success:false,message:'Admin login required.'},401);
-        return jsonResponse(await extraAdminOverview(env,brandAdminMatch[1]));
+        const [,brand,action] = brandAdminMatch;
+        if (action === 'overview') return jsonResponse(await extraAdminOverview(dnGoogleEnv(env,brand),brand));
+        const force = url.searchParams.get('force') === '1';
+        if (action === 'inventory') return jsonResponse(await extraAdminInventory(env,brand,url.searchParams.get('date'),force));
+        const start = url.searchParams.get('start') || '';
+        const end = url.searchParams.get('end') || '';
+        if (!start || !end) return jsonResponse({success:false,message:'start and end dates are required.'},400);
+        return jsonResponse(await extraAdminDateRange(env,brand,start,end,force));
       }
 
       const extraDeliveryPath = /^\/api\/staff\/(glor|mooma)\/delivery-notes\//.test(url.pathname);

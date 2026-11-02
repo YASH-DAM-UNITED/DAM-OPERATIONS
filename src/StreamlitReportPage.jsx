@@ -111,10 +111,10 @@ async function downloadWorkbook(fileName, populate) {
   XLSX.writeFile(book, fileName, { bookType: "xlsx", compression: true });
 }
 
-function snapshotExport(XLSX, book, snapshot, date) {
+function snapshotExport(XLSX, book, snapshot, date, brand = "BART") {
   const all = [...snapshot.daily, ...snapshot.weekly];
   addSheet(XLSX, book, "Dashboard Summary", [
-    ["BART Inventory Executive Report", ""],
+    [`${brand} Inventory Executive Report`, ""],
     ["Reporting Date", date],
     ["Branches", snapshot.branches.length],
     ["Daily Items", snapshot.daily.length],
@@ -239,7 +239,7 @@ function ItemPicker({ items, selected, onChange, label }) {
   </div>;
 }
 
-export default function StreamlitReportPage({ data, date, historical, historicalLoading, range, setRange, loadHistorical }) {
+export default function StreamlitReportPage({ data, date, historical, historicalLoading, range, setRange, loadHistorical, brand = "BART" }) {
   const snapshot = useMemo(() => normalizeSnapshot(data), [data]);
   const all = useMemo(() => [...snapshot.daily, ...snapshot.weekly], [snapshot]);
   const [section, setSection] = useState("search");
@@ -298,7 +298,7 @@ export default function StreamlitReportPage({ data, date, historical, historical
   }, [history, previewSchedule]);
 
   return <div className="srp-page">
-    <div className="srp-heading"><div><span className="srp-eyebrow">BART / REPORTING WORKSPACE</span><h2>Streamlit Report Page</h2><p>Streamlit-style inventory reports powered by the existing DAM Operations Admin data.</p></div><div className="srp-date"><CalendarRange size={17}/> Snapshot: {date}</div></div>
+    <div className="srp-heading"><div><span className="srp-eyebrow">{brand} / REPORTING WORKSPACE</span><h2>Streamlit Report Page</h2><p>Streamlit-style inventory reports powered by the existing DAM Operations Admin data.</p></div><div className="srp-date"><CalendarRange size={17}/> Snapshot: {date}</div></div>
     <div className="srp-stats">
       <div><span>BRANCHES</span><strong>{snapshot.branches.length}</strong></div>
       <div><span>DAILY ITEMS</span><strong>{snapshot.daily.length}</strong></div>
@@ -312,13 +312,13 @@ export default function StreamlitReportPage({ data, date, historical, historical
     </nav>
 
     {section === "search" && <section className="srp-panel">
-      <div className="srp-section-head"><div><h3>Global Inventory Search</h3><p>Select multiple SKUs or item names, compare stock across all BART branches, and export a transposed Excel file.</p></div><PackageSearch size={22}/></div>
+      <div className="srp-section-head"><div><h3>Global Inventory Search</h3><p>Select multiple SKUs or item names, compare stock across all {brand} branches, and export a transposed Excel file.</p></div><PackageSearch size={22}/></div>
       <ItemPicker items={all} selected={chosen} onChange={setChosen} label="Choose inventory items" />
-      {!!selected.length && <><div className="srp-toolbar"><span>{selected.length} selected item(s)</span><button className="srp-primary" disabled={exporting} onClick={() => download(`BART_Selected_Items_Transposed_${date}.xlsx`, (XLSX, book) => selectedExport(XLSX, book, selected, snapshot.branches))}><Download size={16}/> Download Transposed Excel</button></div><DataTable rows={selected} branches={snapshot.branches}/></>}
+      {!!selected.length && <><div className="srp-toolbar"><span>{selected.length} selected item(s)</span><button className="srp-primary" disabled={exporting} onClick={() => download(`${brand}_Selected_Items_Transposed_${date}.xlsx`, (XLSX, book) => selectedExport(XLSX, book, selected, snapshot.branches))}><Download size={16}/> Download Transposed Excel</button></div><DataTable rows={selected} branches={snapshot.branches}/></>}
     </section>}
 
     {section === "category" && <section className="srp-panel">
-      <div className="srp-section-head"><div><h3>Category-Wise Stock Overview</h3><p>Categories are taken from the existing BART backend SKU classification.</p></div><Filter size={22}/></div>
+      <div className="srp-section-head"><div><h3>Category-Wise Stock Overview</h3><p>Categories are taken from the existing backend SKU classification.</p></div><Filter size={22}/></div>
       <div className="srp-category-tabs">{CATEGORIES.map((c) => <button className={category === c ? "active" : ""} onClick={() => setCategory(c)} key={c}>{c} <span>{all.filter((row) => row.category === c).length}</span></button>)}</div>
       <div className="srp-toolbar"><div className="srp-search srp-filter"><Search size={16}/><input aria-label="Filter category items" placeholder="Filter items in this category" value={filter} onChange={(e) => setFilter(e.target.value)}/></div></div>
       <DataTable key={category} rows={filtered(all.filter((row) => row.category === category))} branches={snapshot.branches} showSchedule/>
@@ -334,7 +334,7 @@ export default function StreamlitReportPage({ data, date, historical, historical
     {section === "excel" && <section className="srp-panel">
       <div className="srp-section-head"><div><h3>Inventory Insights — Live Excel</h3><p>Download the selected-date inventory in a bordered, multi-worksheet Excel workbook.</p></div><FileSpreadsheet size={22}/></div>
       <div className="srp-export-description"><Check size={17}/> Dashboard Summary, Daily Items, Weekly Items, Food, Dry, Misc and any Uncategorized items.</div>
-      <button className="srp-primary" disabled={exporting || !all.length} onClick={() => download(`BART_Report_${date}.xlsx`, (XLSX, book) => snapshotExport(XLSX, book, snapshot, date))}><Download size={17}/> Generate LIVE Report into Excel</button>
+      <button className="srp-primary" disabled={exporting || !all.length} onClick={() => download(`${brand}_Report_${date}.xlsx`, (XLSX, book) => snapshotExport(XLSX, book, snapshot, date, brand))}><Download size={17}/> Generate LIVE Report into Excel</button>
     </section>}
 
     {section === "range" && <section className="srp-panel">
@@ -356,7 +356,7 @@ export default function StreamlitReportPage({ data, date, historical, historical
         <div className="srp-range-meta"><span>{history.dates.length} dates</span><span>{history.branches.length} branches</span><span>{history.failed.length} failed branch reads</span></div>
         {history.failed.length > 0 && <div className="srp-warning"><AlertTriangle size={17}/> Incomplete historical data: {history.failed.map((b) => b.name || b.code || b).join(", ")}</div>}
         {missingFastSkus.length > 0 && <div className="srp-warning" role="status"><AlertTriangle size={17}/> No historical stock rows were found for selected SKU(s): {missingFastSkus.join(", ")}. Those items cannot appear in the Fast Moving Items worksheet for this range.</div>}
-        <div className="srp-toolbar"><span>Historical report ready: {historical.startDate} to {historical.endDate} · {fastSkus.size} selected fast-moving SKU(s)</span><button className="srp-primary" disabled={exporting || !history.dates.length} onClick={() => download(`BART_Stock_Movement_${range.start}_${range.end}.xlsx`, (XLSX, book) => dateRangeExport(XLSX, book, history, fastSkus))}><Download size={16}/> Download Date Range Stock Report</button></div>
+        <div className="srp-toolbar"><span>Historical report ready: {historical.startDate} to {historical.endDate} · {fastSkus.size} selected fast-moving SKU(s)</span><button className="srp-primary" disabled={exporting || !history.dates.length} onClick={() => download(`${brand}_Stock_Movement_${range.start}_${range.end}.xlsx`, (XLSX, book) => dateRangeExport(XLSX, book, history, fastSkus))}><Download size={16}/> Download Date Range Stock Report</button></div>
         <div className="srp-category-tabs">{["Daily", "Weekly", "Combined"].map((v) => <button className={previewSchedule === v ? "active" : ""} onClick={() => setPreviewSchedule(v)} key={v}>{v} Preview</button>)}</div>
         <p className="srp-note">Preview totals sum daily stock snapshots across the date range; they are not stock consumption or sales figures. Download Excel for date-by-date values.</p>
         <DataTable key={previewSchedule + range.start + range.end} rows={historyPreview} branches={history.branches} showSchedule={previewSchedule === "Combined"}/>

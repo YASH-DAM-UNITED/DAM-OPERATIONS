@@ -1,86 +1,114 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, ShieldCheck, LockKeyhole, Eye, EyeOff } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, RefreshCw, ShieldCheck, LockKeyhole, Eye, EyeOff, CalendarDays, LogOut } from 'lucide-react';
+import StreamlitReportPage from './StreamlitReportPage.jsx';
+import './BrandAdminPortal.css';
 
-// Read-only administration: uses the existing HttpOnly DAM admin session.
-// Never requests branch passwords or accepts arbitrary spreadsheet IDs.
+// GLOR and MOOMA share BART's read-only Streamlit report component.
+// Their stock reads are performed only by brand-specific admin API endpoints.
+const yesterdayJeddah = () => new Date(Date.now() + 3 * 3600000 - 86400000).toISOString().slice(0, 10);
+
 export default function BrandAdminPortal({brand,onBack}) {
-  const name = String(brand || '').toUpperCase();
+  const brandKey = String(brand || '').toLowerCase();
+  const name = brandKey.toUpperCase();
+  const supported = brandKey === 'glor' || brandKey === 'mooma';
   const [authenticated,setAuthenticated] = useState(false);
   const [password,setPassword] = useState('');
   const [showPassword,setShowPassword] = useState(false);
-  const [loading,setLoading] = useState(true);
-  const [busy,setBusy] = useState(false);
+  const [checking,setChecking] = useState(true);
+  const [loading,setLoading] = useState(false);
+  const [historicalLoading,setHistoricalLoading] = useState(false);
   const [error,setError] = useState('');
   const [data,setData] = useState(null);
+  const [historical,setHistorical] = useState(null);
+  const [date,setDate] = useState(yesterdayJeddah);
+  const [range,setRange] = useState(()=>({start:yesterdayJeddah(),end:yesterdayJeddah()}));
 
-  async function requestJson(path,options) {
+  const requestJson = useCallback(async (path,options) => {
     const response = await fetch(path,{credentials:'same-origin',cache:'no-store',...options});
     const result = await response.json().catch(()=>({}));
-    if (!response.ok || result.success === false) throw new Error(result.message || `Request failed (${response.status})`);
+    if (!response.ok || result.success === false) {
+      const message = result.message || `Request failed (${response.status})`;
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
+    }
     return result;
-  }
-  async function loadOverview() {
-    setBusy(true);setError('');
-    try { setData(await requestJson(`/api/admin/${brand}/overview`)); }
-    catch(e) { setError(e.message); }
-    finally { setBusy(false); }
-  }
+  },[]);
+
+  const loadInventory = useCallback(async (force=false) => {
+    if (!supported) return;
+    setLoading(true);setError('');
+    try {
+      const result = await requestJson(`/api/admin/${brandKey}/inventory?date=${encodeURIComponent(date)}${force?'&force=1':''}`);
+      setData(result);
+    } catch(e) {
+      setError(e.message);
+      if (e.status===401) setAuthenticated(false);
+    } finally { setLoading(false); }
+  },[brandKey,date,requestJson,supported]);
+
+  const loadHistorical = useCallback(async (force=false) => {
+    if (!supported || !range.start || !range.end || range.start>range.end) return;
+    setHistoricalLoading(true);setError('');
+    try {
+      const result = await requestJson(`/api/admin/${brandKey}/date-range?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}${force?'&force=1':''}`);
+      setHistorical(result);
+    } catch(e) {
+      setError(e.message);
+      if (e.status===401) setAuthenticated(false);
+    } finally { setHistoricalLoading(false); }
+  },[brandKey,range,requestJson,supported]);
+
   useEffect(()=>{
     let live=true;
-    requestJson('/api/admin/bart/session').then(d=>{
-      if (!live)return;
-      setAuthenticated(Boolean(d.authenticated));
-    }).catch(e=>{if(live)setError(e.message)}).finally(()=>{if(live)setLoading(false)});
+    setChecking(true);
+    requestJson('/api/admin/bart/session')
+      .then(d=>{if(live)setAuthenticated(Boolean(d.authenticated));})
+      .catch(e=>{if(live)setError(e.message);})
+      .finally(()=>{if(live)setChecking(false);});
     return ()=>{live=false};
-  },[brand]);
-  useEffect(()=>{if(authenticated)loadOverview()},[authenticated,brand]);
+  },[brandKey,requestJson]);
+
+  useEffect(()=>{
+    if(authenticated)loadInventory();
+  },[authenticated,loadInventory]);
+
   async function login(event) {
-    event.preventDefault();setBusy(true);setError('');
+    event.preventDefault();setLoading(true);setError('');
     try {
       await requestJson('/api/admin/bart/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
       setPassword('');setAuthenticated(true);
-    }catch(e){setError(e.message)}finally{setBusy(false)}
+    } catch(e) {setError(e.message);} finally {setLoading(false);}
   }
-  const style={minHeight:'100vh',padding:'clamp(20px,4vw,60px)',background:'linear-gradient(145deg,#061326,#0a2850)',color:'#e9f5ff',fontFamily:'Inter,system-ui,sans-serif'};
-  const panel={maxWidth:1100,margin:'0 auto'};
-  const card={border:'1px solid #255079',borderRadius:18,padding:22,background:'#0b2545'};
-  const button={border:'1px solid #3a80c4',borderRadius:10,background:'#12457c',color:'#fff',padding:'12px 18px',cursor:'pointer'};
-  return <main style={style}>
-    <div style={panel}>
-      <button type="button" onClick={onBack} style={button}><ArrowLeft size={16} style={{verticalAlign:'middle'}}/> All brands</button>
-      <div style={{margin:'32px 0 22px'}}>
-        <p style={{color:'#70d8ff',letterSpacing:3,fontSize:12}}>DAM UNITED / ADMINISTRATION</p>
-        <h1 style={{fontSize:'clamp(30px,5vw,56px)',margin:'10px 0'}}>{name} Command Center</h1>
-        <p style={{color:'#bad3ea'}}>Live branch inventory overview · protected by the existing admin session</p>
-      </div>
-      {error && <div role="alert" style={{...card,borderColor:'#e7a65a',marginBottom:18}}>{error}</div>}
-      {loading ? <p>Checking admin access…</p> : !authenticated ?
-        <form onSubmit={login} style={{...card,maxWidth:470}}>
-          <h2><LockKeyhole size={20} style={{verticalAlign:'middle'}}/> Admin authentication</h2>
-          <p>Enter the existing DAM admin password to continue.</p>
+  async function logout() {
+    try {await requestJson('/api/admin/bart/logout',{method:'POST'});} catch(e) {setError(e.message);return;}
+    setAuthenticated(false);setData(null);setHistorical(null);
+  }
+  if (!supported) return <main className="brand-report-root"><p>Unsupported brand.</p></main>;
+
+  return <main className="brand-report-root" data-brand={brandKey}>
+    <div className="brand-report-wrap">
+      <header className="brand-report-topbar">
+        <button type="button" onClick={onBack} className="brand-report-btn"><ArrowLeft size={17}/> All brands</button>
+        <div className="brand-report-title"><span>DAM UNITED / ADMINISTRATION</span><h1>{name} Streamlit Reports</h1><p>Brand-isolated inventory and stock movement reporting</p></div>
+        {authenticated && <button type="button" onClick={logout} className="brand-report-btn"><LogOut size={16}/> Sign out</button>}
+      </header>
+      {error && <div role="alert" className="brand-report-error">{error}</div>}
+      {checking ? <p>Checking admin access…</p> : !authenticated ?
+        <form onSubmit={login} className="brand-report-login">
+          <h2><LockKeyhole size={20}/> Admin authentication</h2>
+          <p>Use your existing DAM Admin password.</p>
           <label htmlFor="brand-admin-password">Admin password</label>
-          <div style={{display:'flex',gap:8,margin:'12px 0'}}>
-            <input id="brand-admin-password" type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password" style={{flex:1,minWidth:0,padding:12,borderRadius:8}}/>
-            <button type="button" aria-label="Toggle password visibility" onClick={()=>setShowPassword(v=>!v)} style={button}>{showPassword?<EyeOff size={16}/>:<Eye size={16}/>}</button>
-          </div>
-          <button disabled={busy} style={button}>{busy?'Signing in…':'Enter admin portal'}</button>
+          <div className="brand-report-password"><input id="brand-admin-password" type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password"/><button type="button" aria-label="Show or hide password" onClick={()=>setShowPassword(v=>!v)} className="brand-report-btn">{showPassword?<EyeOff size={17}/>:<Eye size={17}/>}</button></div>
+          <button disabled={loading} className="brand-report-btn brand-report-primary">{loading?'Signing in…':'Enter admin portal'}</button>
         </form> : <>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:22}}>
-            <p><ShieldCheck size={18} style={{verticalAlign:'middle',color:'#66e1cc'}}/> Authorized admin · read-only overview</p>
-            <button type="button" disabled={busy} onClick={loadOverview} style={button}><RefreshCw size={16} style={{verticalAlign:'middle'}}/> Refresh</button>
+          <div className="brand-report-controls">
+            <span className="brand-report-authorized"><ShieldCheck size={17}/> Authorized admin · read-only</span>
+            <label><CalendarDays size={16}/> Stock date <input type="date" value={date} onChange={e=>setDate(e.target.value)} /></label>
+            <button className="brand-report-btn" disabled={loading} onClick={()=>loadInventory(true)}><RefreshCw size={16}/> {loading?'Loading…':'Sync fresh stock'}</button>
           </div>
-          {data && <>
-            <div style={{...card,marginBottom:20}}><div style={{fontSize:13,color:'#9ec8e8'}}>Active branch directory</div><strong style={{fontSize:36}}>{data.branchCount}</strong><p style={{color:'#9ec8e8'}}>Branch records sourced from {name} master sheet</p></div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:14}}>
-              {(data.branches||[]).map(branch=><div key={branch.code} style={card}>
-                <strong style={{color:'#79d8ff'}}>{branch.code}</strong>
-                <h3 style={{margin:'10px 0'}}>{branch.name}</h3>
-                <p style={{color:'#c6e1f2'}}>Stock catalog entries: {branch.stockItems ?? 'Unavailable'}</p>
-                {branch.error && <small style={{color:'#ffc78b'}}>{branch.error}</small>}
-              </div>)}
-            </div>
-            <p style={{marginTop:24,color:'#a5c3da'}}>Inventory overview is read-only. Existing stock submission, transfers and delivery note transactions remain in the staff modules. Additional administrative write operations require separate workflow validation.</p>
-          </>}
+          {loading && !data && <p>Loading {name} stock records…</p>}
+          {data && <StreamlitReportPage key={brandKey} brand={name} data={data} date={date} historical={historical} historicalLoading={historicalLoading} range={range} setRange={setRange} loadHistorical={loadHistorical}/>}
         </>}
     </div>
   </main>;
