@@ -25,3 +25,17 @@
 .brand-report-root .srp-page { --bart-panel:#10243b; --bart-line:#24415b; --bart-line-strong:#3a6382; --bart-bg-2:#0b1a2d; --bart-panel-2:#18344e; }
 .brand-report-root .srp-tabs button, .brand-report-root .srp-category-tabs button, .brand-report-root .srp-pager button { color:var(--bart-text); }
 @media(max-width:600px){ .brand-report-topbar { align-items:flex-start; } .brand-report-controls label { width:100%; } }
+
+/* V3 GLOR/MOOMA persistent light mode; scoped to admin portal only. */
+.brand-report-root.theme-light{--bart-text:#172536;--bart-muted:#56677a;--bart-accent:#166eae;--bart-line:#d7e0eb;--bart-line-strong:#b7c8d9;--bart-panel:#ffffff;--bart-panel-2:#f1f6fc;--bart-bg-2:#f4f7fb;--bart-green:#157c62;background:linear-gradient(145deg,#edf3fa,#fafcff);color-scheme:light}
+.brand-report-root.theme-light[data-brand="mooma"]{--bart-accent:#6948a9}
+.brand-report-root.theme-light .brand-report-controls input,.brand-report-root.theme-light .brand-report-password input{color-scheme:light}
+.brand-report-root.theme-light .brand-report-error{color:#913e1b;background:#fff3e8;border-color:#e4aa87}
+.brand-report-root.theme-light .srp-page{--bart-panel:#ffffff;--bart-panel-2:#f1f6fc;--bart-bg-2:#f4f7fb;--bart-line:#d7e0eb;--bart-line-strong:#b7c8d9;--bart-text:#172536;--bart-muted:#56677a}
+.brand-report-root.theme-light .srp-warning{color:#89570d;background:#fff7e9;border-color:#efca83}
+.brand-report-root.theme-light .srp-tabs button,.brand-report-root.theme-light .srp-category-tabs button,.brand-report-root.theme-light .srp-pager button{color:var(--bart-text)}
+.brand-report-root.theme-light .srp-tabs button.active,.brand-report-root.theme-light .srp-category-tabs button.active{color:var(--bart-accent)}
+.brand-report-root.theme-light .srp-table th{background:#e4edf6;border-color:#c5d5e5}
+.brand-report-root.theme-light .srp-table td{background:#fff}
+.brand-report-root.theme-light .srp-table tr:nth-child(even) td{background:#f4f7fb}
+.brand-report-root.theme-light .srp-range-form input{color-scheme:light}

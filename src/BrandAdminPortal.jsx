@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, ShieldCheck, LockKeyhole, Eye, EyeOff, CalendarDays, LogOut } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ShieldCheck, LockKeyhole, Eye, EyeOff, CalendarDays, LogOut, Sun, Moon } from 'lucide-react';
 import StreamlitReportPage from './StreamlitReportPage.jsx';
 import './BrandAdminPortal.css';
 
@@ -11,6 +11,11 @@ export default function BrandAdminPortal({brand,onBack}) {
   const brandKey = String(brand || '').toLowerCase();
   const name = brandKey.toUpperCase();
   const supported = brandKey === 'glor' || brandKey === 'mooma';
+  const [theme,setTheme] = useState(() => {
+    try { const v=localStorage.getItem(`dam-${brandKey}-admin-theme`); if(v==='light'||v==='dark')return v; return localStorage.getItem('dam-admin-theme')==='light'?'light':'dark'; }
+    catch { return 'dark'; }
+  });
+  useEffect(()=>{try{localStorage.setItem(`dam-${brandKey}-admin-theme`,theme)}catch{}},[brandKey,theme]);
   const [authenticated,setAuthenticated] = useState(false);
   const [password,setPassword] = useState('');
   const [showPassword,setShowPassword] = useState(false);
@@ -86,11 +91,12 @@ export default function BrandAdminPortal({brand,onBack}) {
   }
   if (!supported) return <main className="brand-report-root"><p>Unsupported brand.</p></main>;
 
-  return <main className="brand-report-root" data-brand={brandKey}>
+  return <main className={`brand-report-root theme-${theme}`} data-brand={brandKey}>
     <div className="brand-report-wrap">
       <header className="brand-report-topbar">
         <button type="button" onClick={onBack} className="brand-report-btn"><ArrowLeft size={17}/> All brands</button>
         <div className="brand-report-title"><span>DAM UNITED / ADMINISTRATION</span><h1>{name} Streamlit Reports</h1><p>Brand-isolated inventory and stock movement reporting</p></div>
+        <button type="button" className="brand-report-btn" onClick={()=>setTheme(v=>v==='dark'?'light':'dark')} aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`}>{theme==='dark'?<Sun size={17}/>:<Moon size={17}/>} {theme==='dark'?'Light mode':'Dark mode'}</button>
         {authenticated && <button type="button" onClick={logout} className="brand-report-btn"><LogOut size={16}/> Sign out</button>}
       </header>
       {error && <div role="alert" className="brand-report-error">{error}</div>}

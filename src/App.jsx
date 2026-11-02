@@ -30,6 +30,7 @@ import BartStaffDashboard from "./BartStaffDashboard.jsx";
 import MoomaPortal from "./mooma/MoomaPortal.jsx";
 import GlorPortal from "./glor/GlorPortal.jsx";
 import BrandAdminPortal from "./BrandAdminPortal.jsx";
+import UnifiedStreamlitReport from "./UnifiedStreamlitReport.jsx";
 import AdminBrandGateway from "./AdminBrandGateway.jsx";
 import BartAdminPortal from "./BartAdminPortal.jsx";
 
@@ -1872,6 +1873,7 @@ function App() {
         <AdminBrandGateway
           key="admin-brands"
           onBack={() => setPage("home")}
+          onOpenCombinedReport={() => { setPage("unified-streamlit"); window.scrollTo({top:0,behavior:"instant"}); }}
           onSelectBrand={(brandId) => {
             const chosen = brands.find(item => item.id === brandId);
             if (!chosen) return;
@@ -1880,6 +1882,10 @@ function App() {
             window.scrollTo({top:0,behavior:"instant"});
           }}
         />
+      )}
+
+      {page === "unified-streamlit" && (
+        <UnifiedStreamlitReport onBack={() => setPage("admin-brands")} />
       )}
 
       {/* BART ADMIN */}

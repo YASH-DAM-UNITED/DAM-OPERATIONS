@@ -499,6 +499,7 @@ function FloatingUniverse() {
 
 export default function AdminBrandGateway({
   onSelectBrand,
+  onOpenCombinedReport,
   onBack,
 }) {
   const [theme, setTheme] = useState(getInitialTheme);
@@ -782,6 +783,13 @@ export default function AdminBrandGateway({
             />
           ))}
         </div>
+      </section>
+
+      <section className="dam-combined-entry" aria-label="Unified stock reporting">
+        <div><span>THREE BRANDS · ONE REPORT</span><h2>Unified Streamlit Report</h2><p>Choose products independently from BART, GLOR and MOOMA, then export one dated Excel workbook.</p></div>
+        <button type="button" onClick={onOpenCombinedReport} className="dam-combined-entry-button">
+          <span>Streamlit Report</span><ArrowUpRight size={19}/>
+        </button>
       </section>
 
       {/* =====================================================

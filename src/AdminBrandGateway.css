@@ -2150,3 +2150,13 @@
     display: none;
   }
 }
+
+/* V3: combined reporting entry below all three admin brand cards. */
+.dam-combined-entry{position:relative;z-index:3;max-width:1240px;margin:28px auto 46px;padding:24px 30px;border:1px solid var(--border-strong);background:var(--glass);border-radius:24px;display:flex;align-items:center;justify-content:space-between;gap:20px;backdrop-filter:blur(14px)}
+.dam-combined-entry span{font-size:11px;letter-spacing:.15em;font-weight:750;color:var(--muted)}
+.dam-combined-entry h2{font-size:clamp(21px,2.5vw,31px);margin:6px 0;color:var(--text)}
+.dam-combined-entry p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.dam-combined-entry-button{border:0;border-radius:13px;padding:16px 22px;display:inline-flex;align-items:center;justify-content:center;gap:14px;white-space:nowrap;background:#4267e9;color:white;cursor:pointer;font:inherit;font-weight:750;box-shadow:0 8px 30px #4165e944}
+.dam-combined-entry-button span{color:white;letter-spacing:normal;font-size:14px}
+.dam-combined-entry-button:hover{background:#3056dc;transform:translateY(-2px)}
+@media(max-width:700px){.dam-combined-entry{margin:18px 16px 34px;flex-direction:column;align-items:stretch;padding:20px}.dam-combined-entry-button{width:100%}}
