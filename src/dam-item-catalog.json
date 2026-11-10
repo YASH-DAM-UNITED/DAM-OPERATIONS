@@ -4,6 +4,13 @@
   "brands": {
     "BART": [
       {
+        "sku": "CV127",
+        "item": "OREO BISCUIT",
+        "uom": "1 Cartoon 5KG ",
+        "category": "FOOD"
+
+      },
+      {
         "sku": "C045",
         "item": "HDPE Poly Gloves (100 Packet x 50 Pcs)",
         "uom": "CTN / 5000 Pcs",
