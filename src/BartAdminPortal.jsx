@@ -48,6 +48,7 @@ import {
 import "./BartAdminPortal.css";
 import "./BartAdminGlassTheme.css";
 import StreamlitReportPage from "./StreamlitReportPage.jsx";
+import TopManagement from "./top-management/TopManagement.jsx";
 
 /* =========================================================
    NAVIGATION
@@ -100,6 +101,7 @@ const GROUPS = [
       ["date-comparison", "Date Comparison", CalendarDays],
       ["category-comparison", "Category Comparison", BarChart3],
       ["variance-analyzer", "Variance Analyzer", CircleGauge],
+      ["top-management", "Top Management", ShieldAlert],
     ],
   },
 
@@ -4400,6 +4402,10 @@ export default function BartAdminPortal({
           data={data}
         />
       );
+    }
+
+    else if (tab === "top-management") {
+      body = <TopManagement />;
     }
 
     else if (special) {

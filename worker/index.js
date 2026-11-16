@@ -1,3 +1,4 @@
+import { handleTopManagement } from "./topManagement.js";
 /* ============================================================
    DAM OPERATIONS
    BART STAFF BACKEND
@@ -7291,6 +7292,17 @@ export default {
         request.url
       );
 
+    if (url.pathname.startsWith('/api/admin/top-management/')) {
+      return handleTopManagement(request, env, {
+        branches: async (e, brand) => brand === 'bart' ? (await adminReadBartMaster(e)).map(b=>({code:b.code,name:b.name,sheetId:b.sheetId})) : (await extraBranchDirectory(dnGoogleEnv(e,brand),brand)).map(b=>({code:b.code,name:b.name,sheetId:b.sheet_id})),
+        read: (e, sheetId, range) => getSheetValues(Object.assign(Object.create(e), {
+          GOOGLE_CLIENT_EMAIL: e.TOP_MANAGEMENT_GOOGLE_CLIENT_EMAIL,
+          GOOGLE_PRIVATE_KEY: e.TOP_MANAGEMENT_GOOGLE_PRIVATE_KEY,
+          GOOGLE_CLIENT_EMAIL_2: undefined,
+          GOOGLE_PRIVATE_KEY_2: undefined,
+        }), sheetId, range),
+      });
+    }
     // 👇 PASTE IT HERE
 
     if (url.pathname.startsWith("/api/mooma/")) {
