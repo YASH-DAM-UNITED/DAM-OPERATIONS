@@ -1,3 +1,4 @@
+import { cacheAction } from "./topManagementCache.js";
 // Isolated, read-only Top Management API. No writes to branch sheets.
 const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const enc=new TextEncoder();
@@ -15,13 +16,6 @@ export async function handleTopManagement(request,env,deps){
  if(request.method==='POST'&&new URL(request.url).pathname.endsWith('/login')){const body=await request.json().catch(()=>({}));const entered=String(body.password||'');if(!entered||entered.length>512)return reply({success:false,message:'Invalid password.'},401);const a=enc.encode(entered),b=enc.encode(secret);let mismatch=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)mismatch|=(a[i]||0)^(b[i]||0);if(mismatch)return reply({success:false,message:'Invalid password.'},401);const payload=b64(enc.encode(JSON.stringify({role:'top-management',exp:Date.now()+30*60*1000})));return reply({success:true,token:payload+'.'+await sign(secret,payload),expiresInSeconds:1800});}
  if(!(await checkToken(request,secret)))return reply({success:false,message:'Top Management login required.'},401);
  if(request.method!=='POST')return reply({success:false,message:'Method not allowed.'},405);
- const input=await request.json().catch(()=>({}));const start=dateISO(input.start),end=dateISO(input.end);if(!start||!end||start>end||((Date.parse(end)-Date.parse(start))/86400000)>366)return reply({success:false,message:'Select a valid date range of up to 366 days.'},400);
- const brands=(Array.isArray(input.brands)?input.brands:[]).filter(x=>['bart','glor','mooma'].includes(x));if(!brands.length)return reply({success:false,message:'Select at least one brand.'},400);
- const selected=Array.isArray(input.branches)?input.branches.map(code):[];const items=Array.isArray(input.items)?input.items.map(code):[];
- const directory=await Promise.all(brands.map(async brand=>{try{return {brand,branches:await deps.branches(env,brand)};}catch(e){return {brand,branches:[],error:e.message};}}));
- if(new URL(request.url).pathname.endsWith('/branches'))return reply({success:true,directory});
- const jobs=directory.flatMap(d=>d.branches.filter(b=>!selected.length||selected.includes(code(b.code))).map(b=>({brand:d.brand,branch:b})));if(jobs.length>150)return reply({success:false,message:'Too many branches.'},400);
- const results=await mapLimit(jobs,4,async({brand,branch})=>{const [stockResult,dnResult]=await Promise.allSettled([deps.read(env,branch.sheetId||branch.sheet_id,'Stocks!A:ZZ'),deps.read(env,branch.sheetId||branch.sheet_id,"'Delivery Note'!A:L")]);const errors=[];let stocks=[],notes=[];if(stockResult.status==='fulfilled'){stocks=stockRows(stockResult.value,start,end,brand,branch).filter(x=>!items.length||items.includes(code(x.sku)));}else errors.push('Stocks: '+stockResult.reason.message);
- if(dnResult.status==='fulfilled'){for(const row of dnResult.value.slice(1)){const deliveryDate=dateISO(row[4]);const timestamp=String(row[0]||'');const timestampDate=dateISO(timestamp);if(deliveryDate<start||deliveryDate>end)continue;const parsed=parseItems(row[8]).filter(x=>!items.length||items.includes(code(x.sku)));if(parsed.length)notes.push({brand,branch:branch.code,branchName:branch.name,deliveryDate,timestamp,timestampDate,transactionId:String(row[1]||''),deliveryNoteNo:String(row[3]||''),items:parsed});}}else errors.push('Delivery Notes: '+dnResult.reason.message);return {brand,branch:branch.code,branchName:branch.name,stocks,notes,errors};});
- return reply({success:true,start,end,directory:directory.map(d=>({brand:d.brand,error:d.error||null})),results,calculationStatus:'PENDING_RULES',notice:'Variance is intentionally not calculated until field mapping and formula are approved. Delivery date determines inclusion; timestamp is retained for audit.'});
+ const input=await request.json().catch(()=>({}));
+ return cacheAction(new URL(request.url).pathname,input,env,deps);
 }
