@@ -18,7 +18,6 @@ import {
   handleMoomaRequest,
 } from "./moomaBackend.js";
 import { handleGlorRequest } from "./glorBackend.js";
-import deliveryItemCatalog from "../src/dam-item-catalog.json";
 
 
 
@@ -6326,39 +6325,12 @@ function dnStockMaster(stockRows) {
   return out;
 }
 
-// Delivery Note catalog: UOM is sourced ONLY from the versioned GitHub JSON,
-// never from the branch Stocks tab. Preserve the catalog's original UOM spelling.
+// Delivery Notes use only the selected branch's live Stocks sheet (A: item, B: SKU, C: UOM).
+// Never use the versioned JSON catalog as a fallback for SKU, name, or UOM.
 function dnCatalogMaster(brand, stockRows) {
-  const entries = deliveryItemCatalog?.brands?.[brand] || [];
-  const out = [];
-  const seen = new Set();
-  const catalogBySku = new Map();
-  const catalogByName = new Map();
-  for (const entry of entries) {
-    const sku = String(entry.sku || '').trim();
-    const item = String(entry.item || '').trim();
-    const norm = dnNormalize(item);
-    if (!item || !norm) continue;
-    // '-' is a placeholder shared by several distinct products, not a valid SKU.
-    const validSku = sku && sku !== '-' ? sku : '';
-    const obj = { sku: validSku, item, stockUom: String(entry.uom || '').trim(), norm, category: String(entry.category || '') };
-    const key = `${norm}|${validSku.toUpperCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key); out.push(obj);
-    if (validSku && !catalogBySku.has(validSku.toUpperCase())) catalogBySku.set(validSku.toUpperCase(),obj);
-    if (!catalogByName.has(norm)) catalogByName.set(norm,obj);
-  }
-  // Keep products that exist only in the live Stocks sheet searchable, but DO NOT
-  // copy the Stocks UOM into them: unknown catalog UOM must remain empty.
-  for (const stock of dnStockMaster(stockRows)) {
-    const norm = dnNormalize(stock.item);
-    const sku = String(stock.sku || '').trim();
-    if (!norm || catalogByName.has(norm) || (sku && sku !== '-' && catalogBySku.has(sku.toUpperCase()))) continue;
-    const key = `${norm}|${sku.toUpperCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key); out.push({sku:sku === '-' ? '' : sku,item:stock.item,stockUom:'',norm,category:''});
-  }
-  return out;
+  return dnStockMaster(stockRows)
+    .filter(row => row.sku && row.sku !== '-')
+    .map(row => ({...row, category: ''}));
 }
 
 function dnVertices(poly) {
@@ -7435,7 +7407,7 @@ export default {
         if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
         const stock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
-        if (!master.length) return jsonResponse({success:false,message:'No items found in the delivery note catalog or branch Stocks tab.'},409);
+        if (!master.length) return jsonResponse({success:false,message:'No valid SKUs found in this branch Stocks tab.'},409);
 
         // Daily OCR allowance is stored in the SAME Delivery Note tab (M:N).
         // This is server-side, so refresh/device changes cannot reset the limit.
@@ -7527,6 +7499,19 @@ export default {
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
+        // Verify the SKU-to-item mapping against the selected branch's current Stocks tab.
+        // Do not accept client-supplied or OCR-only SKU values as authoritative.
+        const currentStock = await getBartStockSheetSmart(deliveryEnv, branch, false);
+        const currentMaster = dnCatalogMaster(deliveryBrand.toUpperCase(), currentStock.rows);
+        const currentBySku = new Map(currentMaster.map(x => [x.sku.toUpperCase(), x]));
+        for (const entry of items) {
+          const submittedSku = String(entry.stockSku || entry.sku || '').trim().toUpperCase();
+          const matched = currentBySku.get(submittedSku);
+          if (!matched || dnNormalize(matched.item) !== dnNormalize(entry.item)) {
+            return jsonResponse({success:false,message:`SKU / item not found in this branch's Stocks sheet: ${String(entry.item || submittedSku)}. Sync and select the correct stock item before submitting.`},409);
+          }
+        }
+
         const { sheetId } = await dnEnsureDeliverySheet(deliveryEnv, branch.sheet_id);
         if (await dnDuplicateExists(deliveryEnv, branch.sheet_id, deliveryNoteNo)) {
           return jsonResponse({success:false,message:`Delivery Note ${deliveryNoteNo} was already submitted for this branch.`},409);
@@ -7534,7 +7519,7 @@ export default {
 
         const transactionId = dnTransactionId(branchCode);
         const safeItems = items.map(x => ({
-          sku:String(x.sku || x.stockSku || ''),
+          sku:String(x.stockSku || x.sku || ''),
           item:String(x.item || ''),
           uom:String(x.uom || ''),
           deliverySku:String(x.deliverySku || ''),
