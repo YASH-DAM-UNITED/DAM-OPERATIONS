@@ -33,6 +33,7 @@ import {
   LogOut,
   MapPin,
   PackageCheck,
+  PackagePlus,
   PackageOpen,
   PackageX,
   RefreshCcw,
@@ -47,6 +48,7 @@ import BartStockRecord from "./BartStockRecord";
 import BartStockTransfer from "./BartStockTransfer";
 import BartStaffSchedule from "./BartStaffSchedule";
 import BartDeliveryNotes from "./BartDeliveryNotes";
+import BartItemManagement from "./BartItemManagement";
 
 
 /* ============================================================
@@ -112,6 +114,14 @@ const modules = [
     subtitle: "SCAN & VERIFY",
     description:
       "Scan delivery notes with Google Vision, verify detected details and submit confirmed receiving data.",
+  },
+  {
+    id: "add-items",
+    icon: PackagePlus,
+    number: "06",
+    title: "Add Items to Branch",
+    subtitle: "BART STOCK MASTER",
+    description: "Add new items to every BART branch, or securely alter existing items.",
   },
 ];
 
@@ -1485,6 +1495,8 @@ export default function BartStaffDashboard({
           setActive(
             "delivery-notes"
           );
+        } else if (moduleId === "add-items") {
+          setActive("add-items");
         } else {
           setActive(
             "stock-transfer"
@@ -1553,6 +1565,11 @@ export default function BartStaffDashboard({
         "delivery-notes"
       );
 
+      return;
+    }
+
+    if (moduleId === "add-items") {
+      openFullModule("add-items");
       return;
     }
 
@@ -1664,6 +1681,10 @@ export default function BartStaffDashboard({
     );
   }
 
+
+  if (active === "add-items") {
+    return <BartItemManagement branch={branch} onBack={() => returnToDashboard()} />;
+  }
 
   if (
     active ===

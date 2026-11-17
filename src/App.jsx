@@ -1448,7 +1448,7 @@ function BranchLogin({
       */
 
       onSuccess(
-        data.branch
+        {...data.branch, staffToken:data.staffToken}
       );
     } catch (err) {
       console.error(

@@ -2085,13 +2085,10 @@ async function bartLogin(
       true,
 
     branch: {
-
-      code:
-        branch.code,
-
-      name:
-        branch.name,
+      code: branch.code,
+      name: branch.name,
     },
+    staffToken: await bartItemToken(env, {role:'staff',branch:branch.code}),
   });
 }
 
@@ -6325,12 +6322,9 @@ function dnStockMaster(stockRows) {
   return out;
 }
 
-// Delivery Notes use only the selected branch's live Stocks sheet (A: item, B: SKU, C: UOM).
-// Never use the versioned JSON catalog as a fallback for SKU, name, or UOM.
+// Delivery Notes SKU, name and UOM are sourced exclusively from branch Stocks.
 function dnCatalogMaster(brand, stockRows) {
-  return dnStockMaster(stockRows)
-    .filter(row => row.sku && row.sku !== '-')
-    .map(row => ({...row, category: ''}));
+  return dnStockMaster(stockRows).filter(row=>row.sku&&row.sku!=='-').map(row=>({...row,category:''}));
 }
 
 function dnVertices(poly) {
@@ -7252,6 +7246,142 @@ async function extraAdminDateRange(env, brand, startDate, endDate, force = false
    WORKER
 ============================================================ */
 
+
+/* BART ITEM MANAGEMENT: Google Sheets only, no D1/R2/KV. Each branch operation
+   is a separate HTTP invocation to stay under Worker subrequest limits. */
+const BART_ITEM_UOMS = new Set(['PCS','Gram','ML']);
+const bartItemNorm = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
+const bartItemName = v => String(v ?? '').trim().replace(/\s+/g,' ').replace(/\b\p{L}/gu,c=>c.toUpperCase());
+const bartItemSku = v => bartItemNorm(v);
+function bartItemValidate(item) {
+  const name=bartItemName(item.item), sku=bartItemSku(item.sku), uom=String(item.uom||'').trim();
+  if (!name || name.length>180 || !sku || sku.length>60 || !/^[A-Z0-9][A-Z0-9._/-]*$/.test(sku) || !BART_ITEM_UOMS.has(uom)) throw Error('Valid item name, SKU and UOM (PCS, Gram, ML) are required.');
+  return {item:name,sku,uom};
+}
+function bartItemBase64(bytes) { return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+async function bartItemSign(env, payload) {
+  const secret=String(env.BART_ALTER_ITEMS_PASSWORD||env.ADMIN_API_KEY||'');
+  if (!secret) throw Error('Configure BART_ALTER_ITEMS_PASSWORD in Cloudflare.');
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  return bartItemBase64(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(payload))));
+}
+async function bartItemToken(env, claims) {
+  const payload=bartItemBase64(new TextEncoder().encode(JSON.stringify({...claims,exp:Date.now()+30*60*1000})));
+  return `${payload}.${await bartItemSign(env,payload)}`;
+}
+async function bartItemClaims(request,env) {
+  const token=String(request.headers.get('X-Bart-Items-Token')||'');
+  const [payload,sig,...extra]=token.split('.');
+  if (!payload||!sig||extra.length) return null;
+  const expected=await bartItemSign(env,payload);
+  if (expected.length!==sig.length) return null;
+  let diff=0;for(let i=0;i<sig.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);
+  if(diff)return null;
+  try { const raw=payload.replace(/-/g,'+').replace(/_/g,'/');const data=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw+'='.repeat((4-raw.length%4)%4)),x=>x.charCodeAt(0))));return data.exp>Date.now()?data:null; }catch{return null;}
+}
+const BART_ITEMS_CACHE=new Map();
+async function bartItemsBranches(env) {
+  const cached=BART_ITEMS_CACHE.get('branches');if(cached&&cached.exp>Date.now())return cached.value;
+  const value=await adminReadBartMaster(env);
+  BART_ITEMS_CACHE.set('branches',{value,exp:Date.now()+5*60*1000});return value;
+}
+async function bartItemsBranch(env,code) {
+  const branch=(await bartItemsBranches(env)).find(x=>x.code===code);
+  if(!branch)throw Error(`Unknown BART branch ${code}.`);
+  return branch;
+}
+async function bartItemsRows(env,branch,force=false) {
+  const key=`rows:${branch.code}`,cached=BART_ITEMS_CACHE.get(key);
+  if(!force&&cached&&cached.exp>Date.now())return cached.value;
+  const rows=await getSheetValues(env,branch.sheetId,'Stocks!A:C');
+  const value=rows.map((r,i)=>({row:i+1,item:String(r[0]||'').trim(),sku:bartItemSku(r[1]),uom:String(r[2]||'').trim()})).filter(x=>x.sku&&x.item);
+  BART_ITEMS_CACHE.set(key,{value,exp:Date.now()+90*1000});return value;
+}
+async function bartItemsSheetId(env,branch) {
+  const key=`sheetgid:${branch.code}`,cached=BART_ITEMS_CACHE.get(key);
+  if(cached&&cached.exp>Date.now())return cached.value;
+  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(branch.sheetId)}?fields=sheets.properties(sheetId,title)`;
+  const res=await googleRequest(env,token=>fetch(url,{headers:{Authorization:`Bearer ${token}`}}));
+  const json=await res.json();const id=json.sheets?.find(x=>x.properties?.title==='Stocks')?.properties?.sheetId;
+  if(!Number.isInteger(id))throw Error(`Stocks tab missing for ${branch.code}.`);
+  BART_ITEMS_CACHE.set(key,{value:id,exp:Date.now()+60*60*1000});return id;
+}
+async function bartItemsMutate(env,branch,operations) {
+  const gid=await bartItemsSheetId(env,branch);
+  const requests=[];
+  for(const op of operations){
+    if(op.type==='insert'){
+      requests.push({insertDimension:{range:{sheetId:gid,dimension:'ROWS',startIndex:79,endIndex:80},inheritFromBefore:true}});
+      requests.push({updateCells:{start:{sheetId:gid,rowIndex:79,columnIndex:0},rows:[{values:[op.item,op.sku,op.uom].map(x=>({userEnteredValue:{stringValue:x}}))}],fields:'userEnteredValue'}});
+    } else {
+      for(const [field,col] of [['item',0],['sku',1],['uom',2]])if(Object.prototype.hasOwnProperty.call(op.changes,field)){
+        requests.push({updateCells:{start:{sheetId:gid,rowIndex:op.row-1,columnIndex:col},rows:[{values:[{userEnteredValue:{stringValue:op.changes[field]}}]}],fields:'userEnteredValue'}});
+      }
+    }
+  }
+  if(!requests.length)return;
+  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(branch.sheetId)}:batchUpdate`;
+  const res=await googleRequest(env,token=>fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({requests})}));
+  if(!res.ok)throw Error(`Google Sheets update failed: ${res.status}`);
+  BART_ITEMS_CACHE.delete(`rows:${branch.code}`);
+  invalidateBartStockMemory([branch.code]);
+}
+async function bartItemsApi(request,env,url) {
+  try {
+    const path=url.pathname.split('/').pop();
+    if(path==='admin-login'&&request.method==='POST'){
+      const body=await request.json();const secret=String(env.BART_ALTER_ITEMS_PASSWORD||'');
+      if(!secret)return jsonResponse({success:false,message:'BART_ALTER_ITEMS_PASSWORD secret is not configured.'},503);
+      const supplied=String(body.password||'');let diff=secret.length^supplied.length;
+      for(let i=0;i<Math.max(secret.length,supplied.length);i++)diff|=(secret.charCodeAt(i)||0)^(supplied.charCodeAt(i)||0);
+      if(diff)return jsonResponse({success:false,message:'Incorrect admin password.'},401);
+      return jsonResponse({success:true,token:await bartItemToken(env,{role:'admin'})});
+    }
+    const claims=await bartItemClaims(request,env);
+    if(!claims||!['staff','admin'].includes(claims.role))return jsonResponse({success:false,message:'Session expired. Please sign in again.'},401);
+    if(path==='branches'&&request.method==='GET')return jsonResponse({success:true,branches:(await bartItemsBranches(env)).map(b=>({code:b.code,name:b.name}))});
+    if(path==='branch'&&request.method==='GET'){
+      const code=bartItemSku(url.searchParams.get('code'));
+      const branch=await bartItemsBranch(env,code);
+      return jsonResponse({success:true,code,items:await bartItemsRows(env,branch,true)});
+    }
+    if(path==='apply'&&request.method==='POST'){
+      const body=await request.json();const code=bartItemSku(body.code),branch=await bartItemsBranch(env,code);
+      if(body.mode==='alter'&&claims.role!=='admin')return jsonResponse({success:false,message:'Admin authorization required.'},403);
+      if(body.mode==='add'&&claims.role==='staff'&&!claims.branch)return jsonResponse({success:false,message:'Staff session required.'},403);
+      const rows=await bartItemsRows(env,branch,true);
+      if(body.mode==='add'){
+        const item=bartItemValidate(body.item||{});
+        if(rows.some(x=>x.sku===item.sku||bartItemNorm(x.item)===bartItemNorm(item.item)))return jsonResponse({success:false,code,duplicate:true,message:`Item already added in ${code}.`},409);
+        await bartItemsMutate(env,branch,[{type:'insert',...item}]);
+        return jsonResponse({success:true,code,status:'inserted'});
+      }
+      if(body.mode==='alter'){
+        const originalSku=bartItemSku(body.originalSku),changes=body.changes||{};
+        if(!originalSku)return jsonResponse({success:false,message:'Original SKU is required.'},400);
+        const fields=Object.keys(changes);
+        if(!fields.length||fields.some(f=>!['item','sku','uom'].includes(f)))return jsonResponse({success:false,message:'Invalid changes.'},400);
+        const original=body.original||{};
+        const target=bartItemValidate({item:changes.item??original.item,sku:changes.sku??originalSku,uom:changes.uom??original.uom});
+        const match=rows.find(x=>x.sku===originalSku);
+        if(rows.some(x=>x.sku===target.sku&&x.sku!==originalSku))return jsonResponse({success:false,duplicate:true,code,message:`SKU ${target.sku} already exists in ${code}.`},409);
+        if(rows.some(x=>bartItemNorm(x.item)===bartItemNorm(target.item)&&x.sku!==originalSku))return jsonResponse({success:false,duplicate:true,code,message:`Item name already exists in ${code}.`},409);
+        if(match){
+          // Avoid overwriting divergent branch-specific data. Report conflicts instead.
+          if(Object.keys(original).some(k=>['item','uom'].includes(k)&&bartItemNorm(match[k])!==bartItemNorm(original[k])))return jsonResponse({success:false,code,message:`${code} has a different existing item; review manually.`},409);
+          const delta={};for(const field of fields)if(match[field]!==target[field])delta[field]=target[field];
+          await bartItemsMutate(env,branch,[{type:'update',row:match.row,changes:delta}]);
+          return jsonResponse({success:true,code,status:'updated'});
+        }
+        await bartItemsMutate(env,branch,[{type:'insert',...target}]);
+        return jsonResponse({success:true,code,status:'inserted-missing'});
+      }
+      return jsonResponse({success:false,message:'Invalid mode.'},400);
+    }
+    return jsonResponse({success:false,message:'Not found.'},404);
+  }catch(e){console.error('BART item management:',e);return jsonResponse({success:false,message:e.message||'Item operation failed.'},500);}
+}
+
 export default {
 
   async fetch(
@@ -7274,6 +7404,9 @@ export default {
           GOOGLE_PRIVATE_KEY_2: undefined,
         }), sheetId, range),
       });
+    }
+    if (url.pathname.startsWith('/api/staff/bart/items/')) {
+      return bartItemsApi(request, env, url);
     }
     // 👇 PASTE IT HERE
 
@@ -7407,7 +7540,7 @@ export default {
         if (!branch) return jsonResponse({success:false,message:'Branch not found.'},404);
         const stock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const master = dnCatalogMaster(deliveryBrand.toUpperCase(), stock.rows);
-        if (!master.length) return jsonResponse({success:false,message:'No valid SKUs found in this branch Stocks tab.'},409);
+        if (!master.length) return jsonResponse({success:false,message:'No items found in the delivery note catalog or branch Stocks tab.'},409);
 
         // Daily OCR allowance is stored in the SAME Delivery Note tab (M:N).
         // This is server-side, so refresh/device changes cannot reset the limit.
@@ -7499,8 +7632,7 @@ export default {
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
-        // Verify the SKU-to-item mapping against the selected branch's current Stocks tab.
-        // Do not accept client-supplied or OCR-only SKU values as authoritative.
+        // Validate against the current branch Stocks master, not the JSON catalog.
         const currentStock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const currentMaster = dnCatalogMaster(deliveryBrand.toUpperCase(), currentStock.rows);
         const currentBySku = new Map(currentMaster.map(x => [x.sku.toUpperCase(), x]));
