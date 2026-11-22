@@ -533,6 +533,7 @@ export default function BartStockTransfer({
     setReason,
   ] =
     useState("");
+  const [transferDate, setTransferDate] = useState("");
 
   const [
     message,
@@ -1024,6 +1025,7 @@ export default function BartStockTransfer({
     setReason(
       ""
     );
+    setTransferDate("");
   }
 
 
@@ -1076,8 +1078,12 @@ export default function BartStockTransfer({
       return;
     }
 
+    if (!transferDate) {
+      setMessage({ type: "error", text: "Please select a transfer date before submitting." });
+      return;
+    }
     if (
-      !reason.trim()
+      (!reason.trim() || !transferDate)
     ) {
       setMessage({
         type:
@@ -1157,8 +1163,7 @@ export default function BartStockTransfer({
                 destinationBranch:
                   destination,
 
-                reason:
-                  reason.trim(),
+                reason: `Transfer Date: ${transferDate.split("-").reverse().join("/")} | ${reason.trim()}`,
 
                 cart:
                   cart.map(
@@ -1245,6 +1250,7 @@ export default function BartStockTransfer({
       setReason(
         ""
       );
+    setTransferDate("");
 
       setSearch(
         ""
@@ -2212,6 +2218,12 @@ export default function BartStockTransfer({
                 <span>
                   REASON / REFERENCE
                 </span>
+                  <span style={{ display: "block", marginTop: 10 }}>TRANSFER DATE * (DD/MM/YYYY)</span>
+                  <input type="date" required value={transferDate}
+                    onChange={(event) => setTransferDate(event.target.value)}
+                    aria-label="Transfer Date"
+                    style={{ display: "block", width: "100%", minHeight: 42, marginBottom: 12, padding: "8px 10px", borderRadius: 8 }} />
+
 
                 <textarea
                   value={
@@ -2285,7 +2297,7 @@ export default function BartStockTransfer({
                 disabled={
                   submitting ||
                   !destination ||
-                  !reason.trim()
+                  (!reason.trim() || !transferDate)
                 }
                 onClick={
                   submitTransfer
