@@ -1,21 +1,8 @@
-import { cacheAction } from "./topManagementCache.js";
-// Isolated, read-only Top Management API. No writes to branch sheets.
-const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
-const enc=new TextEncoder();
-const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-async function sign(secret,payload){const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return b64(new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode(payload))));}
-async function checkToken(request,secret){const token=(request.headers.get('Authorization')||'').replace(/^Bearer /i,'');const [payload,sig]=token.split('.');if(!payload||!sig||token.length>3000)return false;const expected=await sign(secret,payload);if(sig.length!==expected.length)return false;let mismatch=0;for(let i=0;i<sig.length;i++)mismatch|=sig.charCodeAt(i)^expected.charCodeAt(i);if(mismatch)return false;try{const parsed=JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/')));return parsed.role==='top-management'&&parsed.exp>Date.now();}catch{return false;}}
-const dateISO=v=>{const s=String(v||'').trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:'';};
-const number=v=>{const s=String(v??'').replace(/,/g,'').trim();if(!s)return null;const n=Number(s);return Number.isFinite(n)?n:null;};
-const code=v=>String(v||'').trim().toUpperCase();
-function parseItems(cell){const text=String(cell||'');const out=[];for(const line of text.split(/\n/)){const m=line.match(/^\s*\d+\.\s*([^|]*)\|\s*([^|]*)/);if(!m)continue;const pick=key=>{const hit=line.match(new RegExp('(?:^|\|)\s*'+key+'\s*:\s*([^|]*)','i'));return hit?hit[1].trim():'';};out.push({sku:m[1].trim(),item:m[2].trim(),uom:pick('UOM'),quantity:number(pick('QTY'))??number(pick('DELIVERED')),ordered:number(pick('ORDERED')),delivered:number(pick('DELIVERED')),raw:line});}return out;}
-function stockRows(rows,start,end,brand,branch){const headers=rows[0]||[];const dates=headers.map((h,i)=>({date:dateISO(h),index:i})).filter(x=>x.index>=3&&x.date>=start&&x.date<=end);const out=[];for(let i=1;i<rows.length;i++){const r=rows[i],item=String(r[0]||'').trim(),sku=String(r[1]||'').trim();if(!item||!sku||/^(DAILY ITEM|WEEKLY ITEM|ITEM|TOTAL)/i.test(item))continue;for(const d of dates){const qty=number(r[d.index]);if(qty!==null)out.push({brand,branch:branch.code,branchName:branch.name,sku,item,uom:String(r[2]||''),date:d.date,quantity:qty});}}return out;}
-async function mapLimit(items,limit,fn){const results=new Array(items.length);let next=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(next<items.length){const i=next++;try{results[i]=await fn(items[i]);}catch(e){results[i]={error:String(e.message||e)};}}}));return results;}
+import { cacheAction } from './topManagementCache.js';
+// Read-only BART delivery-note reporting; no management password required.
 export async function handleTopManagement(request,env,deps){
- const secret=String(env.TOP_MANAGEMENT_PASSWORD||'');if(!secret)return reply({success:false,message:'Configure TOP_MANAGEMENT_PASSWORD in Cloudflare secrets.'},503);
- if(request.method==='POST'&&new URL(request.url).pathname.endsWith('/login')){const body=await request.json().catch(()=>({}));const entered=String(body.password||'');if(!entered||entered.length>512)return reply({success:false,message:'Invalid password.'},401);const a=enc.encode(entered),b=enc.encode(secret);let mismatch=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)mismatch|=(a[i]||0)^(b[i]||0);if(mismatch)return reply({success:false,message:'Invalid password.'},401);const payload=b64(enc.encode(JSON.stringify({role:'top-management',exp:Date.now()+30*60*1000})));return reply({success:true,token:payload+'.'+await sign(secret,payload),expiresInSeconds:1800});}
- if(!(await checkToken(request,secret)))return reply({success:false,message:'Top Management login required.'},401);
- if(request.method!=='POST')return reply({success:false,message:'Method not allowed.'},405);
- const input=await request.json().catch(()=>({}));
- return cacheAction(new URL(request.url).pathname,input,env,deps);
+ if(request.method!=='POST')return new Response(JSON.stringify({success:false,message:'Method not allowed'}),{status:405,headers:{'Content-Type':'application/json'}});
+ const path=new URL(request.url).pathname;
+ if(!['/directory','/branch'].some(x=>path.endsWith(x)))return new Response(JSON.stringify({success:false,message:'Unknown operation'}),{status:404,headers:{'Content-Type':'application/json'}});
+ return cacheAction(path,await request.json().catch(()=>({})),env,deps);
 }

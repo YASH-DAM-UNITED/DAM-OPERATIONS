@@ -101,7 +101,6 @@ const GROUPS = [
       ["date-comparison", "Date Comparison", CalendarDays],
       ["category-comparison", "Category Comparison", BarChart3],
       ["variance-analyzer", "Variance Analyzer", CircleGauge],
-      ["top-management", "Top Management", ShieldAlert],
     ],
   },
 
@@ -151,6 +150,7 @@ const GROUPS = [
 
 const ALL_TABS = [
   { id: "streamlit-report-page", label: "Streamlit Report Page", Icon: FileSpreadsheet, group: "reports" },
+  { id: "top-management", label: "Delivery Note Page", Icon: FileSpreadsheet, group: "reports" },
   ...GROUPS.flatMap((group) =>
     group.tabs.map(([id, label, Icon]) => ({
       id,
@@ -4511,6 +4511,12 @@ export default function BartAdminPortal({
             <strong>Streamlit Report Page</strong>
             <small>Inventory · Excel · History</small>
           </span>
+          <ArrowUpRight size={16} aria-hidden="true" />
+        </button>
+
+        <button type="button" className={`bart-featured-report ${tab === "top-management" ? "active" : ""}`} onClick={() => choose("top-management", "reports")} aria-current={tab === "top-management" ? "page" : undefined}>
+          <span className="bart-featured-icon"><FileSpreadsheet size={19}/></span>
+          <span className="bart-featured-copy"><strong>Delivery Note Page</strong><small>BART · All branches</small></span>
           <ArrowUpRight size={16} aria-hidden="true" />
         </button>
 
