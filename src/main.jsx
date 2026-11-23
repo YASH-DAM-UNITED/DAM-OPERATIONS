@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
 import PwaStatus from "./pwa/PwaStatus.jsx";
+import InstallAppPrompt from "./pwa/InstallAppPrompt.jsx";
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(console.warn));
 
 ReactDOM.createRoot(
@@ -11,5 +12,6 @@ ReactDOM.createRoot(
   <React.StrictMode>
     <App />
     <PwaStatus />
+    <InstallAppPrompt />
   </React.StrictMode>
 );
