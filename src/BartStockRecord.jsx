@@ -1,3 +1,4 @@
+import { enqueueStock } from "./pwa/offlineQueue.js";
 import {
   useEffect,
   useMemo,
@@ -1187,6 +1188,11 @@ export default function BartStockRecord({
       );
 
 
+      if (!navigator.onLine) {
+        await enqueueStock("/api/staff/bart/stock-record/submit", {branchCode:branch.code,date,mode,values:inputs});
+        setValidation({type:"error",title:"Saved on this device",message:"Offline stock entry queued. It has NOT been submitted to Google Sheets. Use Sync pending when online."});
+        return;
+      }
       const response =
         await fetch(
           "/api/staff/bart/stock-record/submit",
