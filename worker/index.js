@@ -179,7 +179,7 @@ function corsHeaders() {
     "Access-Control-Allow-Origin": "*",
 
     "Access-Control-Allow-Headers":
-      "Content-Type, X-Admin-Key",
+      "Content-Type, X-Admin-Key, X-Bart-Items-Token, X-Brand-Items-Token",
 
     "Access-Control-Allow-Methods":
       "GET, POST, DELETE, OPTIONS",
@@ -7154,7 +7154,7 @@ async function extraMasterTab(env, brand) {
   if (!tab?.properties?.title) throw Error(`${brand.toUpperCase()} master gid ${gid} not found.`);
   return tab.properties.title;
 }
-async function extraBranchDirectory(env, brand) {
+async function extraBranchDirectory(env, brand, requireAllSheets = false) {
   const cfg = EXTRA_BRANDS[brand];
   if (!cfg) throw Error('Unsupported brand.');
   const id = env[cfg.envKey];
@@ -7165,11 +7165,13 @@ async function extraBranchDirectory(env, brand) {
   const headers = rows[0].map(extraHeader);
   const ci = headers.indexOf('branchcode'), ni = headers.indexOf('branchname'), si = headers.indexOf('sheetid');
   if (ci < 0 || ni < 0 || si < 0) throw Error(`${brand.toUpperCase()} master must contain BranchCode, BranchName and SheetID headers.`);
-  return rows.slice(1).map(r => ({
+  const directory = rows.slice(1).map(r => ({
     code: String(r[ci] || '').trim().toUpperCase(),
     name: String(r[ni] || '').trim(),
     sheet_id: String(r[si] || '').trim(),
-  })).filter(r => r.code.startsWith(cfg.prefix) && r.name && r.sheet_id);
+  })).filter(r => r.code.startsWith(cfg.prefix) && r.name);
+  if(requireAllSheets && directory.some(r=>!r.sheet_id))throw Error("Missing SheetID for "+directory.filter(r=>!r.sheet_id).map(r=>r.code).join(", "));
+  return directory.filter(r=>r.sheet_id);
 }
 async function dnBrandBranch(env, brand, code) {
   if (brand === 'bart') return getBartBranchGoogle(env,code);
@@ -7382,6 +7384,143 @@ async function bartItemsApi(request,env,url) {
   }catch(e){console.error('BART item management:',e);return jsonResponse({success:false,message:e.message||'Item operation failed.'},500);}
 }
 
+/* GLOR / MOOMA ITEM MANAGEMENT: Google Sheets only, no D1/R2/KV. Each branch operation
+   is a separate HTTP invocation to stay under Worker subrequest limits. */
+const BRAND_ITEM_UOMS = new Set(['PCS','Gram','ML']);
+const brandItemNorm = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
+const brandItemName = v => String(v ?? '').trim().replace(/\s+/g,' ').replace(/\b\p{L}/gu,c=>c.toUpperCase());
+const brandItemSku = v => brandItemNorm(v);
+function brandItemValidate(item) {
+  const name=brandItemName(item.item), sku=brandItemSku(item.sku), uom=String(item.uom||'').trim();
+  if (!name || name.length>180 || !sku || sku.length>60 || !/^[A-Z0-9][A-Z0-9._/-]*$/.test(sku) || !BRAND_ITEM_UOMS.has(uom)) throw Error('Valid item name, SKU and UOM (PCS, Gram, ML) are required.');
+  return {item:name,sku,uom};
+}
+function brandItemBase64(bytes) { return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+async function brandItemSign(env, payload, brand) {
+  const secret=String(env[`${brand.toUpperCase()}_ALTER_ITEMS_PASSWORD`]||'');
+  if (!secret) throw Error('Configure the brand ALTER_ITEMS_PASSWORD in Cloudflare.');
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  return brandItemBase64(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(payload))));
+}
+async function brandItemToken(env, claims, brand) {
+  const payload=brandItemBase64(new TextEncoder().encode(JSON.stringify({...claims,brand,exp:Date.now()+30*60*1000})));
+  return `${payload}.${await brandItemSign(env,payload,brand)}`;
+}
+async function brandItemClaims(request,env,brand) {
+  const token=String(request.headers.get('X-Brand-Items-Token')||'');
+  const [payload,sig,...extra]=token.split('.');
+  if (!payload||!sig||extra.length) return null;
+  const expected=await brandItemSign(env,payload,brand);
+  if (expected.length!==sig.length) return null;
+  let diff=0;for(let i=0;i<sig.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);
+  if(diff)return null;
+  try { const raw=payload.replace(/-/g,'+').replace(/_/g,'/');const data=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw+'='.repeat((4-raw.length%4)%4)),x=>x.charCodeAt(0))));return data.exp>Date.now()&&data.brand===brand?data:null; }catch{return null;}
+}
+const BRAND_ITEMS_CACHE=new Map();
+async function brandItemsBranches(env,brand) {
+  const cached=BRAND_ITEMS_CACHE.get(`branches:${brand}`);if(cached&&cached.exp>Date.now())return cached.value;
+  const value=(await extraBranchDirectory(dnGoogleEnv(env,brand),brand,true)).map(x=>({...x,sheetId:x.sheet_id})); if(!value.length)throw Error("No branch sheets configured.");
+  BRAND_ITEMS_CACHE.set(`branches:${brand}`,{value,exp:Date.now()+5*60*1000});return value;
+}
+async function brandItemsBranch(env,code,brand) {
+  const branch=(await brandItemsBranches(env,brand)).find(x=>x.code===code);
+  if(!branch)throw Error(`Unknown brand branch ${code}.`);
+  return branch;
+}
+async function brandItemsRows(env,branch,force=false) {
+  const key=`rows:${branch.sheetId}`,cached=BRAND_ITEMS_CACHE.get(key);
+  if(!force&&cached&&cached.exp>Date.now())return cached.value;
+  const rows=await getSheetValues(env,branch.sheetId,'Stocks!A:C');
+  const value=rows.map((r,i)=>({row:i+1,item:String(r[0]||'').trim(),sku:brandItemSku(r[1]),uom:String(r[2]||'').trim()})).filter(x=>x.sku&&x.sku!=="-"&&x.item&&!/^(ITEM|DAILY ITEM|WEEKLY ITEM|TOTAL)$/i.test(x.item));
+  BRAND_ITEMS_CACHE.set(key,{value,exp:Date.now()+90*1000});return value;
+}
+async function brandItemsSheetId(env,branch) {
+  const key=`sheetgid:${branch.sheetId}`,cached=BRAND_ITEMS_CACHE.get(key);
+  if(cached&&cached.exp>Date.now())return cached.value;
+  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(branch.sheetId)}?fields=sheets.properties(sheetId,title)`;
+  const res=await googleRequest(env,token=>fetch(url,{headers:{Authorization:`Bearer ${token}`}}));
+  const json=await res.json();const id=json.sheets?.find(x=>x.properties?.title==='Stocks')?.properties?.sheetId;
+  if(!Number.isInteger(id))throw Error(`Stocks tab missing for ${branch.code}.`);
+  BRAND_ITEMS_CACHE.set(key,{value:id,exp:Date.now()+60*60*1000});return id;
+}
+async function brandItemsMutate(env,branch,operations) {
+  const gid=await brandItemsSheetId(env,branch);
+  const requests=[];
+  for(const op of operations){
+    if(op.type==='insert'){
+      requests.push({insertDimension:{range:{sheetId:gid,dimension:'ROWS',startIndex:79,endIndex:80},inheritFromBefore:true}});
+      requests.push({updateCells:{start:{sheetId:gid,rowIndex:79,columnIndex:0},rows:[{values:[op.item,op.sku,op.uom].map(x=>({userEnteredValue:{stringValue:x}}))}],fields:'userEnteredValue'}});
+    } else {
+      for(const [field,col] of [['item',0],['sku',1],['uom',2]])if(Object.prototype.hasOwnProperty.call(op.changes,field)){
+        requests.push({updateCells:{start:{sheetId:gid,rowIndex:op.row-1,columnIndex:col},rows:[{values:[{userEnteredValue:{stringValue:op.changes[field]}}]}],fields:'userEnteredValue'}});
+      }
+    }
+  }
+  if(!requests.length)return;
+  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(branch.sheetId)}:batchUpdate`;
+  const token=await getGoogleAccessToken(getGoogleAccounts(env)[0]);
+  const res=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({requests})});
+  if(!res.ok)throw Error(`Google Sheets update failed: ${res.status}`);
+  BRAND_ITEMS_CACHE.delete(`rows:${branch.sheetId}`);
+  for(const key of ADMIN_CACHE.keys())if(key.startsWith(`streamlit:${branch.code.startsWith("G")?"glor":"mooma"}:stocks:${branch.code}`))ADMIN_CACHE.delete(key);
+}
+async function brandItemsApi(request,env,url,brand) {
+  try {
+    const path=url.pathname.split('/').pop();
+    if(path==='admin-login'&&request.method==='POST'){
+      const staff=await brandItemClaims(request,env,brand); if(!staff||staff.role!=='staff')return jsonResponse({success:false,message:'Staff login required.'},401);
+      const body=await request.json();const secret=String(env[`${brand.toUpperCase()}_ALTER_ITEMS_PASSWORD`]||'');
+      if(!secret)return jsonResponse({success:false,message:'Brand ALTER_ITEMS_PASSWORD secret is not configured.'},503);
+      const supplied=String(body.password||'');let diff=secret.length^supplied.length;
+      for(let i=0;i<Math.max(secret.length,supplied.length);i++)diff|=(secret.charCodeAt(i)||0)^(supplied.charCodeAt(i)||0);
+      if(diff)return jsonResponse({success:false,message:'Incorrect admin password.'},401);
+      return jsonResponse({success:true,token:await brandItemToken(env,{role:'admin'},brand)});
+    }
+    const claims=await brandItemClaims(request,env,brand);
+    if(!claims||!['staff','admin'].includes(claims.role))return jsonResponse({success:false,message:'Session expired. Please sign in again.'},401);
+    if(path==='branches'&&request.method==='GET')return jsonResponse({success:true,branches:(await brandItemsBranches(env,brand)).map(b=>({code:b.code,name:b.name}))});
+    if(path==='branch'&&request.method==='GET'){
+      const code=brandItemSku(url.searchParams.get('code'));
+      const branch=await brandItemsBranch(env,code,brand);
+      return jsonResponse({success:true,code,items:await brandItemsRows(dnGoogleEnv(env,brand),branch,true)});
+    }
+    if(path==='apply'&&request.method==='POST'){
+      const body=await request.json();const code=brandItemSku(body.code),branch=await brandItemsBranch(env,code,brand);
+      if(body.mode==='alter'&&claims.role!=='admin')return jsonResponse({success:false,message:'Admin authorization required.'},403);
+      if(body.mode==='add'&&claims.role==='staff'&&!claims.branch)return jsonResponse({success:false,message:'Staff session required.'},403);
+      const rows=await brandItemsRows(dnGoogleEnv(env,brand),branch,true);
+      if(body.mode==='add'){
+        const item=brandItemValidate(body.item||{});
+        if(rows.some(x=>x.sku===item.sku||brandItemNorm(x.item)===brandItemNorm(item.item)))return jsonResponse({success:false,code,duplicate:true,message:`Item already added in ${code}.`},409);
+        await brandItemsMutate(dnGoogleEnv(env,brand),branch,[{type:'insert',...item}]);
+        return jsonResponse({success:true,code,status:'inserted'});
+      }
+      if(body.mode==='alter'){
+        const originalSku=brandItemSku(body.originalSku),changes=body.changes||{};
+        if(!originalSku)return jsonResponse({success:false,message:'Original SKU is required.'},400);
+        const fields=Object.keys(changes);
+        if(!fields.length||fields.some(f=>!['item','sku','uom'].includes(f)))return jsonResponse({success:false,message:'Invalid changes.'},400);
+        const original=body.original||{};
+        const target=brandItemValidate({item:changes.item??original.item,sku:changes.sku??originalSku,uom:changes.uom??original.uom});
+        const matching=rows.filter(x=>x.sku===originalSku); if(matching.length>1)throw Error('Duplicate original SKU; review branch manually.'); const match=matching[0];
+        if(rows.some(x=>x.sku===target.sku&&x.sku!==originalSku))return jsonResponse({success:false,duplicate:true,code,message:`SKU ${target.sku} already exists in ${code}.`},409);
+        if(rows.some(x=>brandItemNorm(x.item)===brandItemNorm(target.item)&&x.sku!==originalSku))return jsonResponse({success:false,duplicate:true,code,message:`Item name already exists in ${code}.`},409);
+        if(match){
+          // Avoid overwriting divergent branch-specific data. Report conflicts instead.
+          if(fields.some(k=>['item','uom'].includes(k)&&brandItemNorm(match[k])!==brandItemNorm(original[k])&&brandItemNorm(match[k])!==brandItemNorm(target[k])))return jsonResponse({success:false,code,message:`${code} has a different existing item; review manually.`},409);
+          const delta={};for(const field of fields)if(match[field]!==target[field])delta[field]=target[field];
+          await brandItemsMutate(dnGoogleEnv(env,brand),branch,[{type:'update',row:match.row,changes:delta}]);
+          return jsonResponse({success:true,code,status:'updated'});
+        }
+        await brandItemsMutate(dnGoogleEnv(env,brand),branch,[{type:'insert',...target}]);
+        return jsonResponse({success:true,code,status:'inserted-missing'});
+      }
+      return jsonResponse({success:false,message:'Invalid mode.'},400);
+    }
+    return jsonResponse({success:false,message:'Not found.'},404);
+  }catch(e){console.error('Brand item management:',e);return jsonResponse({success:false,message:e.message||'Item operation failed.'},500);}
+}
+
 export default {
 
   async fetch(
@@ -7407,6 +7546,18 @@ export default {
     }
     if (url.pathname.startsWith('/api/staff/bart/items/')) {
       return bartItemsApi(request, env, url);
+    }
+    const brandItemsRoute=url.pathname.match(/^\/api\/staff\/(glor|mooma)\/items\//);
+    if(brandItemsRoute) return brandItemsApi(request,env,url,brandItemsRoute[1]);
+    const brandLogin=url.pathname.match(/^\/api\/(glor|mooma)\/login$/);
+    if(brandLogin && request.method==='POST') {
+      const brand=brandLogin[1];
+      const response=await (brand==='glor'?handleGlorRequest:handleMoomaRequest)(request,env);
+      if(!response.ok || !env[`${brand.toUpperCase()}_ALTER_ITEMS_PASSWORD`])return response;
+      const data=await response.clone().json();
+      if(!data.success||!data.branch?.code)return response;
+      data.branch.staffToken=await brandItemToken(env,{role:'staff',branch:data.branch.code},brand);
+      return jsonResponse(data);
     }
     // 👇 PASTE IT HERE
 

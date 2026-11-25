@@ -93,6 +93,7 @@ const MODULES = [
       "View and manage weekly staff schedules and shift information.",
     icon: CalendarDays,
   },
+  { id: "item-management", number: "06", label: "INVENTORY MASTER", title: "Add Items to Branch", description: "Add new stock items or unlock admin item alterations.", icon: PackageCheck },
 ];
 
 

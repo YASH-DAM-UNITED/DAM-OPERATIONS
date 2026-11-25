@@ -1,3 +1,4 @@
+import BrandItemManagement from "../BrandItemManagement.jsx";
 import {
   useEffect,
   useMemo,
@@ -645,6 +646,7 @@ export default function GlorPortal({
     );
 
 
+    if (moduleId === "item-management") { setActiveModule("item-management"); window.scrollTo({top:0}); return; }
     if (moduleId === "delivery-notes") {
       setActiveModule("delivery-notes");
       window.scrollTo({top:0,behavior:"smooth"});
@@ -787,6 +789,7 @@ export default function GlorPortal({
   }
 
 
+  if (authenticated && activeModule === "item-management") { return <BrandItemManagement brand="GLOR" branch={authenticated} onBack={returnToDashboard} />; }
   if (authenticated && activeModule === "staff-schedule") {
     return <BrandScheduleView brand="glor" branch={authenticated} onBack={returnToDashboard} />;
   }
