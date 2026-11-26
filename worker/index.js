@@ -7783,6 +7783,12 @@ export default {
         const deliveryNoteNo = String(body.deliveryNoteNo || '').trim();
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
+        const deliveryDate = String(body.deliveryDate || '').trim();
+        const parsedDeliveryDate = new Date(deliveryDate + 'T00:00:00Z');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate) || deliveryDate.startsWith('0000') || !Number.isFinite(parsedDeliveryDate.getTime()) || parsedDeliveryDate.toISOString().slice(0,10) !== deliveryDate) {
+          return jsonResponse({success:false,message:'Select a valid delivery date (YYYY-MM-DD) before submission.'},400);
+        }
+
         // Validate against the current branch Stocks master, not the JSON catalog.
         const currentStock = await getBartStockSheetSmart(deliveryEnv, branch, false);
         const currentMaster = dnCatalogMaster(deliveryBrand.toUpperCase(), currentStock.rows);
@@ -7821,7 +7827,7 @@ export default {
 
         const appendResult = await appendSheetRow(deliveryEnv, branch.sheet_id, "'Delivery Note'!A:L", [
           formatJeddahTimestamp(), transactionId, `${branch.code} - ${branch.name}`, deliveryNoteNo,
-          String(body.deliveryDate || ''), String(body.supplier || ''), pageCount, safeItems.length,
+          "'" + deliveryDate, String(body.supplier || ''), pageCount, safeItems.length,
           itemsData, submittedBy, ocrRaw, orderType
         ]);
         const updatedRange = String(appendResult?.updates?.updatedRange || '');

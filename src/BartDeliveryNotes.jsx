@@ -113,7 +113,12 @@ function highlightFromLines(row,lines,page){
   if(![left,top,width,height].every(Number.isFinite)||width<=0||height<=0)return null;
   return {left:`${left}%`,top:`${top}%`,width:`${width}%`,height:`${height}%`};
 }
-const emptyNote={deliveryNoteNo:'',deliveryDate:'',supplier:'',orderType:'',submittedBy:''};
+function validDeliveryDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) return false;
+  const date = new Date(value + 'T00:00:00Z');
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0,10) === value;
+}
+const emptyNote={deliveryNoteNo:'',deliveryDate:'',manualDeliveryDate:false,supplier:'',orderType:'',submittedBy:''};
 const ORDER_TYPES=['Dry Order','Food Order','Bakery Order'];
 export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
   const deliveryBrand = ["bart","glor","mooma"].includes(brand) ? brand : "bart";
@@ -138,7 +143,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
   const [previewScale,setPreviewScale]=useState(1);
   const [paneWidth,setPaneWidth]=useState(40);
   const reviewRowRefs=useRef({});
-  const orderTypeRef=useRef(null),staffNameRef=useRef(null);
+  const orderTypeRef=useRef(null),staffNameRef=useRef(null),deliveryDateRef=useRef(null);
   const [newRowId,setNewRowId]=useState(null);
   const [reviewOpen,setReviewOpen]=useState(false);
   const [pickerRow,setPickerRow]=useState(null);
@@ -182,7 +187,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
     api(`${deliveryApiBase}/scan-status?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setUsage({used:d.used||0,remaining:d.remaining??3,limit:d.limit||3,loading:false})).catch(e=>{if(live){setUsage(s=>({...s,loading:false}));setError(e.message);}});
     api(`${deliveryApiBase}/stock-master?branch=${encodeURIComponent(branchCode)}`).then(d=>live&&setMaster(d.items||[])).catch(e=>live&&setError(`Stock master unavailable: ${e.message}`));
     try{setHistory(JSON.parse(localStorage.getItem(historyKey)||'[]'));}catch{}
-    try{const raw=localStorage.getItem(storageKey);if(raw){const d=JSON.parse(raw);if(Array.isArray(d.rows)&&d.rows.length){setRows(d.rows);setPages((d.pages||[]).map(p=>({...p,preview:''})));setNote(d.note||emptyNote);setSelectedRow(d.selectedRow||null);setDocumentType(d.documentType||'DELIVERY_NOTE');setRestored(true);}}}catch{}
+    try{const raw=localStorage.getItem(storageKey);if(raw){const d=JSON.parse(raw);if(Array.isArray(d.rows)&&d.rows.length){setRows(d.rows);setPages((d.pages||[]).map(p=>({...p,preview:''})));setNote({...emptyNote,...d.note,deliveryDate:d.note?.manualDeliveryDate&&validDeliveryDate(d.note.deliveryDate)?d.note.deliveryDate:''});setSelectedRow(d.selectedRow||null);setDocumentType(d.documentType||'DELIVERY_NOTE');setRestored(true);}}}catch{}
     return()=>{live=false;};
   },[branchCode,storageKey]);
   useEffect(()=>{
@@ -217,7 +222,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
       setRows(old=>[...old,...next]);if(!selectedRow&&next.length)setSelectedRow(next[0].rowId);
       setPages(old=>[...old,{pageNo,preview:pendingPreview,ocrText:d.ocrText||'',originalOcrText:d.ocrText||'',ocrLines:d.ocrLines||[],width:d.ocrPageDimensions?.width||0,height:d.ocrPageDimensions?.height||0,pageHint:expectedPages(d.ocrText),itemCount:next.length}]);
       setPreviewPage(pages.length);setPendingFile(null);setPendingPreview('');
-      setNote(n=>({...n,deliveryNoteNo:n.deliveryNoteNo||d.meta?.deliveryNoteNo||'',deliveryDate:n.deliveryDate||d.meta?.deliveryDate||'',supplier:n.supplier||d.meta?.supplier||''}));
+      setNote(n=>({...n,deliveryNoteNo:n.deliveryNoteNo||d.meta?.deliveryNoteNo||'',supplier:n.supplier||d.meta?.supplier||''}));
       setRestored(false);setMessage(`Page ${pageNo} added. ${next.length} product rows ready for staff verification.`);
     }catch(e){setError(e.message);setMessage('');}finally{setBusy(false);}
   }
@@ -304,6 +309,11 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
   async function submit(){
     if(!rows.length||!pages.length)return setError('Add and verify a document before submission.');
     if(!note.deliveryNoteNo.trim())return setError('Delivery Note No is required.');
+    if(!note.manualDeliveryDate||!validDeliveryDate(note.deliveryDate)){
+      setError('Select a valid delivery date manually before submitting.');
+      deliveryDateRef.current?.scrollIntoView({behavior:'smooth',block:'center'});
+      deliveryDateRef.current?.focus({preventScroll:true});return;
+    }
     if(!ORDER_TYPES.includes(String(note.orderType||'').trim())){
       setError('Select Dry Order, Food Order or Bakery Order before submitting.');
       orderTypeRef.current?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -326,7 +336,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
     setBusy(true);setError('');setMessage('Saving verified delivery note…');
     try{
       const feedback=rows.flatMap(r=>!r.originalFields?[]:['sku','item','ordered','delivered','quantity','detailedQty','expireDate'].filter(k=>String(r.originalFields[k]||'').trim()&&String(r.originalFields[k]||'').trim()!==String(r[k]||'').trim()).map(field=>({sku:r.sku,field,before:r.originalFields[field],after:r[field]})));
-      const d=await api(`${deliveryApiBase}/submit`,{method:'POST',body:JSON.stringify({branch:branchCode,...note,documentType,pageCount:pages.length,ocrPages:pages.map(p=>p.ocrText),items:rows.map(r=>({...r,status:'CONFIRMED'})),feedback})});
+      const d=await api(`${deliveryApiBase}/submit`,{method:'POST',body:JSON.stringify({branch:branchCode,...note,deliveryDate:note.deliveryDate,documentType,pageCount:pages.length,ocrPages:pages.map(p=>p.ocrText),items:rows.map(r=>({...r,status:'CONFIRMED'})),feedback})});
       try{
         localStorage.removeItem(storageKey);
         const entry={deliveryNoteNo:note.deliveryNoteNo,transactionId:d.transactionId||'',orderType:note.orderType,submittedBy:note.submittedBy.trim(),itemCount:rows.length,pageCount:pages.length,date:new Date().toISOString()};
@@ -346,7 +356,7 @@ export default function BartDeliveryNotes({branch,onBack,brand="bart"}){
       <section className="dnv2-stats"><div className="dnv2-stat"><div className="dnv2-stat-icon blue"><FileText size={21}/></div><div><span>Products detected</span><strong>{rows.length}</strong><small>Across {pages.length} page{pages.length===1?'':'s'}</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon green"><ShieldCheck size={21}/></div><div><span>Ready for review</span><strong>{rows.length-unresolved}</strong><small>{progress}% complete</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon amber"><CircleAlert size={21}/></div><div><span>Missing details</span><strong>{unresolved}</strong><small>{incompleteQuantity} quantity fields incomplete · {flagged} require review</small></div></div><div className="dnv2-stat"><div className="dnv2-stat-icon cyan"><Camera size={21}/></div><div><span>Scans available today</span><strong>{usage.loading?'…':usage.remaining}</strong><small>{usage.used} / {usage.limit} used</small></div></div></section>
       {(message||error||restored)&&<div className={`dnv2-alert ${error?'danger':'notice'}`}>{error?<CircleAlert size={18}/>:<CheckCircle2 size={18}/>}<span>{error||message||(restored?'Recovered an unfinished review. Original photos are not stored locally; re-open the document if you need to compare it.':'')}</span><button onClick={()=>{setError('');setMessage('');setRestored(false);}} title="Dismiss"><X size={16}/></button></div>}
       <section className="dnv2-topgrid"><div className="dnv2-panel dnv2-upload"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 01</span><h2>Document pages</h2><p>Photograph or upload each page. All pages belong to one transaction.</p></div><span className="dnv2-counter">{pages.length} added</span></div><input hidden ref={inputRef} type="file" accept="image/*" capture="environment" onChange={chooseFile}/><button className="dnv2-drop" disabled={usage.loading||scanLimitReached||busy} onClick={()=>inputRef.current?.click()}><span className="dnv2-dropicon"><CloudUpload size={27}/></span><strong>{pendingFile?pendingFile.name:pages.length?'Add another document page':'Choose or photograph a delivery note'}</strong><small>JPG, PNG, HEIC where supported · Max 10 MB</small></button>{pendingPreview&&<div className="dnv2-pending"><img src={pendingPreview} alt="New document preview"/><button className="dnv2-button primary" disabled={busy} onClick={scanPage}>{busy?<Loader2 className="dnv2-spin" size={18}/>:<Camera size={18}/>} Process page {pages.length+1}</button></div>}{pages.length>0&&<div className="dnv2-pagechips">{pages.map((p,i)=><div className="dnv2-pagechip" key={p.pageNo}><button onClick={()=>setPreviewPage(i)} className={previewPage===i?'active':''}><FileText size={15}/> Page {p.pageNo} · {p.itemCount} items</button><button onClick={()=>removePage(p.pageNo)} title="Remove page"><X size={14}/></button></div>)}</div>}<div className="dnv2-tip"><ShieldCheck size={16}/> No additional scan is used when editing a detected row.</div></div>
-      <div className="dnv2-panel"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 02</span><h2>Delivery details</h2><p>Review the document information before submission.</p></div><ClipboardCheck size={22}/></div><div className="dnv2-fields"><label>Delivery note number <input value={note.deliveryNoteNo} onChange={e=>setNote(n=>({...n,deliveryNoteNo:e.target.value}))} placeholder="e.g. CKWH/INT/47503"/></label><label>Delivery date <input type="date" value={note.deliveryDate} onChange={e=>setNote(n=>({...n,deliveryDate:e.target.value}))}/></label><label>Supplier <input value={note.supplier} onChange={e=>setNote(n=>({...n,supplier:e.target.value}))} placeholder="Supplier name"/></label><label>Order type *<select ref={orderTypeRef} required value={note.orderType||''} onChange={e=>setNote(n=>({...n,orderType:e.target.value}))}><option value="">Select order type</option>{ORDER_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Submitted by (staff name) *<input ref={staffNameRef} required value={note.submittedBy||''} onChange={e=>setNote(n=>({...n,submittedBy:e.target.value}))} placeholder="Enter your full name"/></label></div><div className="dnv2-progress-label"><span>Item readiness</span><b>{progress}%</b></div><div className="dnv2-progress"><span style={{width:`${progress}%`}}/></div></div></section>
+      <div className="dnv2-panel"><div className="dnv2-sectionhead"><div><span className="dnv2-kicker">STEP 02</span><h2>Delivery details</h2><p>Review the document information before submission.</p></div><ClipboardCheck size={22}/></div><div className="dnv2-fields"><label>Delivery note number <input value={note.deliveryNoteNo} onChange={e=>setNote(n=>({...n,deliveryNoteNo:e.target.value}))} placeholder="e.g. CKWH/INT/47503"/></label><label>Delivery date * <input ref={deliveryDateRef} type="date" required value={note.deliveryDate} onChange={e=>setNote(n=>({...n,deliveryDate:e.target.value,manualDeliveryDate:true}))}/><small>{validDeliveryDate(note.deliveryDate)?note.deliveryDate.split('-').reverse().join('/'):'DD/MM/YYYY — select manually'}</small></label><label>Supplier <input value={note.supplier} onChange={e=>setNote(n=>({...n,supplier:e.target.value}))} placeholder="Supplier name"/></label><label>Order type *<select ref={orderTypeRef} required value={note.orderType||''} onChange={e=>setNote(n=>({...n,orderType:e.target.value}))}><option value="">Select order type</option>{ORDER_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></label><label>Submitted by (staff name) *<input ref={staffNameRef} required value={note.submittedBy||''} onChange={e=>setNote(n=>({...n,submittedBy:e.target.value}))} placeholder="Enter your full name"/></label></div><div className="dnv2-progress-label"><span>Item readiness</span><b>{progress}%</b></div><div className="dnv2-progress"><span style={{width:`${progress}%`}}/></div></div></section>
       <section className="dnv2-workspace"><div className="dnv2-workhead"><div><span className="dnv2-kicker">STEP 03 / VERIFICATION</span><h2>Document & product review</h2><p>Enter quantities, correct products when needed, then review everything once.</p></div><div className="dnv2-workactions"><button className="dnv2-button subtle" onClick={addRow}><Plus size={16}/> Add item</button><button className="dnv2-button primary" disabled={busy||!rows.length||duplicateState==='duplicate'||unresolved>0} onClick={submit}><ClipboardCheck size={17}/> Review all & submit</button></div></div>
       
       {duplicateState==='duplicate'&&<div className="dnv3-warning"><CircleAlert size={17}/> This delivery note number already exists for this branch. Submission is blocked.</div>}
