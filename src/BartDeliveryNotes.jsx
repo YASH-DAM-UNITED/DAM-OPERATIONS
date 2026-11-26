@@ -114,14 +114,40 @@ function highlightFromLines(row,lines,page){
   return {left:`${left}%`,top:`${top}%`,width:`${width}%`,height:`${height}%`};
 }
 function DeliveryDateInput({value,onChange,inputRef,required=false}) {
-  const picker=useRef(null);
+  const root=useRef(null);
+  const [open,setOpen]=useState(false);
+  const [month,setMonth]=useState(()=>new Date());
   const iso=toDeliveryISO(value);
-  return <span style={{display:'flex',alignItems:'center',gap:6,position:'relative',width:'100%'}}>
-    <input ref={inputRef} type="text" inputMode="numeric" placeholder="DD/MM/YYYY" aria-label="Delivery date (DD/MM/YYYY)" maxLength={10} required={required} value={value} onChange={e=>onChange(e.target.value)} style={{flex:1,minWidth:0}}/>
-    <span style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center',width:36,height:36,flexShrink:0}}>
-      <span aria-hidden="true">▦</span>
-      <input ref={picker} type="date" aria-label="Open delivery date calendar" value={iso} onChange={e=>onChange(e.target.value.split('-').reverse().join('/'))} onClick={()=>{try{picker.current?.showPicker?.()}catch{}}} style={{position:'absolute',inset:0,opacity:0,width:'100%',height:'100%',cursor:'pointer',padding:0}}/>
-    </span>
+  function openCalendar(){
+    if(!open){setMonth(iso?new Date(iso+'T12:00:00'):new Date());setOpen(true);}
+  }
+  useEffect(()=>{
+    if(!open)return;
+    const outside=e=>{if(!root.current?.contains(e.target))setOpen(false);};
+    const escape=e=>{if(e.key==='Escape')setOpen(false);};
+    document.addEventListener('pointerdown',outside);
+    document.addEventListener('keydown',escape);
+    return ()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);};
+  },[open]);
+  const year=month.getFullYear(),m=month.getMonth();
+  const offset=new Date(year,m,1).getDay(),days=new Date(year,m+1,0).getDate();
+  const pad=n=>String(n).padStart(2,'0');
+  const cell={border:'1px solid #8885',borderRadius:6,padding:'6px 0',background:'transparent',color:'inherit',cursor:'pointer',minWidth:0};
+  return <span ref={root} style={{display:'flex',alignItems:'center',gap:6,position:'relative',width:'100%'}}>
+    <input ref={inputRef} type="text" inputMode="numeric" placeholder="DD/MM/YYYY" aria-label="Delivery date (DD/MM/YYYY)" maxLength={10} required={required} value={value} onClick={openCalendar} onChange={e=>onChange(e.target.value)} style={{flex:1,minWidth:0}}/>
+    <button type="button" aria-label="Open delivery date calendar" aria-expanded={open} onClick={e=>{e.preventDefault();if(open)setOpen(false);else openCalendar();}} style={{...cell,width:36,height:36,flexShrink:0}}>▦</button>
+    {open&&<span role="group" aria-label="Delivery date calendar" style={{position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:1000,width:'100%',maxWidth:320,boxSizing:'border-box',padding:10,border:'1px solid #8888',borderRadius:10,background:'Canvas',color:'CanvasText',boxShadow:'0 6px 20px #0003'}}>
+      <span style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,marginBottom:8}}>
+        <button type="button" aria-label="Previous month" style={{...cell,width:32}} onClick={e=>{e.preventDefault();setMonth(new Date(year,m-1,1));}}>‹</button>
+        <strong>{month.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</strong>
+        <button type="button" aria-label="Next month" style={{...cell,width:32}} onClick={e=>{e.preventDefault();setMonth(new Date(year,m+1,1));}}>›</button>
+      </span>
+      <span style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:3,textAlign:'center'}}>
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><small key={d}>{d}</small>)}
+        {Array.from({length:offset},(_,i)=><span key={'blank'+i}/>)}
+        {Array.from({length:days},(_,i)=>{const day=i+1,date=`${pad(day)}/${pad(m+1)}/${year}`;return <button key={day} type="button" aria-label={date} aria-pressed={value===date} style={{...cell,...(value===date?{background:'#2563eb',color:'#fff'}:{})}} onClick={e=>{e.preventDefault();onChange(date);setOpen(false);}}>{day}</button>;})}
+      </span>
+    </span>}
   </span>;
 }
 function toDeliveryISO(value) {
