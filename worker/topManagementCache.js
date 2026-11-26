@@ -1,7 +1,17 @@
 // BART Delivery Note Page only. In-memory request coalescing; no D1/R2/KV.
 const inflight=new Map();
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
-const iso=value=>{const s=String(value??'').trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:''};
+const iso=value=>{
+ const s=String(value??'').trim().replace(/^'/,'');
+ const y=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T ]\d{2}:\d{2})/);
+ const m=s.match(/^(\d{1,2})([\/.-])(\d{1,2})\2(\d{4})(?:$|[T ]\d{2}:\d{2})/);
+ let result=y?`${y[1]}-${y[2]}-${y[3]}`:m?`${m[4]}-${m[3].padStart(2,'0')}-${m[1].padStart(2,'0')}`:'';
+ // Historical US dates are recoverable only when the second component exceeds 12.
+ if(m&&Number(m[3])>12&&Number(m[1])<=12)result=`${m[4]}-${m[1].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+ if(!result||result.startsWith('0000'))return '';
+ const d=new Date(result+'T00:00:00Z');
+ return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===result?result:'';
+};
 const number=v=>{const s=String(v??'').replace(/,/g,'').trim();return s!==''&&Number.isFinite(Number(s))?Number(s):null};
 function itemsFromCell(cell){return String(cell??'').split('\n').flatMap(line=>{const m=line.match(/^\s*\d+\.\s*([^|]*)\|\s*([^|]*)/);if(!m)return [];const field=k=>{const hit=line.match(new RegExp('(?:^|\\|)\\s*'+k+'\\s*:\\s*([^|]*)','i'));return hit?hit[1].trim():''};return [{sku:m[1].trim(),item:m[2].trim(),uom:field('UOM'),ordered:number(field('ORDERED')),delivered:number(field('DELIVERED'))??number(field('RECEIVED')),quantity:number(field('QTY')),raw:line}];});}
 function parse(rows){const out=[];for(const row of rows.slice(1)){const date=iso(row[4]);if(!date)continue;out.push({timestamp:String(row[0]??''),transactionId:String(row[1]??''),branch:String(row[2]??''),deliveryNoteNo:String(row[3]??''),date,supplier:String(row[5]??''),pages:number(row[6]),totalItems:number(row[7]),items:itemsFromCell(row[8]),submittedBy:String(row[9]??''),orderType:String(row[11]??'').trim()||'Uncategorized'});}return out;}

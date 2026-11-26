@@ -995,7 +995,8 @@ async function appendSheetRow(
   env,
   spreadsheetId,
   range,
-  row
+  row,
+  valueInputOption = "USER_ENTERED"
 ) {
 
   const url =
@@ -1006,7 +1007,7 @@ async function appendSheetRow(
     `${encodeURIComponent(
       range
     )}:append` +
-    `?valueInputOption=USER_ENTERED` +
+    `?valueInputOption=${valueInputOption}` +
     `&insertDataOption=INSERT_ROWS`;
 
 
@@ -7784,9 +7785,11 @@ export default {
         if (!deliveryNoteNo) return jsonResponse({success:false,message:'Delivery Note No is required before submission.'},400);
 
         const deliveryDate = String(body.deliveryDate || '').trim();
-        const parsedDeliveryDate = new Date(deliveryDate + 'T00:00:00Z');
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate) || deliveryDate.startsWith('0000') || !Number.isFinite(parsedDeliveryDate.getTime()) || parsedDeliveryDate.toISOString().slice(0,10) !== deliveryDate) {
-          return jsonResponse({success:false,message:'Select a valid delivery date (YYYY-MM-DD) before submission.'},400);
+        const dateMatch = deliveryDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const dateISO = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : '';
+        const parsedDeliveryDate = new Date(dateISO + 'T00:00:00Z');
+        if (!dateMatch || dateMatch[3] === '0000' || !Number.isFinite(parsedDeliveryDate.getTime()) || parsedDeliveryDate.toISOString().slice(0,10) !== dateISO) {
+          return jsonResponse({success:false,message:'Select a valid delivery date (DD/MM/YYYY) before submission.'},400);
         }
 
         // Validate against the current branch Stocks master, not the JSON catalog.
@@ -7827,9 +7830,9 @@ export default {
 
         const appendResult = await appendSheetRow(deliveryEnv, branch.sheet_id, "'Delivery Note'!A:L", [
           formatJeddahTimestamp(), transactionId, `${branch.code} - ${branch.name}`, deliveryNoteNo,
-          "'" + deliveryDate, String(body.supplier || ''), pageCount, safeItems.length,
+          deliveryDate, String(body.supplier || ''), pageCount, safeItems.length,
           itemsData, submittedBy, ocrRaw, orderType
-        ]);
+        ], "RAW");
         const updatedRange = String(appendResult?.updates?.updatedRange || '');
         const rowMatch = updatedRange.match(/![A-Z]+(\d+):/i) || updatedRange.match(/![A-Z]+(\d+)/i);
         const rowNumber = rowMatch ? Number(rowMatch[1]) : null;
