@@ -3,3 +3,13 @@
 .dnm-date-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}.dnm-date-controls select{padding:11px;border-radius:10px;border:1px solid #8295a7;background:transparent;color:inherit}.dnm-date-controls select option{color:#17324d;background:white}.dnm-branch-tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:18px;padding:4px 0 10px}.dnm-branch-tabs button{flex:none;border:1px solid #8295a7;border-radius:10px;padding:10px 14px;background:transparent;color:inherit;cursor:pointer}.dnm-branch-tabs button[aria-pressed=true]{background:#087e9b;color:white;border-color:#087e9b}@media(max-width:600px){.dnm-date-controls{width:100%}.dnm-date-controls label{flex:1;min-width:125px}.dnm-date-controls input,.dnm-date-controls select{width:100%;box-sizing:border-box;min-width:0}}
 
 .dnm-refresh-wrap{display:grid;gap:5px}.dnm-refresh-wrap small{font-size:11px;opacity:.65}.dnm-refresh{display:flex;align-items:center;justify-content:center;gap:7px;background:#087e9b;color:white;border:0;border-radius:10px;padding:12px 16px;cursor:pointer;font-weight:700}.dnm-refresh:disabled{opacity:.65;cursor:not-allowed}.dnm-refresh span{display:inline-block;font-size:18px;line-height:1}.dnm-refresh-spin{animation:dnm-refresh-rotate 1s linear infinite}@keyframes dnm-refresh-rotate{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.dnm-refresh-spin{animation:none}}
+
+/* Delivery Note header controls: shared label and field baselines. */
+.dnm-header .dnm-date-controls{align-items:start;gap:12px;flex:1 1 680px;justify-content:flex-end;min-width:0}
+.dnm-header .dnm-date-controls>label,.dnm-header .dnm-refresh-wrap{display:grid;grid-template-rows:16px 42px auto;gap:7px;flex:1 1 145px;min-width:135px;max-width:240px;margin:0;align-content:start}
+.dnm-header .dnm-date-controls>label{font-size:12px;line-height:16px;font-weight:700}
+.dnm-header .dnm-date-controls>label>span{min-width:0;height:42px}
+.dnm-header .dnm-date-controls>label>select,.dnm-header .dnm-date-controls>label>span>input,.dnm-header .dnm-refresh{box-sizing:border-box;width:100%;height:42px;min-width:0;margin:0;font-size:13px;line-height:18px;padding:0 12px;border-radius:10px}
+.dnm-header .dnm-refresh-label{font-size:12px;line-height:16px;font-weight:700}
+.dnm-header .dnm-refresh-wrap small{margin:0;line-height:15px;font-size:11px;overflow-wrap:anywhere}
+@media(max-width:600px){.dnm-header .dnm-date-controls{flex-basis:100%;justify-content:flex-start}.dnm-header .dnm-date-controls>label,.dnm-header .dnm-refresh-wrap{flex:1 1 calc(50% - 12px);max-width:none;min-width:120px}}
